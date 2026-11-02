@@ -342,6 +342,24 @@ func (c *Client) groupEntry(ctx context.Context, e *events.Message) (mstore.LogE
 		}
 		return entry, true
 	}
+	if sem := m.GetSecretEncryptedMessage(); sem != nil {
+		// Newer clients send edits encrypted with the original message's
+		// secret, which whatsmeow saved when that message arrived.
+		if sem.GetSecretEncType() != waE2E.SecretEncryptedMessage_MESSAGE_EDIT {
+			return entry, false
+		}
+		dec, err := c.WA.DecryptSecretEncryptedMessage(ctx, e)
+		if err != nil {
+			c.log.Warn("could not decrypt an edit", "chat", info.Chat.String(), "target", sem.GetTargetMessageKey().GetID(), "err", err)
+			return entry, false
+		}
+		text := textOf(dec)
+		if pm := dec.GetProtocolMessage(); pm != nil && pm.GetEditedMessage() != nil {
+			text = textOf(pm.GetEditedMessage())
+		}
+		entry.Type, entry.Target, entry.Text = "edit", sem.GetTargetMessageKey().GetID(), text
+		return entry, text != ""
+	}
 	entry.Type, entry.Text, entry.ReplyTo = "post", textOf(m), replyTo(m)
 	return entry, entry.Text != ""
 }
