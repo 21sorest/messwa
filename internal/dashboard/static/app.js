@@ -309,6 +309,9 @@ function ago(u) {
   const s = now() - u;
   return s < 60 ? 'just now' : `${dur(s)} ago`;
 }
+// A buy order that went through was bought, not sold.
+const doneWord = (l) => (l.kind === 'buy' ? 'Bought' : 'Sold');
+const modeDone = () => (S.mode === 'buy' ? 'Bought' : 'Sold');
 const vegOnly = (m) => !!(D && D.messes.find((x) => x.name === m && x.veg_only));
 const window_ = (meal) => (D ? D.today.find((s) => s.meal === meal) : null);
 const shortGroup = (g) => g.replace(/^mess\s+/i, '').replace(/\s*@\s*/, ' @ ');
@@ -598,7 +601,7 @@ function slotNode(l) {
   bar.append(fill);
   b.append(bar);
 
-  if (l.status === 'sold') b.append(el('span', 'stamp', 'SOLD'));
+  if (l.status === 'sold') b.append(el('span', l.kind === 'buy' ? 'stamp long' : 'stamp', doneWord(l).toUpperCase()));
   if (l.status === 'closed') b.append(el('span', 'stamp', 'CLOSED'));
   b.setAttribute('aria-label', `${cap(l.mess)} ${l.meal}, ${priceText(l)}, ${l.seller.name || l.seller.phone || 'unknown seller'}`);
   return b;
@@ -689,7 +692,7 @@ function itemTip(l) {
     const val = l.price == null ? { t: 'ask', c: 'c8' } : l.price === 0 ? { t: 'FREE', c: 'ca' } : { t: `₹${l.price}`, c: 'c6' };
     lines.push([{ t: label, c: 'c7' }, val]);
   }
-  if (l.status === 'sold') lines.push([{ t: 'Status: ', c: 'c7' }, { t: 'Sold', c: 'ca' }]);
+  if (l.status === 'sold') lines.push([{ t: 'Status: ', c: 'c7' }, { t: doneWord(l), c: 'ca' }]);
   else if (l.status === 'closed') lines.push([{ t: 'Status: ', c: 'c7' }, { t: 'Withdrawn by seller', c: 'cc' }]);
   else lines.push([{ t: 'Ends in: ', c: 'c7' }, { t: l.meal_ends_at > n ? dur(l.meal_ends_at - n) : 'ended', c: 'cf' }]);
   lines.push(0, [{ t: 'Click to inspect!', c: 'ce' }], rarity(l));
@@ -824,10 +827,11 @@ function renderControls() {
     [{ t: 'Click to cycle!', c: 'ce' }],
   ], S.meal === 'all' ? mealsAllIcon() : icon(S.meal)));
 
-  add(ctl('check', S.sold ? 'SOLD: ON' : 'SOLD: OFF', S.sold ? 'on' : '', toggleSold, () => [
-    [{ t: 'Show sold and withdrawn', c: 'nm ca' }],
-    [{ t: 'Sold means the seller ticked it or said so.', c: 'c8' }],
-    [{ t: 'Sales agreed in DMs stay invisible.', c: 'c8' }],
+  const done = modeDone();
+  add(ctl('check', `${done.toUpperCase()}: ${S.sold ? 'ON' : 'OFF'}`, S.sold ? 'on' : '', toggleSold, () => [
+    [{ t: `Show ${done.toLowerCase()} and withdrawn`, c: 'nm ca' }],
+    [{ t: `${done} means the ${S.mode === 'buy' ? 'buyer' : 'seller'} ticked it or said so.`, c: 'c8' }],
+    [{ t: 'Deals agreed in DMs stay invisible.', c: 'c8' }],
     0,
     opt('Hide them', !S.sold),
     opt('Show them, greyed out', S.sold),
@@ -863,7 +867,7 @@ function renderControls() {
       [{ t: '← → ', c: 'ce' }, { t: 'pages', c: 'c7' }],
       [{ t: 'R / P ', c: 'ce' }, { t: 'sort by recency / price', c: 'c7' }],
       [{ t: 'D / M ', c: 'ce' }, { t: 'diet / meal filter', c: 'c7' }],
-      [{ t: 'S ', c: 'ce' }, { t: 'show sold', c: 'c7' }],
+      [{ t: 'S ', c: 'ce' }, { t: `show ${modeDone().toLowerCase()}`, c: 'c7' }],
       [{ t: 'W ', c: 'ce' }, { t: 'selling or wanted', c: 'c7' }],
       [{ t: '/ ', c: 'ce' }, { t: 'search', c: 'c7' }],
       0,
@@ -883,7 +887,7 @@ function opt(text, on, color) {
 
 function ctl(art, label, cls, onClick, tipFn, markup) {
   const b = el('button', 'slot ctl' + (cls ? ' ' + cls : ''));
-  b.append(svgEl(markup || icon(art)), el('span', 'lbl', label));
+  b.append(svgEl(markup || icon(art)), el('span', label.length > 9 ? 'lbl tight' : 'lbl', label));
   b.addEventListener('click', () => {
     onClick();
     if (tipFor === b) {
@@ -980,7 +984,7 @@ function openListing(l) {
   info.append(h, el('div', 'sub', `${cap(dayWord(l.meal_date))}${w ? `, ${hm(w.start)}-${hm(w.end)}` : ''} · ${priceText(l)}`));
   const r = rarity(l);
   const pill = el('span', 'pill ' + (l.status === 'available' ? r.c : l.status === 'sold' ? 'ca' : 'c8'),
-    l.status === 'available' ? r.rar : l.status === 'sold' ? 'SOLD' : 'WITHDRAWN');
+    l.status === 'available' ? r.rar : l.status === 'sold' ? doneWord(l).toUpperCase() : 'WITHDRAWN');
   info.append(pill);
   head.append(info);
   sheet.append(head);
