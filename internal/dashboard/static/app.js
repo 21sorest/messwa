@@ -571,7 +571,6 @@ function slotNode(l) {
   b.dataset.id = l.id;
   b.style.setProperty('--m', messColor(l.mess));
   if (l.status === 'sold' || l.status === 'closed') b.classList.add(l.status);
-  if (now() - l.first_seen_at < 15 * 60 && l.status === 'available') b.classList.add('fresh');
   if (popIds.has(l.id)) b.classList.add('pop');
 
   if (!vegOnly(l.mess) || S.tab === 'all') {
@@ -876,7 +875,6 @@ function renderControls() {
       [{ t: 'Slot corners', c: 'c7' }],
       [{ t: '  diet mark, meal, quantity', c: 'c8' }],
       [{ t: '  bar: time left until the meal ends', c: 'c8' }],
-      [{ t: '  shimmer: posted in the last 15 minutes', c: 'cd' }],
       [{ t: '  amber dot: someone else ticked it', c: 'c6' }],
     ]);
     left.append(help);

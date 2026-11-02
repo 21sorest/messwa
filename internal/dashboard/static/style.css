@@ -249,18 +249,6 @@ button.slot { padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-tap
 .sold .stamp.bought { color: #ff6b5b; }
 .closed .stamp { color: var(--muted); }
 
-.fresh::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(115deg, transparent 30%, rgba(170, 120, 255, .30) 45%, rgba(120, 190, 255, .22) 52%, transparent 66%);
-  background-size: 260% 100%;
-  animation: glint 3.2s linear infinite;
-  mix-blend-mode: screen;
-}
-@keyframes glint { from { background-position: 130% 0; } to { background-position: -130% 0; } }
 .pop { animation: pop .45s cubic-bezier(.2, 1.5, .4, 1); }
 @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 
