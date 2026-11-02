@@ -315,7 +315,24 @@ const shortGroup = (g) => g.replace(/^mess\s+/i, '').replace(/\s*@\s*/, ' @ ');
 
 // ---------- data ----------
 
+// Poll every 5s while a meal is being served and every 30s otherwise. The
+// slow wait is cut short so polling speeds up as soon as the next meal starts.
+const FAST = 5, SLOW = 30;
+let pollTimer = 0;
+function pollEvery() {
+  if (!D) return FAST;
+  const n = now();
+  if (D.today.some((s) => s.start <= n && n < s.end)) return FAST;
+  const next = D.today.filter((s) => s.start > n).map((s) => s.start - n);
+  return Math.max(FAST, Math.min(SLOW, ...next));
+}
+function schedule() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(load, pollEvery() * 1000);
+}
+
 async function load() {
+  schedule();
   try {
     const r = await fetch('api/state', { cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
@@ -1029,7 +1046,7 @@ function tickLive() {
   const live = $('live');
   const s = Math.round((Date.now() - lastOK) / 1000);
   live.classList.toggle('off', failed || !lastOK);
-  $('liveText').textContent = !lastOK ? 'connecting' : failed ? `offline, last update ${s}s ago` : s < 5 ? 'live' : `updated ${s}s ago`;
+  $('liveText').textContent = !lastOK ? 'connecting' : failed ? `offline, last update ${s}s ago` : s <= pollEvery() + 2 ? 'live' : `updated ${s}s ago`;
   if (tipFor && tipFn && !tipEl.hidden && document.body.contains(tipFor)) fillTip(tipFn());
 }
 
@@ -1043,7 +1060,6 @@ addEventListener('resize', () => {
   if (`${L.cols}x${L.rows}x${L.s}` !== before) render();
 });
 load();
-setInterval(load, 15000);
 setInterval(tickLive, 1000);
 setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); } }, 30000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
