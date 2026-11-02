@@ -25,10 +25,10 @@ type Ingester struct {
 func New(cfg *config.Config, st *store.Store) *Ingester {
 	in := &Ingester{cfg: cfg, st: st, sched: meals.New(cfg), groups: map[string]bool{}}
 	for _, m := range cfg.Meals {
-		in.meals = append(in.meals, classify.Named{Name: m.Name, Phrases: m.Keywords})
+		in.meals = append(in.meals, classify.Named{Name: m.Name, Aliases: m.Keywords, Fuzzy: true})
 	}
 	for _, m := range cfg.Messes {
-		in.messes = append(in.messes, classify.Named{Name: m.Name, Phrases: m.Aliases})
+		in.messes = append(in.messes, classify.Named{Name: m.Name, Aliases: m.Aliases, Fuzzy: true})
 	}
 	for _, g := range cfg.Groups {
 		in.groups[g] = true
@@ -57,16 +57,15 @@ func (in *Ingester) Post(ctx context.Context, p GroupPost) error {
 	if seen, err := in.st.HasPost(ctx, p.Chat, p.ID); err != nil || seen {
 		return err
 	}
+	l := in.classify(p.Text, p.TS)
 	if p.ReplyTo != "" {
-		handled, err := in.soldReply(ctx, p)
+		handled, err := in.ownReply(ctx, p, &l)
 		if err != nil || handled {
 			return err
 		}
 	}
-
-	l := in.classify(p.Text, p.TS)
-	if l.Kind == "" && l.MealSource != "keyword" {
-		return nil // chatter, not a listing
+	if !isListing(&l) {
+		return nil // chatter, or someone else's reply
 	}
 	l.Seller, l.SellerAlt, l.SellerName = p.Sender, p.SenderAlt, p.PushName
 	l.FirstSeen, l.LastSeen = p.TS, p.TS
@@ -80,70 +79,131 @@ func (in *Ingester) Post(ctx context.Context, p GroupPost) error {
 			return err
 		}
 		match = &l
+	} else if enrich(match, &l) {
+		if err := in.st.UpdateListing(ctx, match); err != nil {
+			return err
+		}
 	}
 	return in.st.AddPost(ctx, store.Post{Chat: p.Chat, ID: p.ID, ListingID: match.ID, Sender: p.Sender, TS: p.TS, Text: p.Text})
 }
 
-// soldReply handles the seller replying "sold" to their own post.
-func (in *Ingester) soldReply(ctx context.Context, p GroupPost) (bool, error) {
-	l, err := in.st.PostListing(ctx, p.Chat, p.ReplyTo)
-	if err != nil || l == nil || !sameUser(l, p.Sender, p.SenderAlt) {
+func isListing(l *store.Listing) bool {
+	return l.Kind != "" || l.Mess != "" || l.MealSource == "keyword"
+}
+
+// ownReply handles a seller replying to their own listing. In these groups
+// that's almost always an update: a new price ("@25"), a bump ("."), "sold",
+// or "free". Those attach to the listing. A reply that is a full listing on
+// its own ("Or sell kadamb veg") is left for the normal path.
+func (in *Ingester) ownReply(ctx context.Context, p GroupPost, l *store.Listing) (bool, error) {
+	parent, err := in.st.PostListing(ctx, p.Chat, p.ReplyTo)
+	if err != nil || parent == nil || !sameUser(parent, p.Sender, p.SenderAlt) {
 		return false, err
 	}
 	t := classify.Prepare(p.Text)
-	if len(strings.Fields(classify.Normalize(p.Text))) > 6 || !t.Has(in.cfg.Sold.Words...) {
+	sold := t.Words() <= 6 && t.Has(in.cfg.Sold.Words...)
+	if !sold && l.Mess != "" && l.Kind != "" {
 		return false, nil
 	}
-	return true, in.st.MarkSoldByText(ctx, l.ID, p.TS)
+	if sold {
+		if err := in.st.MarkSoldByText(ctx, parent.ID, p.TS); err != nil {
+			return false, err
+		}
+	} else if l.Price >= 0 {
+		if err := in.st.SetPrice(ctx, parent.ID, l.Price); err != nil {
+			return false, err
+		}
+	}
+	return true, in.st.AddPost(ctx, store.Post{Chat: p.Chat, ID: p.ID, ListingID: parent.ID, Sender: p.Sender, TS: p.TS, Text: p.Text})
 }
 
 // findDuplicate treats posts as one listing when the same person offers the
 // same kind of deal for the same meal slot within the dedupe window. People
-// hold one registration per meal, so wording differences don't matter. A
-// listing already marked sold never absorbs a new post: a repost after a
-// buyer backs out should show as available.
+// hold one registration per meal, so wording doesn't matter, but a different
+// mess or diet (kadamba veg and nonveg are separate registrations) means a
+// different listing. A sold listing never absorbs a new post: a repost after
+// a buyer backs out should show as available.
 func (in *Ingester) findDuplicate(ctx context.Context, l *store.Listing, p GroupPost) (*store.Listing, error) {
 	recent, err := in.st.RecentBySeller(ctx, []string{p.Sender, p.SenderAlt}, p.TS.Add(-in.cfg.Dedupe.Window.Duration))
 	if err != nil {
 		return nil, err
 	}
-	rule := store.SoldRule{Emojis: in.cfg.Sold.Emojis, AdminsCount: in.cfg.Sold.AdminsCount}
+	rule := store.SoldRule{Emojis: in.cfg.Sold.Emojis, ClosedEmojis: in.cfg.Sold.ClosedEmojis, AdminsCount: in.cfg.Sold.AdminsCount}
 	for i := range recent {
 		r := &recent[i]
 		if r.Meal != l.Meal || r.MealDate != l.MealDate || r.Kind != l.Kind {
 			continue
 		}
-		if r.Mess != "" && l.Mess != "" && r.Mess != l.Mess {
+		if conflict(r.Mess, l.Mess) || conflict(r.Diet, l.Diet) {
 			continue
 		}
-		if sold, err := in.st.IsSold(ctx, rule, r); err != nil || sold {
-			if err != nil {
-				return nil, err
-			}
-			continue
+		sold, err := in.st.IsSold(ctx, rule, r)
+		if err != nil {
+			return nil, err
 		}
-		return r, nil
+		if !sold {
+			return r, nil
+		}
 	}
 	return nil, nil
+}
+
+func conflict(a, b string) bool { return a != "" && b != "" && a != b }
+
+// enrich fills gaps in an existing listing from a duplicate post, e.g.
+// "Sell kadamb" followed by "Sell kadamb veg @20". Reports whether anything changed.
+func enrich(dst, src *store.Listing) bool {
+	changed := false
+	set := func(d *string, v string) {
+		if *d == "" && v != "" {
+			*d, changed = v, true
+		}
+	}
+	set(&dst.Mess, src.Mess)
+	set(&dst.Diet, src.Diet)
+	set(&dst.Wants, src.Wants)
+	if src.Price >= 0 && src.Price != dst.Price {
+		dst.Price, changed = src.Price, true
+	}
+	if src.Qty > dst.Qty {
+		dst.Qty, changed = src.Qty, true
+	}
+	return changed
 }
 
 // classify fills in everything derivable from the text and post time.
 func (in *Ingester) classify(text string, ts time.Time) store.Listing {
 	t := classify.Prepare(text)
 	l := store.Listing{
-		Text: text,
-		Norm: classify.Normalize(text),
-		Kind: classify.Kind(t),
-		Diet: classify.Diet(t),
+		Text:  text,
+		Norm:  classify.Normalize(text),
+		Kind:  classify.Kind(t),
+		Diet:  classify.Diet(t),
+		Price: -1,
+		Qty:   classify.Quantity(t),
 	}
-	if m := classify.Pick(t, in.messes); len(m) > 0 {
-		l.Mess = m[0]
+	messes := classify.Pick(t, in.messes)
+	if l.Kind == "exchange" {
+		have, want := classify.Exchange(t, messes)
+		l.Mess, l.Wants = have, strings.Join(want, ",")
+	} else if len(messes) > 0 {
+		l.Mess = messes[0].Name
 	}
+	// A bare "palash" or "See kadamb" in these groups is a sale.
+	if l.Kind == "" && l.Mess != "" {
+		l.Kind = "sell"
+	}
+	if classify.Free(t) {
+		l.Price = 0
+	} else if v, ok := classify.Price(t); ok {
+		l.Price = v
+	}
+
 	var slot meals.Slot
 	var ok bool
-	for _, name := range classify.Pick(t, in.meals) {
+	for _, h := range classify.Pick(t, in.meals) {
 		// Several meals named: the listing is for whichever comes first.
-		if s, found := in.sched.Next(ts, name); found && (!ok || s.End.Before(slot.End)) {
+		if s, found := in.sched.Next(ts, h.Name); found && (!ok || s.End.Before(slot.End)) {
 			slot, ok = s, true
 		}
 	}
@@ -178,17 +238,16 @@ func (in *Ingester) Edit(ctx context.Context, chat, id, editor, editorAlt, text 
 	// Re-derive tags from the edited text but keep old ones the edit dropped,
 	// so "SOLD" replacing the whole post doesn't erase what was sold.
 	n := in.classify(text, l.FirstSeen)
-	if n.Kind == "" {
-		n.Kind = l.Kind
-	}
 	if n.MealSource != "keyword" {
 		n.Meal, n.MealSource, n.MealDate, n.MealEnd = l.Meal, l.MealSource, l.MealDate, l.MealEnd
 	}
-	if n.Mess == "" {
-		n.Mess = l.Mess
+	if n.Kind == "" {
+		n.Kind = l.Kind
 	}
-	if n.Diet == "" {
-		n.Diet = l.Diet
+	edited := n.Price
+	enrich(&n, l)
+	if edited >= 0 {
+		n.Price = edited
 	}
 	n.ID = l.ID
 	return in.st.UpdateListing(ctx, &n)

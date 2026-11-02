@@ -39,13 +39,18 @@ type Mess struct {
 }
 
 type Dedupe struct {
-	// Posts by the same person for the same meal slot within this window
-	// are one listing.
+	// How far back to look for an earlier post by the same person for the
+	// same meal slot. The slot match does the real work; people post
+	// tomorrow's breakfast the evening before, so this must span that.
 	Window duration `toml:"window"`
 }
 
 type Sold struct {
+	// Reactions meaning sold. Skin tones and variation selectors are
+	// ignored, so "👍" covers "👍🏻" and "☑" covers "☑️".
 	Emojis []string `toml:"emojis"`
+	// Reactions from the seller meaning withdrawn ("closed").
+	ClosedEmojis []string `toml:"closed_emojis"`
 	// Who can mark a listing sold by reacting: the seller always can.
 	// Admins of the group can too when AdminsCount is true.
 	AdminsCount bool `toml:"admins_count"`
@@ -87,24 +92,26 @@ func Default() *Config {
 		StateDir: "state",
 		Timezone: "Asia/Kolkata",
 		Meals: []Meal{
-			{Name: "breakfast", Starts: "07:30", Ends: "09:30", Keywords: []string{"breakfast", "bf", "b/f", "bfast", "nashta"}},
-			{Name: "lunch", Starts: "12:30", Ends: "14:30", Keywords: []string{"lunch"}},
-			{Name: "snacks", Starts: "16:45", Ends: "18:15", Keywords: []string{"snacks", "snack"}},
-			{Name: "dinner", Starts: "19:30", Ends: "21:30", Keywords: []string{"dinner"}},
+			{Name: "breakfast", Starts: "07:30", Ends: "09:30", Keywords: []string{"bf", "b/f", "bfast", "bkft", "brkfst", "nashta"}},
+			{Name: "lunch", Starts: "12:30", Ends: "14:30", Keywords: []string{"lunxh"}},
+			{Name: "snacks", Starts: "16:45", Ends: "18:15", Keywords: []string{"snack", "evening snacks"}},
+			{Name: "dinner", Starts: "19:30", Ends: "21:30", Keywords: []string{"dinr"}},
 		},
 		Messes: []Mess{
-			{Name: "kadamba", Aliases: []string{"kadamb", "kadamba"}},
-			{Name: "yuktahar", Aliases: []string{"yuktahar", "yukta"}},
-			{Name: "palash", Aliases: []string{"palash"}},
+			{Name: "kadamba", Aliases: []string{"kadamb", "kdm", "kdmb", "kdmba", "kadam"}},
+			{Name: "yuktahar", Aliases: []string{"yukthar", "yukt", "ykth", "yukhtar"}},
+			{Name: "palash", Aliases: []string{"palas", "plsh"}},
+			{Name: "bakul", Aliases: []string{"bkl"}},
 		},
-		Dedupe: Dedupe{Window: duration{3 * time.Hour}},
+		Dedupe: Dedupe{Window: duration{24 * time.Hour}},
 		Sold: Sold{
-			Emojis:      []string{"✅", "✔️", "☑️", "✔"},
-			AdminsCount: true,
-			Words:       []string{"sold", "done", "gone"},
+			Emojis:       []string{"✅", "✔", "☑", "👍"},
+			ClosedEmojis: []string{"❌", "✖", "🚫"},
+			AdminsCount:  true,
+			Words:        []string{"sold", "done", "gone"},
 		},
 		DMs: DMs{Retention: duration{72 * time.Hour}},
-		MCP: MCP{Listen: "127.0.0.1:8765", TokenEnv: "MESSWA_MCP_TOKEN"},
+		MCP: MCP{Listen: "127.0.0.1:8766", TokenEnv: "MESSWA_MCP_TOKEN"},
 	}
 }
 

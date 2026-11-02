@@ -211,3 +211,43 @@ func TestHandleAndRebuild(t *testing.T) {
 	}
 	check("rebuilt")
 }
+
+func TestReactionsAndReplies(t *testing.T) {
+	in, st, cfg := setup(t)
+	ctx := context.Background()
+	r := store.SoldRule{Emojis: cfg.Sold.Emojis, ClosedEmojis: cfg.Sold.ClosedEmojis, AdminsCount: true}
+	get := func(id int64) store.Listing {
+		t.Helper()
+		l, _, err := st.Listing(ctx, r, id)
+		if err != nil || l == nil {
+			t.Fatal(err)
+		}
+		return *l
+	}
+	a, b := "91@s.whatsapp.net", "92@s.whatsapp.net"
+	in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "p1", Sender: a, TS: at(cfg, "12:00"), Text: "Sell kadamb veg @30"})
+	in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "p2", Sender: a, ReplyTo: "p1", TS: at(cfg, "12:10"), Text: "@25"})
+	in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "p3", Sender: a, ReplyTo: "p2", TS: at(cfg, "12:20"), Text: "20"})
+	in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "p4", Sender: b, ReplyTo: "p1", TS: at(cfg, "12:21"), Text: "@10"})
+	l := get(1)
+	if l.Price != 20 {
+		t.Errorf("reply chain price = %d, want 20", l.Price)
+	}
+	in.Reaction(ctx, "g1@g.us", "p1", b, "", "✅", at(cfg, "12:30"))
+	if l = get(1); l.SoldReact || l.OtherTicks != 1 {
+		t.Errorf("buyer tick: sold=%v others=%d", l.SoldReact, l.OtherTicks)
+	}
+	in.Reaction(ctx, "g1@g.us", "p1", a, "", "❌", at(cfg, "12:31"))
+	if l = get(1); !l.Closed {
+		t.Error("seller ❌ should close")
+	}
+	in.Reaction(ctx, "g1@g.us", "p1", a, "", "👍🏽", at(cfg, "12:32"))
+	if l = get(1); !l.SoldReact || l.Closed {
+		t.Errorf("seller 👍🏽 should replace ❌ and mean sold: %+v", l)
+	}
+	in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "p5", Sender: a, TS: at(cfg, "12:40"), Text: "Exchange want palash have kadamb"})
+	ls, _ := st.Listings(ctx, r, store.ListingFilter{Since: at(cfg, "00:00"), Kind: "exchange"})
+	if len(ls) != 1 || ls[0].Mess != "kadamba" || ls[0].Wants != "palash" {
+		t.Errorf("exchange: %+v", ls)
+	}
+}

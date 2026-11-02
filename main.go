@@ -262,6 +262,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return fmt.Errorf("mcp.listen %q is not loopback; set %s to a bearer token", cfg.MCP.Listen, cfg.MCP.TokenEnv)
 	}
 
+	// Bind first so a port clash fails before touching WhatsApp.
+	ln, err := net.Listen("tcp", cfg.MCP.Listen)
+	if err != nil {
+		return err
+	}
 	st, err := store.Open(cfg.DataDB())
 	if err != nil {
 		return err
@@ -318,7 +323,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		hs.Shutdown(sctx)
 	}()
 	log.Info("serving MCP", "url", "http://"+cfg.MCP.Listen+"/mcp", "auth", token != "")
-	if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	if err := hs.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil

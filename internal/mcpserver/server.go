@@ -69,14 +69,18 @@ type Person struct {
 
 type ListingOut struct {
 	ID         int64    `json:"id"`
-	Kind       string   `json:"kind" jsonschema:"sell, buy, or empty if unclear"`
-	Status     string   `json:"status"`
+	Kind       string   `json:"kind" jsonschema:"sell, buy, exchange, or empty if unclear"`
+	Status     string   `json:"status" jsonschema:"available, sold, closed (seller withdrew it), expired, or deleted"`
 	Meal       string   `json:"meal"`
 	MealDate   string   `json:"meal_date"`
 	MealSource string   `json:"meal_source" jsonschema:"keyword if the post named the meal, time if guessed from when it was posted"`
 	MealEnds   string   `json:"meal_ends"`
-	Mess       string   `json:"mess,omitempty"`
-	Diet       string   `json:"diet,omitempty"`
+	Mess       string   `json:"mess,omitempty" jsonschema:"for exchanges, the mess offered"`
+	Wants      []string `json:"wants,omitempty" jsonschema:"for exchanges, the messes wanted in return"`
+	Diet       string   `json:"diet,omitempty" jsonschema:"veg, nonveg, or egg"`
+	Price      *int     `json:"price,omitempty" jsonschema:"latest asking price in rupees, 0 for free; absent if not stated"`
+	Quantity   int      `json:"quantity,omitempty" jsonschema:"registrations offered, when more than one"`
+	OtherTicks int      `json:"other_ticks,omitempty" jsonschema:"people other than the seller who reacted with a checkmark; a buyer's tick can mean it's gone even when status is available"`
 	Seller     Person   `json:"seller"`
 	Groups     []string `json:"groups"`
 	FirstSeen  string   `json:"first_seen"`
@@ -112,8 +116,8 @@ func (s *Server) mealSchedule(ctx context.Context, _ *mcp.CallToolRequest, _ Sch
 // ---- list_listings ----
 
 type ListIn struct {
-	Kind   string `json:"kind,omitempty" jsonschema:"sell (default), buy, or any"`
-	Status string `json:"status,omitempty" jsonschema:"available (default), sold, expired, or all"`
+	Kind   string `json:"kind,omitempty" jsonschema:"sell (default), buy, exchange, or any"`
+	Status string `json:"status,omitempty" jsonschema:"available (default), sold, closed, expired, or all"`
 	Meal   string `json:"meal,omitempty" jsonschema:"breakfast, lunch, snacks, or dinner"`
 	Mess   string `json:"mess,omitempty"`
 	Hours  int    `json:"hours,omitempty" jsonschema:"look back this many hours (default 24, max 168)"`
@@ -295,7 +299,7 @@ func (s *Server) readUnsavedChat(ctx context.Context, _ *mcp.CallToolRequest, in
 // ---- helpers ----
 
 func (s *Server) rule() store.SoldRule {
-	return store.SoldRule{Emojis: s.cfg.Sold.Emojis, AdminsCount: s.cfg.Sold.AdminsCount}
+	return store.SoldRule{Emojis: s.cfg.Sold.Emojis, ClosedEmojis: s.cfg.Sold.ClosedEmojis, AdminsCount: s.cfg.Sold.AdminsCount}
 }
 
 func (s *Server) listing(ctx context.Context, l *store.Listing, names map[string]string, now time.Time) ListingOut {
@@ -305,6 +309,8 @@ func (s *Server) listing(ctx context.Context, l *store.Listing, names map[string
 		status = "deleted"
 	case l.SoldReact || l.SoldText:
 		status = "sold"
+	case l.Closed:
+		status = "closed"
 	case !l.MealEnd.IsZero() && now.After(l.MealEnd):
 		status = "expired"
 	}
@@ -313,6 +319,17 @@ func (s *Server) listing(ctx context.Context, l *store.Listing, names map[string
 		MealEnds: s.fmt(l.MealEnd), Mess: l.Mess, Diet: l.Diet,
 		Seller:    s.person(ctx, l.Seller, l.SellerAlt, l.SellerName),
 		FirstSeen: s.fmt(l.FirstSeen), LastSeen: s.fmt(l.LastSeen), Text: l.Text,
+	}
+	if l.Price >= 0 {
+		p := l.Price
+		lo.Price = &p
+	}
+	lo.OtherTicks = l.OtherTicks
+	if l.Qty > 1 {
+		lo.Quantity = l.Qty
+	}
+	if l.Wants != "" {
+		lo.Wants = strings.Split(l.Wants, ",")
 	}
 	for _, c := range l.Chats {
 		lo.Groups = append(lo.Groups, groupName(names, c))

@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS listings (
 	meal_end    INTEGER NOT NULL DEFAULT 0,
 	mess        TEXT NOT NULL DEFAULT '',
 	diet        TEXT NOT NULL DEFAULT '',
+	price       INTEGER NOT NULL DEFAULT -1,
+	qty         INTEGER NOT NULL DEFAULT 1,
+	wants       TEXT NOT NULL DEFAULT '',
 	text        TEXT NOT NULL,
 	norm        TEXT NOT NULL,
 	first_seen  INTEGER NOT NULL,
@@ -95,6 +98,17 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema + logSchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
+	// Columns added after the first release. Listings are derived data, so
+	// run rebuild afterwards to fill them in for old rows.
+	for _, col := range []string{
+		"price INTEGER NOT NULL DEFAULT -1",
+		"qty INTEGER NOT NULL DEFAULT 1",
+		"wants TEXT NOT NULL DEFAULT ''",
+	} {
+		if _, err := db.Exec("ALTER TABLE listings ADD COLUMN " + col); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return nil, fmt.Errorf("migrate: %w", err)
+		}
+	}
 	return &Store{db}, nil
 }
 
@@ -154,12 +168,17 @@ type Listing struct {
 	MealEnd    time.Time
 	Mess       string
 	Diet       string
+	Price      int // -1 when the post didn't say
+	Qty        int
+	Wants      string // comma-separated messes wanted in an exchange
 	Text       string
 	Norm       string
 	FirstSeen  time.Time
 	LastSeen   time.Time
 	SoldText   bool
 	SoldReact  bool
+	Closed     bool // the seller reacted with a withdrawn emoji
+	OtherTicks int  // people other than the seller/admins who reacted with a sold emoji
 	Deleted    bool // every copy was deleted
 	Chats      []string
 }
@@ -195,9 +214,9 @@ func (s *Store) RecentBySeller(ctx context.Context, ids []string, since time.Tim
 }
 
 func (s *Store) CreateListing(ctx context.Context, l *Listing) error {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO listings(seller,seller_alt,seller_name,kind,meal,meal_source,meal_date,meal_end,mess,diet,text,norm,first_seen,last_seen)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		l.Seller, l.SellerAlt, l.SellerName, l.Kind, l.Meal, l.MealSource, l.MealDate, l.MealEnd.Unix(), l.Mess, l.Diet, l.Text, l.Norm, l.FirstSeen.Unix(), l.LastSeen.Unix())
+	res, err := s.db.ExecContext(ctx, `INSERT INTO listings(seller,seller_alt,seller_name,kind,meal,meal_source,meal_date,meal_end,mess,diet,price,qty,wants,text,norm,first_seen,last_seen)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		l.Seller, l.SellerAlt, l.SellerName, l.Kind, l.Meal, l.MealSource, l.MealDate, l.MealEnd.Unix(), l.Mess, l.Diet, l.Price, l.Qty, l.Wants, l.Text, l.Norm, l.FirstSeen.Unix(), l.LastSeen.Unix())
 	if err != nil {
 		return err
 	}
@@ -207,8 +226,8 @@ func (s *Store) CreateListing(ctx context.Context, l *Listing) error {
 
 // UpdateListing rewrites a listing's derived fields after an edit.
 func (s *Store) UpdateListing(ctx context.Context, l *Listing) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE listings SET kind=?,meal=?,meal_source=?,meal_date=?,meal_end=?,mess=?,diet=?,text=?,norm=? WHERE id=?`,
-		l.Kind, l.Meal, l.MealSource, l.MealDate, l.MealEnd.Unix(), l.Mess, l.Diet, l.Text, l.Norm, l.ID)
+	_, err := s.db.ExecContext(ctx, `UPDATE listings SET kind=?,meal=?,meal_source=?,meal_date=?,meal_end=?,mess=?,diet=?,price=?,qty=?,wants=?,text=?,norm=? WHERE id=?`,
+		l.Kind, l.Meal, l.MealSource, l.MealDate, l.MealEnd.Unix(), l.Mess, l.Diet, l.Price, l.Qty, l.Wants, l.Text, l.Norm, l.ID)
 	return err
 }
 
@@ -250,6 +269,12 @@ func (s *Store) DeletePost(ctx context.Context, chat, id string) error {
 	return err
 }
 
+// SetPrice records the seller's latest stated price, from a reply like "@25".
+func (s *Store) SetPrice(ctx context.Context, listingID int64, price int) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE listings SET price=? WHERE id=?`, price, listingID)
+	return err
+}
+
 func (s *Store) MarkSoldByText(ctx context.Context, listingID int64, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE listings SET sold_text_at=coalesce(sold_text_at, ?) WHERE id=?`, at.Unix(), listingID)
 	return err
@@ -263,15 +288,35 @@ func (s *Store) SetReaction(ctx context.Context, chat, target, reactor, reactorA
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO reactions(chat,target_id,reactor,reactor_alt,emoji,ts) VALUES(?,?,?,?,?,?)
 		ON CONFLICT(chat,target_id,reactor) DO UPDATE SET emoji=excluded.emoji, reactor_alt=excluded.reactor_alt, ts=excluded.ts`,
-		chat, target, reactor, reactorAlt, emoji, at.Unix())
+		chat, target, reactor, reactorAlt, NormalizeEmoji(emoji), at.Unix())
 	return err
 }
 
 // SoldRule says which reactions count as "sold". It is applied at query
 // time so removing a ✅ un-sells the listing.
 type SoldRule struct {
-	Emojis      []string
-	AdminsCount bool
+	Emojis       []string
+	ClosedEmojis []string
+	AdminsCount  bool
+}
+
+// NormalizeEmoji drops variation selectors and skin tones so "👍🏽" == "👍"
+// and "☑️" == "☑".
+func NormalizeEmoji(e string) string {
+	return strings.Map(func(r rune) rune {
+		if r == 0xFE0F || r == 0xFE0E || r >= 0x1F3FB && r <= 0x1F3FF {
+			return -1
+		}
+		return r
+	}, e)
+}
+
+func normalizeAll(es []string) []string {
+	out := make([]string, 0, len(es))
+	for _, e := range es {
+		out = append(out, NormalizeEmoji(e))
+	}
+	return out
 }
 
 type ListingFilter struct {
@@ -329,7 +374,7 @@ func (s *Store) Listing(ctx context.Context, rule SoldRule, id int64) (*Listing,
 }
 
 func (s *Store) queryListings(ctx context.Context, tail string, args ...any) ([]Listing, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.seller,l.seller_alt,l.seller_name,l.kind,l.meal,l.meal_source,l.meal_date,l.meal_end,l.mess,l.diet,l.text,l.norm,l.first_seen,l.last_seen,
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.seller,l.seller_alt,l.seller_name,l.kind,l.meal,l.meal_source,l.meal_date,l.meal_end,l.mess,l.diet,l.price,l.qty,l.wants,l.text,l.norm,l.first_seen,l.last_seen,
 		l.sold_text_at IS NOT NULL,
 		NOT EXISTS (SELECT 1 FROM posts p WHERE p.listing_id=l.id AND p.deleted=0),
 		coalesce((SELECT group_concat(DISTINCT p.chat) FROM posts p WHERE p.listing_id=l.id), '')
@@ -343,7 +388,7 @@ func (s *Store) queryListings(ctx context.Context, tail string, args ...any) ([]
 		var l Listing
 		var end, first, last int64
 		var chats string
-		if err := rows.Scan(&l.ID, &l.Seller, &l.SellerAlt, &l.SellerName, &l.Kind, &l.Meal, &l.MealSource, &l.MealDate, &end, &l.Mess, &l.Diet, &l.Text, &l.Norm, &first, &last, &l.SoldText, &l.Deleted, &chats); err != nil {
+		if err := rows.Scan(&l.ID, &l.Seller, &l.SellerAlt, &l.SellerName, &l.Kind, &l.Meal, &l.MealSource, &l.MealDate, &end, &l.Mess, &l.Diet, &l.Price, &l.Qty, &l.Wants, &l.Text, &l.Norm, &first, &last, &l.SoldText, &l.Deleted, &chats); err != nil {
 			return nil, err
 		}
 		l.MealEnd, l.FirstSeen, l.LastSeen = time.Unix(end, 0), time.Unix(first, 0), time.Unix(last, 0)
@@ -355,25 +400,40 @@ func (s *Store) queryListings(ctx context.Context, tail string, args ...any) ([]
 	return out, rows.Err()
 }
 
-// fillSold sets SoldReact for listings with a qualifying reaction on any copy:
-// one of rule.Emojis, from the seller or (if allowed) an admin of that group.
+// fillSold works out reaction-based status for each listing, across all its
+// copies: SoldReact (a sold emoji from the seller or, if allowed, an admin of
+// that group), Closed (a withdrawn emoji from the seller), and OtherTicks.
 func (s *Store) fillSold(ctx context.Context, rule SoldRule, ls []Listing) error {
-	if len(rule.Emojis) == 0 {
-		return nil
+	sold, closed := normalizeAll(rule.Emojis), normalizeAll(rule.ClosedEmojis)
+	if len(sold) == 0 {
+		sold = []string{"\x00"}
+	}
+	if len(closed) == 0 {
+		closed = []string{"\x00"}
 	}
 	admin := "0"
 	if rule.AdminsCount {
 		admin = `EXISTS (SELECT 1 FROM group_admins a WHERE a.chat=r.chat AND a.jid IN (r.reactor, r.reactor_alt))`
 	}
-	q := `SELECT EXISTS (SELECT 1 FROM posts p JOIN reactions r ON r.chat=p.chat AND r.target_id=p.id
-		WHERE p.listing_id=? AND r.emoji IN (` + placeholders(len(rule.Emojis)) + `)
-		AND (r.reactor IN (?,?) OR (r.reactor_alt != '' AND r.reactor_alt IN (?,?)) OR ` + admin + `))`
+	inSold := "emoji IN (" + placeholders(len(sold)) + ")"
+	q := `WITH x AS (
+		SELECT r.reactor, r.emoji AS emoji,
+			(r.reactor IN (?,?) OR (r.reactor_alt != '' AND r.reactor_alt IN (?,?))) AS by_seller,
+			` + admin + ` AS by_admin
+		FROM posts p JOIN reactions r ON r.chat=p.chat AND r.target_id=p.id
+		WHERE p.listing_id=?)
+	SELECT
+		coalesce(max(` + inSold + ` AND (by_seller OR by_admin)), 0),
+		coalesce(max(emoji IN (` + placeholders(len(closed)) + `) AND by_seller), 0),
+		count(DISTINCT CASE WHEN ` + inSold + ` AND NOT by_seller AND NOT by_admin THEN reactor END)
+	FROM x`
 	for i := range ls {
 		l := &ls[i]
-		args := []any{l.ID}
-		args = append(args, toAny(rule.Emojis)...)
-		args = append(args, l.Seller, orNone(l.SellerAlt), l.Seller, orNone(l.SellerAlt))
-		if err := s.db.QueryRowContext(ctx, q, args...).Scan(&l.SoldReact); err != nil {
+		args := []any{l.Seller, orNone(l.SellerAlt), l.Seller, orNone(l.SellerAlt), l.ID}
+		args = append(args, toAny(sold)...)
+		args = append(args, toAny(closed)...)
+		args = append(args, toAny(sold)...)
+		if err := s.db.QueryRowContext(ctx, q, args...).Scan(&l.SoldReact, &l.Closed, &l.OtherTicks); err != nil {
 			return err
 		}
 	}
@@ -386,7 +446,7 @@ func (s *Store) IsSold(ctx context.Context, rule SoldRule, l *Listing) (bool, er
 	if err := s.fillSold(ctx, rule, one); err != nil {
 		return false, err
 	}
-	return one[0].SoldText || one[0].SoldReact, nil
+	return one[0].SoldText || one[0].SoldReact || one[0].Closed, nil
 }
 
 // ---- DMs ----

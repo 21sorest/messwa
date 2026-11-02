@@ -54,7 +54,7 @@ cp config.example.toml config.toml
 
 ./messwa login                       # asks for your number (pairing code) or Enter for a QR
 ./messwa groups                      # copy the mess groups' JIDs into config.toml
-./messwa run                         # serves http://127.0.0.1:8765/mcp
+./messwa run                         # serves http://127.0.0.1:8766/mcp
 ```
 
 Stop `run` before using `groups`. Only one connection per linked device works at a time.
@@ -62,7 +62,7 @@ Stop `run` before using `groups`. Only one connection per linked device works at
 Add it to Claude Code:
 
 ```sh
-claude mcp add --transport http messwa http://127.0.0.1:8765/mcp
+claude mcp add --transport http messwa http://127.0.0.1:8766/mcp
 ```
 
 ### Docker
@@ -71,10 +71,10 @@ Inside a container the server has to listen on `0.0.0.0`, which requires a token
 
 ```sh
 echo "MESSWA_MCP_TOKEN=$(openssl rand -hex 32)" > .env
-# in config.toml: [mcp] listen = "0.0.0.0:8765"
+# in config.toml: [mcp] listen = "0.0.0.0:8766"
 docker compose run --rm messwa login
 docker compose up -d
-claude mcp add --transport http messwa http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http messwa http://127.0.0.1:8766/mcp --header "Authorization: Bearer <token>"
 ```
 
 `/healthz` returns 503 when the WhatsApp connection is down.

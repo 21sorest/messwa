@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"strings"
@@ -30,6 +31,7 @@ func chat(ctx context.Context, cfg *config.Config, args []string) error {
 		return err
 	}
 	names, _ := st.GroupNames(ctx)
+	people := contactNames(cfg)
 	short := map[string]string{}
 	for i, g := range cfg.Groups {
 		short[g] = fmt.Sprintf("G%d", i+1)
@@ -41,7 +43,7 @@ func chat(ctx context.Context, cfg *config.Config, args []string) error {
 	var posts, listed, dups int
 	loc := cfg.Location()
 	for _, l := range lines {
-		who := firstNonEmpty(l.PushName, phone(l.Sender), l.Sender)
+		who := firstNonEmpty(people[l.Sender], people[l.SenderAlt], l.PushName, phone(l.Sender), l.Sender)
 		ts := l.TS.In(loc).Format("01-02 15:04")
 		switch l.Type {
 		case "post":
@@ -89,12 +91,43 @@ func listings(ctx context.Context, cfg *config.Config, args []string) error {
 		return err
 	}
 	for _, l := range out.Listings {
-		fmt.Printf("#%-4d %-9s %-4s %-9s %-10s %-8s %-6s %-7s x%d  %-16.16s %s\n",
-			l.ID, l.Status, firstNonEmpty(l.Kind, "?"), l.Meal, l.MealDate, firstNonEmpty(l.Mess, "-"), firstNonEmpty(l.Diet, "-"),
+		price := "-"
+		if l.Price != nil {
+			price = fmt.Sprintf("₹%d", *l.Price)
+		}
+		mess := firstNonEmpty(l.Mess, "-")
+		if len(l.Wants) > 0 {
+			mess += "→" + strings.Join(l.Wants, "/")
+		}
+		fmt.Printf("#%-4d %-9s %-8s %-9s %-5s %-16s %-6s %-5s %-7s %dg  %-14.14s %s\n",
+			l.ID, l.Status, firstNonEmpty(l.Kind, "?"), l.Meal, l.MealDate[5:], mess, firstNonEmpty(l.Diet, "-"), price,
 			l.MealSource, len(l.Groups), firstNonEmpty(l.Seller.Name, l.Seller.Phone), oneLine(l.Text))
 	}
 	fmt.Printf("\n%d listings\n", len(out.Listings))
 	return nil
+}
+
+// contactNames reads names from whatsmeow's contact store: your saved name
+// for the person if any, else the name they set themselves.
+func contactNames(cfg *config.Config) map[string]string {
+	m := map[string]string{}
+	db, err := sql.Open("sqlite", "file:"+cfg.SessionDB()+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return m
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT their_jid, coalesce(nullif(full_name,''), nullif(first_name,''), nullif(push_name,''), '') FROM whatsmeow_contacts`)
+	if err != nil {
+		return m
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var j, n string
+		if rows.Scan(&j, &n) == nil && n != "" {
+			m[j] = n
+		}
+	}
+	return m
 }
 
 func rebuild(ctx context.Context, cfg *config.Config) error {
