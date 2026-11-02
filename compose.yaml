@@ -1,0 +1,11 @@
+services:
+  messwa:
+    build: .
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file: .env          # MESSWA_MCP_TOKEN=...
+    volumes:
+      - ./config.toml:/data/config.toml:ro
+      - ./state:/data/state
+    ports:
+      - "127.0.0.1:8765:8765"

@@ -1,0 +1,66 @@
+# Copy to config.toml. Everything except `groups` has a working default.
+
+state_dir = "state"
+timezone = "Asia/Kolkata"
+
+# The mess buy/sell groups to merge. Get JIDs from `messwa groups`.
+groups = [
+  # "120363000000000001@g.us",
+]
+
+[dedupe]
+# Posts by the same person for the same meal slot within this window are one listing.
+window = "3h"
+
+[sold]
+emojis = ["✅", "✔️", "☑️", "✔"]
+# The seller's own checkmark always counts. Set false to ignore admins' checkmarks.
+admins_count = true
+# Seller editing the post to include one of these, or replying to it with one, marks it sold.
+words = ["sold", "done", "gone"]
+
+[dms]
+# DM content from unsaved numbers is deleted after this long.
+retention = "72h"
+
+[mcp]
+listen = "127.0.0.1:8765"
+# Env var holding the bearer token. Required when listen isn't loopback.
+token_env = "MESSWA_MCP_TOKEN"
+
+# Meal windows (IST). Defining any [[meals]] replaces all four defaults.
+[[meals]]
+name = "breakfast"
+starts = "07:30"
+ends = "09:30"
+keywords = ["breakfast", "bf", "b/f", "bfast", "nashta"]
+
+[[meals]]
+name = "lunch"
+starts = "12:30"
+ends = "14:30"
+keywords = ["lunch"]
+
+[[meals]]
+name = "snacks"
+starts = "16:45"
+ends = "18:15"
+keywords = ["snacks", "snack"]
+
+[[meals]]
+name = "dinner"
+starts = "19:30"
+ends = "21:30"
+keywords = ["dinner"]
+
+[[messes]]
+name = "kadamba"
+aliases = ["kadamb"]
+
+[[messes]]
+name = "yuktahar"
+aliases = ["yukta"]
+
+[[messes]]
+name = "palash"
+aliases = []
