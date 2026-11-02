@@ -852,7 +852,7 @@ function renderControls() {
       0,
       ...DIETS.map((d) => opt(DIET_LABEL[d], S.diet === d, DIET_COLOR[d])),
       0,
-      [{ t: 'Click to cycle!', c: 'ce' }],
+      [{ t: 'Click to cycle! Right click goes back.', c: 'ce' }],
     ], dietMark(dietOff ? 'veg' : S.diet === 'all' ? '' : S.diet)));
   diet.disabled = dietOff;
 
@@ -865,7 +865,7 @@ function renderControls() {
       return opt(`${cap(m)}${w ? `  ${hm(w.start)}-${hm(w.end)}` : ''}`, S.meal === m);
     }),
     0,
-    [{ t: 'Click to cycle!', c: 'ce' }],
+    [{ t: 'Click to cycle! Right click goes back.', c: 'ce' }],
   ], S.meal === 'all' ? mealsAllIcon() : icon(S.meal)));
 
   const done = modeDone();
@@ -907,7 +907,7 @@ function renderControls() {
       [{ t: '1-5 ', c: 'ce' }, { t: 'switch mess', c: 'c7' }],
       [{ t: '← → ', c: 'ce' }, { t: 'pages', c: 'c7' }],
       [{ t: 'R / P ', c: 'ce' }, { t: 'sort by recency / price', c: 'c7' }],
-      [{ t: 'D / M ', c: 'ce' }, { t: 'diet / meal filter', c: 'c7' }],
+      [{ t: 'D / M ', c: 'ce' }, { t: 'diet / meal filter, Shift goes back', c: 'c7' }],
       [{ t: 'S ', c: 'ce' }, { t: `show ${modeDone().toLowerCase()}`, c: 'c7' }],
       [{ t: 'W ', c: 'ce' }, { t: 'selling or wanted', c: 'c7' }],
       [{ t: '/ ', c: 'ce' }, { t: 'search', c: 'c7' }],
@@ -929,17 +929,21 @@ function opt(text, on, color) {
 function ctl(art, label, cls, onClick, tipFn, markup) {
   const b = el('button', 'slot ctl' + (cls ? ' ' + cls : ''));
   b.append(svgEl(markup || icon(art)), el('span', label.length > 9 ? 'lbl tight' : 'lbl', label));
-  b.addEventListener('click', () => {
-    onClick();
+  // Left click steps forward, right click steps back. Two-way buttons do the
+  // same thing either way.
+  const act = (dir) => {
+    const at = [...b.parentNode.children].indexOf(b);
+    onClick(dir);
     if (tipFor === b) {
       // keep the tooltip on the same button after re-render
       requestAnimationFrame(() => {
-        const nb = [...$('ctlRow').children].find((c) => c.querySelector('.lbl') && c.dataset.k === b.dataset.k);
+        const nb = $('ctlRow').children[at];
         if (nb) showTip(nb, tipFn, lastMouse.x, lastMouse.y);
       });
     }
-  });
-  b.dataset.k = art || label;
+  };
+  b.addEventListener('click', () => act(1));
+  b.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!b.disabled) act(-1); });
   b.setAttribute('aria-label', label);
   tip(b, tipFn);
   return b;
@@ -963,10 +967,10 @@ const sortPrice = () => update(() => {
   if (S.sort === 'price') S.priceDir = S.priceDir === 'asc' ? 'desc' : 'asc';
   S.sort = 'price'; S.page = 0;
 });
-const cycleDiet = () => update(() => { S.diet = DIETS[(DIETS.indexOf(S.diet) + 1) % DIETS.length]; S.page = 0; });
-const cycleMeal = () => update(() => {
-  const all = ['all', ...MEALS];
-  S.meal = all[(all.indexOf(S.meal) + 1) % all.length]; S.page = 0;
+const step = (list, cur, dir) => list[(list.indexOf(cur) + dir + list.length) % list.length];
+const cycleDiet = (dir = 1) => update(() => { S.diet = step(DIETS, S.diet, dir); S.page = 0; });
+const cycleMeal = (dir = 1) => update(() => {
+  S.meal = step(['all', ...MEALS], S.meal, dir); S.page = 0;
 });
 const toggleSold = () => update(() => { S.sold = !S.sold; S.page = 0; });
 const toggleMode = () => update(() => { S.mode = S.mode === 'sell' ? 'buy' : 'sell'; S.page = 0; });
@@ -991,8 +995,8 @@ addEventListener('keydown', (e) => {
   else if (k === 'arrowright') turn(1);
   else if (k === 'r') sortRecent();
   else if (k === 'p') sortPrice();
-  else if (k === 'd' && !(S.tab !== 'all' && vegOnly(S.tab))) cycleDiet();
-  else if (k === 'm') cycleMeal();
+  else if (k === 'd' && !(S.tab !== 'all' && vegOnly(S.tab))) cycleDiet(e.shiftKey ? -1 : 1);
+  else if (k === 'm') cycleMeal(e.shiftKey ? -1 : 1);
   else if (k === 's') toggleSold();
   else if (k === 'w') toggleMode();
   else if (k === '/') { e.preventDefault(); q.focus(); }

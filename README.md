@@ -42,7 +42,7 @@ Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged w
 - The bottom row sorts by recency or price (click again to flip), filters by diet on Kadamba and Bakul, filters by meal, shows sold and withdrawn listings, and switches to buy requests.
 - Hovering a slot shows the seller, phone, groups, times and the original text. Clicking opens every copy of the post and a button that opens WhatsApp with a draft to the seller. Nothing is sent from messwa.
 
-Keys: `1`-`5` messes, arrows for pages, `R` `P` `D` `M` `S` `W` for the bottom row, `/` to search.
+Keys: `1`-`5` messes, arrows for pages, `R` `P` `D` `M` `S` `W` for the bottom row, `/` to search. Right click on the diet or meal button, or Shift with `D` or `M`, cycles backwards.
 
 It shows sellers' names and phone numbers from the groups and nothing from DMs. It has no login, so don't put it on a public address.
 
