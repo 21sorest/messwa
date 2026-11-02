@@ -567,11 +567,20 @@ function emptyText() {
   return S.mode === 'sell' ? `No${meal} listings for ${where} right now.` : `Nobody is asking for${meal} ${where} right now.`;
 }
 
+const FRESH = 120; // seconds a new post shines
+
 function slotNode(l) {
   const b = el('button', 'slot item');
   b.dataset.id = l.id;
   b.style.setProperty('--m', messColor(l.mess));
   if (l.status === 'sold' || l.status === 'closed') b.classList.add(l.status);
+  // Shine for 2 minutes after the latest post, then switch off on the dot
+  // rather than at the next re-render.
+  const fresh = FRESH - (now() - l.last_seen_at);
+  if (fresh > 0 && l.status === 'available') {
+    b.classList.add('fresh');
+    setTimeout(() => b.classList.remove('fresh'), fresh * 1000);
+  }
   if (popIds.has(l.id)) b.classList.add('pop');
 
   if (!vegOnly(l.mess) || S.tab === 'all') {
@@ -906,6 +915,7 @@ function renderControls() {
       [{ t: 'Slot corners', c: 'c7' }],
       [{ t: '  diet mark, meal, quantity', c: 'c8' }],
       [{ t: '  bar: time left until the meal ends', c: 'c8' }],
+      [{ t: '  shine: posted in the last 2 minutes', c: 'cd' }],
       [{ t: '  amber dot: someone else ticked it', c: 'c6' }],
     ]);
     left.append(help);

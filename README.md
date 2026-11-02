@@ -38,7 +38,7 @@ Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged w
 `run` also serves a read-only dashboard at `dashboard.listen` (set it to a private address so only your own network reaches it). It's laid out like an auction house's buy-it-now browser:
 
 - The left column picks the mess, or all of them. Badges count what's available.
-- Each slot is one listing, showing its price, "?" when none was stated, FREE, or SWAP with the mess wanted. The corners show the diet mark, the meal, and the quantity. The bar along the bottom drains as the meal's serving window runs out. An amber dot means someone other than the seller ticked it.
+- Each slot is one listing, showing its price, "?" when none was stated, FREE, or SWAP with the mess wanted. The corners show the diet mark, the meal, and the quantity. The bar along the bottom drains as the meal's serving window runs out. Listings posted in the last 2 minutes shine, and an amber dot means someone other than the seller ticked it.
 - The bottom row sorts by recency or price (click again to flip), filters by diet on Kadamba and Bakul, filters by meal, shows sold and withdrawn listings, and switches to buy requests.
 - Hovering a slot shows the seller, phone, groups, times and the original text. Clicking opens every copy of the post and a button that opens WhatsApp with a draft to the seller. Nothing is sent from messwa.
 
