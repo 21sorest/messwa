@@ -594,7 +594,11 @@ function slotNode(l) {
 
   const bar = el('span', 'bar');
   const fill = el('i');
-  const total = Math.max(1, l.meal_ends_at - l.first_seen_at);
+  // Full until serving starts, empty when it ends, so every listing for the
+  // same meal shows the same amount. Meals on other days have the same
+  // window length, so today's schedule gives the start.
+  const w = window_(l.meal);
+  const total = w ? w.end - w.start : Math.max(1, l.meal_ends_at - l.first_seen_at);
   const frac = Math.max(0, Math.min(1, (l.meal_ends_at - now()) / total));
   fill.style.setProperty('transform', `scaleX(${frac})`);
   fill.style.setProperty('background', `hsl(${Math.round(frac * 120)} 75% 52%)`);
