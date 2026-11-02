@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/subtle"
@@ -16,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -102,6 +104,12 @@ func login(ctx context.Context, cfg *config.Config, log *slog.Logger, args []str
 	if err != nil {
 		return err
 	}
+	if c.LoggedIn() {
+		return fmt.Errorf("already linked as %s; to relink, remove the device in WhatsApp and delete %s", c.WA.Store.ID, cfg.SessionDB())
+	}
+	if *phone == "" && fs.NFlag() == 0 {
+		*phone = askPhone()
+	}
 
 	// The history sync after pairing is the only backlog WhatsApp sends.
 	// Save group conversations (never DMs) so import-history can load the
@@ -155,6 +163,22 @@ func login(ctx context.Context, cfg *config.Config, log *slog.Logger, args []str
 	}
 	fmt.Printf("\nSaved %d group messages to %s. Next: messwa groups\n", saved, historyFile(cfg))
 	return nil
+}
+
+// askPhone asks how to link. A number means pairing code, blank means QR.
+func askPhone() string {
+	fmt.Println("Link messwa to WhatsApp.")
+	fmt.Println("  - To link with a code, enter your number with country code, digits only (e.g. 91XXXXXXXXXX).")
+	fmt.Println("  - To scan a QR code instead, just press Enter.")
+	fmt.Print("Number: ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	var digits strings.Builder
+	for _, r := range line {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	return digits.String()
 }
 
 func historyFile(cfg *config.Config) string { return cfg.StateDir + "/history-groups.jsonl" }

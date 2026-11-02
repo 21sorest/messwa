@@ -52,8 +52,7 @@ Needs Go 1.27+ (installed at `~/.local/go` on this server: `export PATH=$HOME/.l
 go build -o messwa .
 cp config.example.toml config.toml
 
-./messwa login                       # scan the QR from WhatsApp > Linked devices
-./messwa login -phone 91XXXXXXXXXX   # or use a pairing code instead
+./messwa login                       # asks for your number (pairing code) or Enter for a QR
 ./messwa groups                      # copy the mess groups' JIDs into config.toml
 ./messwa run                         # serves http://127.0.0.1:8765/mcp
 ```

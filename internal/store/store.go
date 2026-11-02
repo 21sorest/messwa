@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -90,6 +91,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	os.Chmod(path, 0o600)
 	if _, err := db.Exec(schema + logSchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}

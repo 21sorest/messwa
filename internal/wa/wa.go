@@ -41,6 +41,7 @@ func Open(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Client, e
 	if err != nil {
 		return nil, fmt.Errorf("session store: %w", err)
 	}
+	os.Chmod(cfg.SessionDB(), 0o600) // holds the device's keys
 	dev, err := container.GetFirstDevice(ctx)
 	if err != nil {
 		return nil, err
@@ -96,7 +97,10 @@ func (c *Client) Login(ctx context.Context, phone string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("On your phone: Linked devices > Link a device > Link with phone number instead, then enter %s\n", code)
+		fmt.Printf("\n    Code: %s\n\n", code)
+		fmt.Println("On your phone: WhatsApp > Settings > Linked devices > Link a device >")
+		fmt.Println("\"Link with phone number instead\", then type the code. It expires in a few minutes.")
+		fmt.Println("WhatsApp may also show a notification you can tap to enter it.")
 	}
 	select {
 	case <-done:
