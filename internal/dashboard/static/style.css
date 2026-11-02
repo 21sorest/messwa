@@ -206,15 +206,18 @@ button.slot { padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-tap
   align-items: center;
   justify-content: center;
   padding-top: 2px;
-  font: 700 calc(var(--s) * .27) Pixel, var(--sans);
+  /* Regular weight: the bold 4 fills in. Sizes are whole multiples of the
+     font's 8px grid so every pixel stays square. */
+  font: 400 24px Pixel, var(--sans);
   color: var(--gold);
   text-shadow: 2px 2px 0 rgba(0, 0, 0, .5);
-  letter-spacing: -.5px;
 }
+.price.wide { font-size: 16px; }
+@media (max-width: 640px) { .price { font-size: 16px; } }
 .price .r { font: 700 calc(var(--s) * .21) var(--sans); margin-right: 2px; opacity: .8; transform: translateY(-1px); }
 .price.unknown { color: #5d6680; font: 600 calc(var(--s) * .3) var(--sans); text-shadow: none; }
-.price.free { color: var(--veg); font-size: calc(var(--s) * .19); letter-spacing: 0; }
-.price.swap { flex-direction: column; gap: 3px; font-size: calc(var(--s) * .13); color: var(--muted); letter-spacing: .3px; text-shadow: none; }
+.price.free { color: var(--veg); font-weight: 700; font-size: calc(var(--s) * .19); letter-spacing: 0; }
+.price.swap { flex-direction: column; gap: 3px; font-weight: 700; font-size: calc(var(--s) * .13); color: var(--muted); letter-spacing: .3px; text-shadow: none; }
 .price.swap svg { width: calc(var(--s) * .36); height: calc(var(--s) * .36); }
 .price.swap.compact { flex-direction: row; gap: 4px; padding-bottom: 6px; }
 .price.swap.compact .arrow { font: 700 calc(var(--s) * .2) var(--sans); color: var(--muted); }

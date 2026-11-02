@@ -637,6 +637,7 @@ function priceNode(l) {
     p.classList.add('free');
     p.textContent = 'FREE';
   } else {
+    if (l.price >= 100) p.classList.add('wide');
     p.append(el('span', 'r', '₹'), String(l.price));
   }
   return p;
