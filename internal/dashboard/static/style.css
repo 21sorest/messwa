@@ -242,8 +242,9 @@ button.slot { padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-tap
   background: rgba(11, 13, 18, .75);
 }
 .stamp.long { font-size: clamp(6px, calc(var(--s) * .11), 8px); letter-spacing: 0; padding: 2px 3px 3px; }
-.item.sold .stamp { color: var(--veg); }
-.item.closed .stamp { color: var(--muted); }
+.sold .stamp { color: var(--veg); }
+.sold .stamp.bought { color: #ff6b5b; }
+.closed .stamp { color: var(--muted); }
 
 .fresh::after {
   content: "";

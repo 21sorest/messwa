@@ -311,6 +311,7 @@ function ago(u) {
 }
 // A buy order that went through was bought, not sold.
 const doneWord = (l) => (l.kind === 'buy' ? 'Bought' : 'Sold');
+const doneColor = (l) => (l.kind === 'buy' ? 'cc' : 'ca');
 const modeDone = () => (S.mode === 'buy' ? 'Bought' : 'Sold');
 const vegOnly = (m) => !!(D && D.messes.find((x) => x.name === m && x.veg_only));
 const window_ = (meal) => (D ? D.today.find((s) => s.meal === meal) : null);
@@ -601,7 +602,7 @@ function slotNode(l) {
   bar.append(fill);
   b.append(bar);
 
-  if (l.status === 'sold') b.append(el('span', l.kind === 'buy' ? 'stamp long' : 'stamp', doneWord(l).toUpperCase()));
+  if (l.status === 'sold') b.append(el('span', l.kind === 'buy' ? 'stamp long bought' : 'stamp', doneWord(l).toUpperCase()));
   if (l.status === 'closed') b.append(el('span', 'stamp', 'CLOSED'));
   b.setAttribute('aria-label', `${cap(l.mess)} ${l.meal}, ${priceText(l)}, ${l.seller.name || l.seller.phone || 'unknown seller'}`);
   return b;
@@ -692,7 +693,7 @@ function itemTip(l) {
     const val = l.price == null ? { t: 'ask', c: 'c8' } : l.price === 0 ? { t: 'FREE', c: 'ca' } : { t: `₹${l.price}`, c: 'c6' };
     lines.push([{ t: label, c: 'c7' }, val]);
   }
-  if (l.status === 'sold') lines.push([{ t: 'Status: ', c: 'c7' }, { t: doneWord(l), c: 'ca' }]);
+  if (l.status === 'sold') lines.push([{ t: 'Status: ', c: 'c7' }, { t: doneWord(l), c: doneColor(l) }]);
   else if (l.status === 'closed') lines.push([{ t: 'Status: ', c: 'c7' }, { t: 'Withdrawn by seller', c: 'cc' }]);
   else lines.push([{ t: 'Ends in: ', c: 'c7' }, { t: l.meal_ends_at > n ? dur(l.meal_ends_at - n) : 'ended', c: 'cf' }]);
   lines.push(0, [{ t: 'Click to inspect!', c: 'ce' }], rarity(l));
@@ -983,7 +984,7 @@ function openListing(l) {
   const w = window_(l.meal);
   info.append(h, el('div', 'sub', `${cap(dayWord(l.meal_date))}${w ? `, ${hm(w.start)}-${hm(w.end)}` : ''} · ${priceText(l)}`));
   const r = rarity(l);
-  const pill = el('span', 'pill ' + (l.status === 'available' ? r.c : l.status === 'sold' ? 'ca' : 'c8'),
+  const pill = el('span', 'pill ' + (l.status === 'available' ? r.c : l.status === 'sold' ? doneColor(l) : 'c8'),
     l.status === 'available' ? r.rar : l.status === 'sold' ? doneWord(l).toUpperCase() : 'WITHDRAWN');
   info.append(pill);
   head.append(info);
