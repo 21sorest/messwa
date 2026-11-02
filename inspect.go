@@ -173,3 +173,18 @@ func firstNonEmpty(ss ...string) string {
 	}
 	return ""
 }
+
+// dbContacts names people from the session database's contact table, for
+// commands that don't connect to WhatsApp. It never reports anyone as saved.
+type dbContacts map[string]string
+
+func (d dbContacts) Saved(_ context.Context, jids ...string) (bool, string) {
+	for _, j := range jids {
+		if n := d[j]; n != "" {
+			return false, n
+		}
+	}
+	return false, ""
+}
+
+func contactsFromDB(cfg *config.Config) mcpserver.Contacts { return dbContacts(contactNames(cfg)) }

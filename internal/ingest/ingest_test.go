@@ -101,9 +101,14 @@ func TestSoldRules(t *testing.T) {
 		t.Error("removing the ✅ should un-sell")
 	}
 	must(st.SetGroup(ctx, "g1@g.us", "Mess 1", []string{"9random@s.whatsapp.net"}))
-	if !sold() {
-		t.Error("admin's ✅ should count")
+	if sold() {
+		t.Error("admin's ✅ should not count by default")
 	}
+	cfg.Sold.AdminsCount = true
+	if !sold() {
+		t.Error("admin's ✅ should count with admins_count")
+	}
+	cfg.Sold.AdminsCount = false
 	must(st.SetGroup(ctx, "g1@g.us", "Mess 1", nil))
 	must(in.Edit(ctx, "g1@g.us", "a", seller, "", "SOLD", at(cfg, "18:10")))
 	if !sold() {
@@ -249,5 +254,28 @@ func TestReactionsAndReplies(t *testing.T) {
 	ls, _ := st.Listings(ctx, r, store.ListingFilter{Since: at(cfg, "00:00"), Kind: "exchange"})
 	if len(ls) != 1 || ls[0].Mess != "kadamba" || ls[0].Wants != "palash" {
 		t.Errorf("exchange: %+v", ls)
+	}
+}
+
+func TestVegOnlyMess(t *testing.T) {
+	in, st, cfg := setup(t)
+	ctx := context.Background()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "a", Sender: "91a@s.whatsapp.net", TS: at(cfg, "10:00"), Text: "Sell palash lunch"}))
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "b", Sender: "91b@s.whatsapp.net", TS: at(cfg, "10:00"), Text: "Sell kadamba lunch"}))
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "c", Sender: "91c@s.whatsapp.net", TS: at(cfg, "10:00"), Text: "Exchange have yuktahar want kadamba nv"}))
+	ls, err := st.Listings(ctx, rule(cfg), store.ListingFilter{Since: at(cfg, "00:00")})
+	must(err)
+	diet := map[string]string{}
+	for _, l := range ls {
+		diet[l.Mess] = l.Diet
+	}
+	if diet["palash"] != "veg" || diet["kadamba"] != "" || diet["yuktahar"] != "veg" {
+		t.Errorf("diets: %v", diet)
 	}
 }

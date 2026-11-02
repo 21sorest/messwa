@@ -19,18 +19,34 @@ If you save a number later, its stored DM text is deleted on its next message, a
 
 ## How listings work
 
-**Dedupe.** The same person posting for the same meal slot within 3 hours is one listing, however it's worded, across any number of groups. Someone holds one registration per meal, so wording doesn't matter. Posts naming different messes stay separate. A sold listing never absorbs a new post, so a repost after a buyer backs out shows as available.
+**Dedupe.** Posts from one person for the same meal serving are one listing, however they're worded and across any number of groups. People post tomorrow's breakfast the evening before and again at 3am, so the lookback is 24 hours. Posts naming different messes, or veg and non-veg, stay separate. A sold or withdrawn listing never absorbs a new post, so a repost after a buyer backs out shows as available.
 
 **Meal.** If the post names a meal ("lunch", "bf", "nashta"...), that meal's next serving wins. Otherwise it's the meal currently being served or the next one: a post at 10:00 is for lunch, one at 22:00 is for tomorrow's breakfast. `meal_source` says which rule applied.
 
 **Status.** Status is computed when the agent asks, so un-reacting un-sells a listing.
 
-- `sold` means a ✅ on any copy from the seller or a group admin, or the seller edited the post to say "sold" or replied "sold" to it. A ✅ from anyone else doesn't count.
+- `sold` means the seller reacted to any copy with ✅, ✔, ☑ or 👍, or edited the post to say "sold", or replied "sold" to it. Ticks from anyone else don't count, but `other_ticks` reports them. Admins never tick other people's posts in these groups, so their ticks are ignored unless you set `admins_count = true`.
+- `closed` means the seller reacted with ❌ to withdraw it.
 - `expired` means the meal window has closed.
 - `deleted` means every copy was deleted (shown only with `status: "all"`).
 - `available` covers everything else.
 
-Mess (kadamba/yuktahar/palash) and diet (veg/nonveg) are tagged when the text mentions them.
+Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged when the text mentions them, with typo tolerance. Palash and Yuktahar serve only veg, so their listings are always veg. Prices ("@30", "30/-", "free"), quantities ("x2") and exchanges ("have palash want kadamba") are parsed too, and a seller replying to their own post with a new price updates the listing.
+
+## Dashboard
+
+`run` also serves a read-only dashboard at `dashboard.listen` (set it to a private address so only your own network reaches it). It's laid out like an auction house's buy-it-now browser:
+
+- The left column picks the mess, or all of them. Badges count what's available.
+- Each slot is one listing, showing its price, "?" when none was stated, FREE, or SWAP with the mess wanted. The corners show the diet mark, the meal, and the quantity. The bar along the bottom drains as the meal's serving window runs out. Listings from the last 15 minutes shimmer, and an amber dot means someone other than the seller ticked it.
+- The bottom row sorts by recency or price (click again to flip), filters by diet on Kadamba and Bakul, filters by meal, shows sold and withdrawn listings, and switches to buy requests.
+- Hovering a slot shows the seller, phone, groups, times and the original text. Clicking opens every copy of the post and a button that opens WhatsApp with a draft to the seller. Nothing is sent from messwa.
+
+Keys: `1`-`5` messes, arrows for pages, `R` `P` `D` `M` `S` `W` for the bottom row, `/` to search.
+
+It shows sellers' names and phone numbers from the groups and nothing from DMs. It has no login, so don't put it on a public address.
+
+To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` serves the board as it stood at that time on `127.0.0.1:8768`. Sold status reflects reactions up to now, not up to that time.
 
 ## MCP tools
 
@@ -46,7 +62,7 @@ All tools are read-only. Group posts and DM text are written by strangers. The s
 
 ## Setup
 
-Needs Go 1.27+ (installed at `~/.local/go` on this server: `export PATH=$HOME/.local/go/bin:$PATH`).
+Needs Go 1.27+. On this server it's at `~/.local/go` (`export PATH=$HOME/.local/go/bin:$PATH`), the project lives in `~/messwa`, and a systemd user service runs it: `systemctl --user status messwa`. The `messwa` wrapper in `~/.local/bin` runs commands from the project directory.
 
 ```sh
 go build -o messwa .
@@ -82,7 +98,7 @@ claude mcp add --transport http messwa http://127.0.0.1:8766/mcp --header "Autho
 ## Known limits
 
 - History is mostly live-only. The first link gets a partial history sync (messages from the last 48h are ingested). After that, anything that arrives while messwa is down is lost.
-- Reactions from history sync aren't imported, so listings sold before the first link can show as available.
+- A sale agreed in DMs, where the seller never reacts or replies, still shows as available.
 - Group members who appear only by LID (no phone number known) show a `jid` ending in `@lid` and no `phone`.
 - whatsmeow is unofficial. A read-only device is low risk, but a ban is possible.
 

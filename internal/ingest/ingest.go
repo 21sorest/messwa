@@ -189,6 +189,9 @@ func (in *Ingester) classify(text string, ts time.Time) store.Listing {
 	} else if len(messes) > 0 {
 		l.Mess = messes[0].Name
 	}
+	if in.cfg.VegOnly(l.Mess) {
+		l.Diet = "veg"
+	}
 	// A bare "palash" or "See kadamb" in these groups is a sale.
 	if l.Kind == "" && l.Mess != "" {
 		l.Kind = "sell"

@@ -27,6 +27,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 
 	"messwa/internal/config"
+	"messwa/internal/dashboard"
 	"messwa/internal/ingest"
 	"messwa/internal/mcpserver"
 	"messwa/internal/store"
@@ -45,6 +46,8 @@ inspection (read the database only, safe while run is up):
   chat [-hours 48]              the merged group stream, each post annotated with its listing
   listings [-hours 48]          deduplicated listings with tags and status
   rebuild                       re-derive all listings from the stored group log
+  dashboard [-listen addr] [-at time]
+                                serve the dashboard alone (run serves it too)
 `
 
 func main() {
@@ -82,6 +85,8 @@ func main() {
 		err = listings(ctx, cfg, args)
 	case "rebuild":
 		err = rebuild(ctx, cfg)
+	case "dashboard":
+		err = dashboardCmd(ctx, cfg, log, args)
 	default:
 		flag.Usage()
 		os.Exit(2)
@@ -267,6 +272,12 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	var dashLn net.Listener
+	if cfg.Dash.Listen != "" {
+		if dashLn, err = net.Listen("tcp", cfg.Dash.Listen); err != nil {
+			return fmt.Errorf("dashboard: %w", err)
+		}
+	}
 	st, err := store.Open(cfg.DataDB())
 	if err != nil {
 		return err
@@ -301,7 +312,12 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		}
 	}()
 
-	srv := mcpserver.New(cfg, st, c).MCP()
+	ms := mcpserver.New(cfg, st, c)
+	if dashLn != nil {
+		go serve(ctx, log, dashLn, dashboard.Handler(cfg, ms))
+		log.Info("serving dashboard", "url", "http://"+cfg.Dash.Listen+"/")
+	}
+	srv := ms.MCP()
 	var h http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	if token != "" {
 		h = bearer(token, h)
@@ -327,6 +343,51 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+// serve runs an HTTP server on ln until ctx ends.
+func serve(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Handler) error {
+	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		<-ctx.Done()
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		hs.Shutdown(sctx)
+	}()
+	if err := hs.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+		log.Error("http", "addr", ln.Addr().String(), "err", err)
+		return err
+	}
+	return nil
+}
+
+// dashboardCmd serves the dashboard from the database alone, without
+// connecting to WhatsApp. Names come from posts, not your contacts.
+func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, args []string) error {
+	fs := flag.NewFlagSet("dashboard", flag.ExitOnError)
+	listen := fs.String("listen", "127.0.0.1:8768", "address to serve on")
+	at := fs.String("at", "", `show the market as it was at this time, "2006-01-02 15:04" local`)
+	fs.Parse(args)
+	st, err := store.Open(cfg.DataDB())
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ln, err := net.Listen("tcp", *listen)
+	if err != nil {
+		return err
+	}
+	ms := mcpserver.New(cfg, st, contactsFromDB(cfg))
+	if *at != "" {
+		t, err := time.ParseInLocation("2006-01-02 15:04", *at, cfg.Location())
+		if err != nil {
+			return fmt.Errorf("-at: %w", err)
+		}
+		offset := time.Until(t)
+		ms.SetClock(func() time.Time { return time.Now().Add(offset) })
+	}
+	fmt.Printf("dashboard on http://%s/\n", *listen)
+	return serve(ctx, log, ln, dashboard.Handler(cfg, ms))
 }
 
 func bearer(token string, next http.Handler) http.Handler {

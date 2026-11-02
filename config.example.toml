@@ -18,8 +18,8 @@ window = "24h"
 emojis = ["✅", "✔", "☑", "👍"]
 # Seller reactions meaning withdrawn.
 closed_emojis = ["❌", "✖", "🚫"]
-# The seller's own checkmark always counts. Set false to ignore admins' checkmarks.
-admins_count = true
+# The seller's own checkmark always counts. Set true to also count group admins' checkmarks.
+admins_count = false
 # Seller editing the post to include one of these, or replying to it with one, marks it sold.
 words = ["sold", "done", "gone"]
 
@@ -32,9 +32,15 @@ listen = "127.0.0.1:8766"
 # Env var holding the bearer token. Required when listen isn't loopback.
 token_env = "MESSWA_MCP_TOKEN"
 
+[dashboard]
+# The listings dashboard. It shows sellers' phone numbers: keep it on
+# loopback or a private address such as a LAN or VPN IP.
+listen = "127.0.0.1:8767"
+
 # Meal windows and mess names have built-in defaults (internal/config/config.go):
 # breakfast 07:30-09:30, lunch 12:30-14:30, snacks 16:45-18:15, dinner 19:30-21:30,
 # messes kadamba, yuktahar, palash, bakul. Names match with typo tolerance.
+# Palash and Yuktahar are veg_only, so their listings count as veg.
 # Defining any [[meals]] or [[messes]] here replaces that whole default list:
 #
 # [[meals]]
@@ -44,5 +50,6 @@ token_env = "MESSWA_MCP_TOKEN"
 # keywords = ["lunxh"]
 #
 # [[messes]]
-# name = "bakul"
-# aliases = ["bkl"]
+# name = "palash"
+# aliases = ["palas", "plsh"]
+# veg_only = true

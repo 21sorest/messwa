@@ -1,0 +1,2 @@
+silkscreen-400.ttf and silkscreen-700.ttf: Silkscreen by Jason Kottke.
+Licensed under the SIL Open Font License 1.1: https://openfontlicense.org

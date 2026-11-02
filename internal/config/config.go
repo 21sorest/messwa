@@ -22,6 +22,7 @@ type Config struct {
 	Sold   Sold   `toml:"sold"`
 	DMs    DMs    `toml:"dms"`
 	MCP    MCP    `toml:"mcp"`
+	Dash   Dash   `toml:"dashboard"`
 
 	loc *time.Location
 }
@@ -36,6 +37,9 @@ type Meal struct {
 type Mess struct {
 	Name    string   `toml:"name"`
 	Aliases []string `toml:"aliases"`
+	// VegOnly messes serve no non-veg, so their listings are veg even
+	// when the post doesn't say.
+	VegOnly bool `toml:"veg_only"`
 }
 
 type Dedupe struct {
@@ -52,7 +56,8 @@ type Sold struct {
 	// Reactions from the seller meaning withdrawn ("closed").
 	ClosedEmojis []string `toml:"closed_emojis"`
 	// Who can mark a listing sold by reacting: the seller always can.
-	// Admins of the group can too when AdminsCount is true.
+	// Admins of the group can too when AdminsCount is true. Off by default:
+	// in the IIITH groups admins never tick other people's posts.
 	AdminsCount bool `toml:"admins_count"`
 	// Words that mark a listing sold when the seller edits the post to
 	// include them or replies to it with them.
@@ -69,6 +74,23 @@ type MCP struct {
 	// Name of the env var holding a bearer token. Empty disables auth,
 	// which is only acceptable when Listen is loopback.
 	TokenEnv string `toml:"token_env"`
+}
+
+type Dash struct {
+	// Where the listings dashboard listens. Empty turns it off. It shows
+	// sellers' phone numbers, so keep it on loopback or a private
+	// address like a LAN or VPN IP.
+	Listen string `toml:"listen"`
+}
+
+// VegOnly reports whether a mess serves only veg.
+func (c *Config) VegOnly(mess string) bool {
+	for _, m := range c.Messes {
+		if m.Name == mess {
+			return m.VegOnly
+		}
+	}
+	return false
 }
 
 type duration struct{ time.Duration }
@@ -99,15 +121,15 @@ func Default() *Config {
 		},
 		Messes: []Mess{
 			{Name: "kadamba", Aliases: []string{"kadamb", "kdm", "kdmb", "kdmba", "kadam"}},
-			{Name: "yuktahar", Aliases: []string{"yukthar", "yukt", "ykth", "yukhtar"}},
-			{Name: "palash", Aliases: []string{"palas", "plsh"}},
+			{Name: "yuktahar", Aliases: []string{"yukthar", "yukt", "ykth", "yukhtar"}, VegOnly: true},
+			{Name: "palash", Aliases: []string{"palas", "plsh"}, VegOnly: true},
 			{Name: "bakul", Aliases: []string{"bkl"}},
 		},
 		Dedupe: Dedupe{Window: duration{24 * time.Hour}},
 		Sold: Sold{
 			Emojis:       []string{"✅", "✔", "☑", "👍"},
 			ClosedEmojis: []string{"❌", "✖", "🚫"},
-			AdminsCount:  true,
+			AdminsCount:  false,
 			Words:        []string{"sold", "done", "gone"},
 		},
 		DMs: DMs{Retention: duration{72 * time.Hour}},
