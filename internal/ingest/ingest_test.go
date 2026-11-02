@@ -175,3 +175,39 @@ func TestNoMergeIntoSoldOrOtherMess(t *testing.T) {
 		t.Fatalf("want 3 listings (kadamba sold, yuktahar, kadamba repost), got %d", len(ls))
 	}
 }
+
+func TestHandleAndRebuild(t *testing.T) {
+	in, st, cfg := setup(t)
+	ctx := context.Background()
+	s := "911111@s.whatsapp.net"
+	events := []store.LogEntry{
+		{Chat: "g1@g.us", ChatName: "Mess Sell", ID: "a", Type: "post", Sender: s, TS: at(cfg, "10:00"), Text: "selling lunch"},
+		{Chat: "g2@g.us", ID: "b", Type: "post", Sender: s, TS: at(cfg, "10:01"), Text: "selling lunch"},
+		{Chat: "g2@g.us", ID: "r", Type: "reaction", Sender: s, TS: at(cfg, "10:30"), Text: "✅", Target: "b"},
+		{Chat: "other@g.us", ID: "x", Type: "post", Sender: s, TS: at(cfg, "10:02"), Text: "selling dinner"},
+	}
+	for _, e := range append(events, events...) { // replays must be no-ops
+		if err := in.Handle(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(when string) {
+		t.Helper()
+		ls, _ := st.Listings(ctx, rule(cfg), store.ListingFilter{Since: at(cfg, "00:00")})
+		if len(ls) != 1 || len(ls[0].Chats) != 2 || !ls[0].SoldReact {
+			t.Fatalf("%s: %+v", when, ls)
+		}
+	}
+	check("live")
+	log, _ := st.Log(ctx, at(cfg, "00:00"))
+	if len(log) != 3 {
+		t.Errorf("log should hold the 3 market-group events, got %d", len(log))
+	}
+	if names, _ := st.GroupNames(ctx); names["g1@g.us"] != "Mess Sell" {
+		t.Errorf("group name: %v", names)
+	}
+	if n, err := in.Rebuild(ctx); err != nil || n != 3 {
+		t.Fatalf("rebuild: %d %v", n, err)
+	}
+	check("rebuilt")
+}

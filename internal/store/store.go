@@ -90,7 +90,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec(schema + logSchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
 	return &Store{db}, nil
@@ -501,8 +501,10 @@ func (s *Store) Prune(ctx context.Context, dmBefore, listingsBefore time.Time) e
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM reactions WHERE ts < ?`, listingsBefore.Unix()); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM listings WHERE last_seen < ?`, listingsBefore.Unix())
-	return err
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM listings WHERE last_seen < ?`, listingsBefore.Unix()); err != nil {
+		return err
+	}
+	return s.pruneLog(ctx, listingsBefore)
 }
 
 func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }

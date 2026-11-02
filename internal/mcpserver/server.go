@@ -164,6 +164,12 @@ func (s *Server) listListings(ctx context.Context, _ *mcp.CallToolRequest, in Li
 	return nil, out, nil
 }
 
+// List is list_listings for local callers like the CLI.
+func (s *Server) List(ctx context.Context, in ListIn) (ListOut, error) {
+	_, out, err := s.listListings(ctx, nil, in)
+	return out, err
+}
+
 // ---- get_listing ----
 
 type GetIn struct {

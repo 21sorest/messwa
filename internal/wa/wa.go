@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -50,6 +52,8 @@ func (c *Client) LoggedIn() bool { return c.WA.Store.ID != nil }
 
 // Login links this program as a companion device, by QR code or, when
 // phone is given (country code + number, digits only), by pairing code.
+// It returns once paired and leaves the client connected, because the
+// one-time history sync arrives in the minutes after pairing.
 func (c *Client) Login(ctx context.Context, phone string) error {
 	if c.LoggedIn() {
 		return fmt.Errorf("already linked as %s; delete %s to relink", c.WA.Store.ID, c.cfg.SessionDB())
@@ -96,13 +100,10 @@ func (c *Client) Login(ctx context.Context, phone string) error {
 	}
 	select {
 	case <-done:
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	// Give the initial sync a moment so contacts and LID mappings land.
-	time.Sleep(10 * time.Second)
-	c.WA.Disconnect()
-	return nil
 }
 
 type GroupSummary struct {
@@ -200,29 +201,77 @@ func (c *Client) refreshGroups(ctx context.Context, st *mstore.Store) {
 	}
 }
 
-// history replays the initial history sync for allowed chats, skipping
-// anything older than two days since expired listings are useless.
+// history replays a history sync: market-group events through the group
+// log (14 days back), DMs into peer activity (2 days back).
 func (c *Client) history(ctx context.Context, in *ingest.Ingester, e *events.HistorySync) {
-	cutoff := uint64(time.Now().Add(-48 * time.Hour).Unix())
 	for _, conv := range e.Data.GetConversations() {
 		chat, err := types.ParseJID(conv.GetID())
 		if err != nil || !c.allowedChat(in, chat) {
 			continue
 		}
+		if chat.Server == types.GroupServer {
+			for _, entry := range c.HistoryGroupEntries(ctx, conv) {
+				if err := in.Handle(ctx, entry); err != nil {
+					c.log.Error("history", "err", err)
+				}
+			}
+			continue
+		}
+		cutoff := uint64(time.Now().Add(-48 * time.Hour).Unix())
 		for _, hm := range conv.GetMessages() {
 			wm := hm.GetMessage()
 			if wm.GetMessageTimestamp() < cutoff {
 				continue
 			}
-			evt, err := c.WA.ParseWebMessage(chat, wm)
-			if err != nil {
-				continue
-			}
-			if err := c.message(ctx, in, evt); err != nil {
-				c.log.Error("history", "err", err)
+			if evt, err := c.WA.ParseWebMessage(chat, wm); err == nil {
+				if err := c.message(ctx, in, evt); err != nil {
+					c.log.Error("history", "err", err)
+				}
 			}
 		}
 	}
+}
+
+// HistoryGroupEntries converts one group conversation from a history sync
+// into log entries, oldest first, including reactions stored on messages.
+func (c *Client) HistoryGroupEntries(ctx context.Context, conv *waHistorySync.Conversation) []mstore.LogEntry {
+	chat, err := types.ParseJID(conv.GetID())
+	if err != nil || chat.Server != types.GroupServer {
+		return nil
+	}
+	cutoff := uint64(time.Now().Add(-14 * 24 * time.Hour).Unix())
+	var out []mstore.LogEntry
+	for _, hm := range conv.GetMessages() {
+		wm := hm.GetMessage()
+		if wm.GetMessageTimestamp() < cutoff {
+			continue
+		}
+		evt, err := c.WA.ParseWebMessage(chat, wm)
+		if err != nil {
+			continue
+		}
+		if entry, ok := c.groupEntry(ctx, evt); ok {
+			entry.ChatName = conv.GetName()
+			out = append(out, entry)
+		}
+		for _, r := range wm.GetReactions() {
+			k := r.GetKey()
+			var reactor types.JID
+			if k.GetFromMe() {
+				reactor = c.WA.Store.GetJID()
+			} else if reactor, err = types.ParseJID(k.GetParticipant()); err != nil {
+				continue
+			}
+			sender, alt := c.identity(ctx, reactor, types.EmptyJID)
+			out = append(out, mstore.LogEntry{
+				Chat: chat.String(), ID: firstNonEmpty(k.GetID(), evt.Info.ID+":"+sender), Type: "reaction",
+				Sender: sender, SenderAlt: alt, TS: time.UnixMilli(r.GetSenderTimestampMS()),
+				Text: r.GetText(), Target: evt.Info.ID,
+			})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].TS.Before(out[j].TS) })
+	return out
 }
 
 func (c *Client) allowedChat(in *ingest.Ingester, chat types.JID) bool {
@@ -244,24 +293,10 @@ func (c *Client) message(ctx context.Context, in *ingest.Ingester, e *events.Mes
 	}
 	m := e.Message
 	if info.IsGroup {
-		sender, alt := c.identity(ctx, info.Sender, info.SenderAlt)
-		chat := info.Chat.String()
-		if r := m.GetReactionMessage(); r != nil {
-			return in.Reaction(ctx, chat, r.GetKey().GetID(), sender, alt, r.GetText(), info.Timestamp)
+		if entry, ok := c.groupEntry(ctx, e); ok {
+			return in.Handle(ctx, entry)
 		}
-		if pm := m.GetProtocolMessage(); pm != nil {
-			switch pm.GetType() {
-			case waE2E.ProtocolMessage_REVOKE:
-				return in.Delete(ctx, chat, pm.GetKey().GetID())
-			case waE2E.ProtocolMessage_MESSAGE_EDIT:
-				return in.Edit(ctx, chat, pm.GetKey().GetID(), sender, alt, textOf(pm.GetEditedMessage()), info.Timestamp)
-			}
-			return nil
-		}
-		return in.Post(ctx, ingest.GroupPost{
-			Chat: chat, ID: info.ID, Sender: sender, SenderAlt: alt, PushName: info.PushName,
-			TS: info.Timestamp, Text: textOf(m), ReplyTo: replyTo(m),
-		})
+		return nil
 	}
 
 	if m.GetReactionMessage() != nil || m.GetProtocolMessage() != nil {
@@ -281,6 +316,30 @@ func (c *Client) message(ctx context.Context, in *ingest.Ingester, e *events.Mes
 		Peer: peer, PeerAlt: alt, PushName: push, FromMe: info.IsFromMe,
 		ID: info.ID, TS: info.Timestamp, Text: textOf(m), Saved: saved,
 	})
+}
+
+// groupEntry converts a group message event into a log entry.
+func (c *Client) groupEntry(ctx context.Context, e *events.Message) (mstore.LogEntry, bool) {
+	info, m := e.Info, e.Message
+	sender, alt := c.identity(ctx, info.Sender, info.SenderAlt)
+	entry := mstore.LogEntry{Chat: info.Chat.String(), ID: info.ID, Sender: sender, SenderAlt: alt, PushName: info.PushName, TS: info.Timestamp}
+	if r := m.GetReactionMessage(); r != nil {
+		entry.Type, entry.Text, entry.Target = "reaction", r.GetText(), r.GetKey().GetID()
+		return entry, true
+	}
+	if pm := m.GetProtocolMessage(); pm != nil {
+		switch pm.GetType() {
+		case waE2E.ProtocolMessage_REVOKE:
+			entry.Type, entry.Target = "delete", pm.GetKey().GetID()
+		case waE2E.ProtocolMessage_MESSAGE_EDIT:
+			entry.Type, entry.Target, entry.Text = "edit", pm.GetKey().GetID(), textOf(pm.GetEditedMessage())
+		default:
+			return entry, false
+		}
+		return entry, true
+	}
+	entry.Type, entry.Text, entry.ReplyTo = "post", textOf(m), replyTo(m)
+	return entry, entry.Text != ""
 }
 
 // identity returns (phone-number JID if known, LID) or the reverse when
