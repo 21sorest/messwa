@@ -23,7 +23,13 @@ func (in *Ingester) Handle(ctx context.Context, e store.LogEntry) error {
 	if err != nil || !isNew {
 		return err
 	}
-	return in.apply(ctx, e)
+	if err := in.apply(ctx, e); err != nil {
+		return err
+	}
+	if in.change != nil {
+		in.change()
+	}
+	return nil
 }
 
 func (in *Ingester) apply(ctx context.Context, e store.LogEntry) error {

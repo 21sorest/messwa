@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -31,7 +32,7 @@ func TestHandler(t *testing.T) {
 	}
 	ms := mcpserver.New(cfg, st, nil)
 	ms.SetClock(func() time.Time { return now.Add(time.Minute) })
-	srv := httptest.NewServer(Handler(cfg, ms))
+	srv := httptest.NewServer(Handler(cfg, ms, NewHub()))
 	defer srv.Close()
 
 	res, err := http.Get(srv.URL + "/api/state")
@@ -70,4 +71,44 @@ func TestHandler(t *testing.T) {
 	if res.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST got %d, want 405", res.StatusCode)
 	}
+}
+
+func TestEvents(t *testing.T) {
+	cfg := config.Default()
+	cfg.Groups = []string{"g1@g.us"}
+	st, err := store.Open(filepath.Join(t.TempDir(), "d.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	hub := NewHub()
+	in := ingest.New(cfg, st)
+	in.OnChange(hub.Notify)
+	srv := httptest.NewServer(Handler(cfg, mcpserver.New(cfg, st, nil), hub))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/events", nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if ct := res.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("content type %q", ct)
+	}
+	lines := bufio.NewScanner(res.Body)
+	lines.Scan() // "retry: 3000", sent before any change
+
+	post := store.LogEntry{Chat: "g1@g.us", ID: "a", Type: "post", Sender: "911@s.whatsapp.net", TS: time.Now(), Text: "Sell kadamba dinner 40"}
+	if err := in.Handle(ctx, post); err != nil {
+		t.Fatal(err)
+	}
+	for lines.Scan() {
+		if lines.Text() == "event: change" {
+			return
+		}
+	}
+	t.Fatalf("no change event: %v", lines.Err())
 }

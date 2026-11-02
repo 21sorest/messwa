@@ -393,7 +393,7 @@ type FeedItem struct {
 // meal hasn't ended, in every status except deleted.
 func (s *Server) Feed(ctx context.Context, since time.Time) ([]FeedItem, error) {
 	now := s.now()
-	ls, err := s.st.Listings(ctx, s.rule(), store.ListingFilter{Since: since})
+	ls, err := s.st.Listings(ctx, s.rule(), store.ListingFilter{Since: since, EndsAfter: now})
 	if err != nil {
 		return nil, err
 	}

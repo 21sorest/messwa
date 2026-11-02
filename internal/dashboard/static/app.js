@@ -315,11 +315,18 @@ const shortGroup = (g) => g.replace(/^mess\s+/i, '').replace(/\s*@\s*/, ' @ ');
 
 // ---------- data ----------
 
-// Poll every 5s while a meal is being served and every 30s otherwise. The
-// slow wait is cut short so polling speeds up as soon as the next meal starts.
-const FAST = 5, SLOW = 30;
+// The server pushes a "change" event on api/events whenever a post, edit,
+// delete or reaction lands, and the page fetches the board then. While that
+// stream is up, a slow refresh only catches meals ending. If it drops, poll
+// every 5s while a meal is being served and every 30s otherwise, cutting the
+// slow wait short so polling speeds up as soon as the next meal starts.
+const FAST = 5, SLOW = 30, IDLE = 60;
 let pollTimer = 0;
+let streaming = false;
+let loading = false;
+let again = false;
 function pollEvery() {
+  if (streaming) return IDLE;
   if (!D) return FAST;
   const n = now();
   if (D.today.some((s) => s.start <= n && n < s.end)) return FAST;
@@ -332,6 +339,8 @@ function schedule() {
 }
 
 async function load() {
+  if (loading) { again = true; return; }
+  loading = true;
   schedule();
   try {
     const r = await fetch('api/state', { cache: 'no-store' });
@@ -353,7 +362,29 @@ async function load() {
   } catch (e) {
     failed = true;
     tickLive();
+  } finally {
+    loading = false;
+    if (again) { again = false; load(); }
   }
+}
+
+function connect() {
+  if (typeof EventSource === 'undefined') return;
+  const es = new EventSource('api/events');
+  es.addEventListener('open', () => {
+    streaming = true;
+    if (lastOK) load(); // catch up on anything missed while disconnected
+    tickLive();
+  });
+  es.addEventListener('change', () => {
+    if (document.visibilityState === 'visible') load();
+  });
+  es.addEventListener('error', () => {
+    // The browser reconnects on its own; poll until it does.
+    streaming = false;
+    schedule();
+    tickLive();
+  });
 }
 
 function inMode(l) {
@@ -1046,7 +1077,7 @@ function tickLive() {
   const live = $('live');
   const s = Math.round((Date.now() - lastOK) / 1000);
   live.classList.toggle('off', failed || !lastOK);
-  $('liveText').textContent = !lastOK ? 'connecting' : failed ? `offline, last update ${s}s ago` : s <= pollEvery() + 2 ? 'live' : `updated ${s}s ago`;
+  $('liveText').textContent = !lastOK ? 'connecting' : failed ? `offline, last update ${s}s ago` : streaming || s <= pollEvery() + 2 ? 'live' : `updated ${s}s ago`;
   if (tipFor && tipFn && !tipEl.hidden && document.body.contains(tipFor)) fillTip(tipFn());
 }
 
@@ -1060,6 +1091,7 @@ addEventListener('resize', () => {
   if (`${L.cols}x${L.rows}x${L.s}` !== before) render();
 });
 load();
+connect();
 setInterval(tickLive, 1000);
 setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); } }, 30000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });

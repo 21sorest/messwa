@@ -290,7 +290,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if !c.LoggedIn() {
 		return errors.New("not linked; run messwa login first")
 	}
-	c.Ingest(ingest.New(cfg, st), st)
+	hub := dashboard.NewHub()
+	in := ingest.New(cfg, st)
+	in.OnChange(hub.Notify)
+	c.Ingest(in, st)
 	if err := c.WA.Connect(); err != nil {
 		return err
 	}
@@ -314,7 +317,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 
 	ms := mcpserver.New(cfg, st, c)
 	if dashLn != nil {
-		go serve(ctx, log, dashLn, dashboard.Handler(cfg, ms))
+		go serve(ctx, log, dashLn, dashboard.Handler(cfg, ms, hub))
 		log.Info("serving dashboard", "url", "http://"+cfg.Dash.Listen+"/")
 	}
 	srv := ms.MCP()
@@ -347,7 +350,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 
 // serve runs an HTTP server on ln until ctx ends.
 func serve(ctx context.Context, log *slog.Logger, ln net.Listener, h http.Handler) error {
-	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	// Requests inherit ctx so open event streams end when we shut down.
+	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -387,7 +391,7 @@ func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, arg
 		ms.SetClock(func() time.Time { return time.Now().Add(offset) })
 	}
 	fmt.Printf("dashboard on http://%s/\n", *listen)
-	return serve(ctx, log, ln, dashboard.Handler(cfg, ms))
+	return serve(ctx, log, ln, dashboard.Handler(cfg, ms, dashboard.NewHub()))
 }
 
 func bearer(token string, next http.Handler) http.Handler {

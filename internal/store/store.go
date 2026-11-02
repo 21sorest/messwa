@@ -320,16 +320,21 @@ func normalizeAll(es []string) []string {
 }
 
 type ListingFilter struct {
-	Since time.Time
-	Kind  string
-	Meal  string
-	Mess  string
-	Limit int
+	Since     time.Time
+	EndsAfter time.Time // if set, only listings whose meal ends after this
+	Kind      string
+	Meal      string
+	Mess      string
+	Limit     int
 }
 
 func (s *Store) Listings(ctx context.Context, rule SoldRule, f ListingFilter) ([]Listing, error) {
 	where := []string{"l.first_seen >= ?"}
 	args := []any{f.Since.Unix()}
+	if !f.EndsAfter.IsZero() {
+		where = append(where, "l.meal_end > ?")
+		args = append(args, f.EndsAfter.Unix())
+	}
 	for col, v := range map[string]string{"kind": f.Kind, "meal": f.Meal, "mess": f.Mess} {
 		if v != "" {
 			where = append(where, "l."+col+" = ?")

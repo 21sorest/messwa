@@ -7,11 +7,13 @@
 package dashboard
 
 import (
+	"compress/gzip"
 	"embed"
 	"encoding/json"
 	"io/fs"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"messwa/internal/config"
@@ -45,10 +47,13 @@ type state struct {
 }
 
 // Handler serves the page at / and its data at /api/state and /api/listing.
-func Handler(cfg *config.Config, srv *mcpserver.Server) http.Handler {
+// /api/events is a server-sent event stream that fires when hub does.
+func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 	mux := http.NewServeMux()
 	files, _ := fs.Sub(static, "static")
 	mux.Handle("GET /", http.FileServerFS(files))
+
+	mux.HandleFunc("GET /api/events", hub.events)
 
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		now := srv.Now()
@@ -73,7 +78,7 @@ func Handler(cfg *config.Config, srv *mcpserver.Server) http.Handler {
 			n := toSlot(sc.Next)
 			st.Next = &n
 		}
-		writeJSON(w, st)
+		writeJSON(w, r, st)
 	})
 
 	mux.HandleFunc("GET /api/listing", func(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +92,7 @@ func Handler(cfg *config.Config, srv *mcpserver.Server) http.Handler {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		writeJSON(w, out)
+		writeJSON(w, r, out)
 	})
 
 	return headers(mux)
@@ -97,10 +102,18 @@ func toSlot(s *meals.Slot) slot {
 	return slot{Meal: s.Meal, Date: s.Date, Start: s.Start.Unix(), End: s.End.Unix()}
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(v)
+	w.Header().Set("Vary", "Accept-Encoding")
+	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		json.NewEncoder(w).Encode(v)
+		return
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	gz := gzip.NewWriter(w)
+	json.NewEncoder(gz).Encode(v)
+	gz.Close()
 }
 
 // headers locks the page down: no framing, no third-party scripts, and

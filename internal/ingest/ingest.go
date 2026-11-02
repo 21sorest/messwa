@@ -20,7 +20,12 @@ type Ingester struct {
 	meals  []classify.Named
 	messes []classify.Named
 	groups map[string]bool
+	change func()
 }
+
+// OnChange sets a function to call after each market-group event changes
+// the listings. It runs on the event handler's goroutine, so keep it quick.
+func (in *Ingester) OnChange(f func()) { in.change = f }
 
 func New(cfg *config.Config, st *store.Store) *Ingester {
 	in := &Ingester{cfg: cfg, st: st, sched: meals.New(cfg), groups: map[string]bool{}}
