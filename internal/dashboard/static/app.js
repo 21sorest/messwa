@@ -452,6 +452,7 @@ function render() {
   renderTabs();
   renderGrid();
   renderControls();
+  keepTip();
   tickLive();
 }
 
@@ -709,6 +710,8 @@ const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 // ---------- tooltip engine ----------
 
 const tipEl = $('tip');
+const lastMouse = { x: -1, y: -1 };
+addEventListener('mousemove', (e) => { lastMouse.x = e.clientX; lastMouse.y = e.clientY; }, { passive: true });
 let tipFor = null;
 let tipFn = null;
 
@@ -761,10 +764,34 @@ const grid = $('grid');
 grid.addEventListener('pointerover', (e) => {
   if (e.pointerType !== 'mouse') return;
   const b = e.target.closest('.item');
-  if (!b || b === tipFor) return;
+  if (!b) {
+    // over an empty cell or a gap: drop a listing's tooltip
+    if (tipFor && (!tipFor.isConnected || grid.contains(tipFor))) hideTip();
+    return;
+  }
+  if (b === tipFor) return;
   const l = byId.get(+b.dataset.id);
   if (l) showTip(b, () => itemTip(l), e.clientX, e.clientY);
 });
+
+// keepTip runs after a re-render replaces the hovered node. If the same
+// listing is still under the mouse, the tooltip moves to its new node with
+// fresh data; anything else closes it.
+function keepTip() {
+  if (!tipFor || tipFor.isConnected) return;
+  const id = tipFor.dataset.id;
+  const nb = id ? grid.querySelector(`.item[data-id="${id}"]`) : null;
+  const l = nb && byId.get(+id);
+  const r = nb && nb.getBoundingClientRect();
+  // :hover lags until the mouse moves, so test the last mouse position
+  if (l && lastMouse.x >= r.left && lastMouse.x < r.right && lastMouse.y >= r.top && lastMouse.y < r.bottom) {
+    tipFor = nb;
+    tipFn = () => itemTip(l);
+    fillTip(tipFn());
+  } else {
+    hideTip();
+  }
+}
 grid.addEventListener('pointermove', (e) => { if (tipFor && grid.contains(tipFor)) placeTip(e.clientX, e.clientY); });
 grid.addEventListener('pointerleave', hideTip);
 grid.addEventListener('click', (e) => {
@@ -907,8 +934,6 @@ function ctl(art, label, cls, onClick, tipFn, markup) {
   tip(b, tipFn);
   return b;
 }
-const lastMouse = { x: 0, y: 0 };
-addEventListener('mousemove', (e) => { lastMouse.x = e.clientX; lastMouse.y = e.clientY; }, { passive: true });
 
 // ---------- actions ----------
 
@@ -1101,5 +1126,5 @@ addEventListener('resize', () => {
 load();
 connect();
 setInterval(tickLive, 1000);
-setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); } }, 30000);
+setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); keepTip(); } }, 30000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
