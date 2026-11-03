@@ -17,6 +17,15 @@ import (
 
 type fakeContacts map[string]string // jid -> saved name
 
+func TestMyRegistrationsNeedsKey(t *testing.T) {
+	t.Setenv("MESS_API_KEY", "")
+	s := New(config.Default(), nil, nil)
+	_, _, err := s.myRegistrations(context.Background(), nil, RegistrationsIn{From: "2026-11-03", To: "2026-11-04"})
+	if err == nil || !strings.Contains(err.Error(), "MESS_API_KEY") {
+		t.Fatal("missing portal configuration was not reported", err)
+	}
+}
+
 func (f fakeContacts) Saved(_ context.Context, jids ...string) (bool, string) {
 	for _, j := range jids {
 		if n, ok := f[j]; ok {

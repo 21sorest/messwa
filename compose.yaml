@@ -9,7 +9,7 @@ services:
     # and the MCP server stays on loopback, where it needs no token.
     network_mode: host
     env_file:
-      - path: .env          # MESSWA_MCP_TOKEN=..., only needed if mcp.listen isn't loopback
+      - path: .env          # Optional MESSWA_MCP_TOKEN and MESS_API_KEY/MESS_API_URL
         required: false
     volumes:
       - ./config.toml:/data/config.toml:ro

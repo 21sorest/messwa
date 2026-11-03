@@ -2,7 +2,7 @@
 
 messwa links to WhatsApp as a companion device (via [whatsmeow](https://github.com/tulir/whatsmeow)), merges the mess buy/sell groups you pick into one deduplicated list of listings, and serves that list plus limited DM info to an agent over MCP.
 
-The access limits live in the binary. Ingest drops every chat outside the allowed set before anything touches disk, and the MCP server reads only what ingest stored. So the agent can't reach other chats however it phrases a request.
+The WhatsApp access limits live in the binary. Ingest drops every chat outside the allowed set before anything touches disk, and WhatsApp MCP tools read only that stored data. Optional portal tools separately read your own registrations and current QR using `MESS_API_KEY`.
 
 The default `run` service and MCP tools are read-only: no messages, read receipts or presence are sent. Your phone keeps showing messages as unread and notifications don't change. The separate, explicitly armed `deliver-qr` command can send one image after a matching payment message.
 
@@ -58,8 +58,60 @@ To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` s
 | `get_listing` | One listing with every copy across groups |
 | `list_recent_chats` | DM peers in the last 24h (max 72h): saved or not, new or not, last in/out. No content |
 | `read_unsaved_chat` | Message text for one unsaved number. Errors for saved contacts |
+| `my_registrations` | Live portal registrations for a date range, including cancellation and usage fields. Requires `MESS_API_KEY` |
+| `my_qr` | Current portal QR as a PNG image. Sensitive; fetch again after token resets. Requires `MESS_API_KEY` |
 
 All tools are read-only. Group posts and DM text are written by strangers. The server's instructions tell the agent to treat them as untrusted, but read-only tools are what actually limits the damage.
+
+### Read your portal registrations
+
+Registration reads reuse the API contract from IIITH-mess-MCP: an HTTP GET to
+`/api/registrations?from=YYYY-MM-DD&to=YYYY-MM-DD`, with the API key in the
+`Authorization` header. No Node server is needed for this integration.
+
+Set `MESS_API_KEY` in the process environment. `MESS_API_URL` defaults to
+`https://mess.iiit.ac.in/api` and must be an HTTPS base URL. Do not put keys in
+`config.toml` or commit them. For Docker Compose, set these variables in the
+ignored `.env` file; the existing `env_file` passes them to the container.
+The standalone binary uses its process environment and does not load `.env`.
+
+```sh
+./messwa registrations -from 2026-11-04 -to 2026-11-10
+```
+
+With no dates, this reads today in the configured timezone. If only `-from`
+is supplied, it reads that date. A range must be ordered and at most two months.
+This command makes no WhatsApp connection and can run while the service is up.
+The read-only `my_registrations` MCP tool accepts explicit `from` and `to` dates.
+
+Output contains only meal date, meal, mess, category, cancellation and usage
+timestamps. Account IDs and unrelated portal fields are discarded. Cancelled
+or used meals remain visible; fetching a registration does not mark it for sale.
+Every call reads live; no inventory cache or raw portal response is saved.
+An unavailable portal or invalid response returns an error, not an empty list.
+API keys are not forwarded on redirects or included in error messages.
+
+The server must be connected to the IIIT network or VPN to reach the portal.
+Registration reads do not register, cancel or skip meals.
+
+### Fetch the current portal QR
+
+```sh
+./messwa fetch-qr                          # writes state/current-qr.png
+./messwa fetch-qr -out state/meal-qr.png    # choose a private output path
+```
+
+This reads `/api/auth/me` and encodes its current `token` directly, matching
+the portal frontend's QR component. It does not reset the token or change the
+daily-reset preference. The output file is replaced via a private temporary
+file; the CLI does not print the token. Keep real QR images in the ignored
+state directory. The `my_qr` MCP tool returns the PNG inline without saving it.
+The image itself grants meal access and must be treated as sensitive.
+
+When the portal resets the token, previously saved or sent QR images expire.
+Fetch again afterwards. For delivery, use the live mode below to avoid relying
+on a saved file. This integration does not schedule resets or revoke a QR for
+one particular buyer.
 
 ## Setup
 
@@ -126,6 +178,28 @@ The date is interpreted in the configured timezone and the configured meal's
 end time is the delivery deadline. Nothing is posted to selling groups and
 payment instructions are not sent by this command; agree the price first.
 
+Optionally pass `-offer-text "Selling Palash breakfast for INR 2.37. Pay through
+WhatsApp Pay here and I will send the QR."` to send that text to the selected
+buyer after arming and connecting. It is sent once per invocation; omit the
+flag when resuming if you do not want to repeat the offer. Sending an offer
+does not implement negotiation or posting to groups.
+
+To deliver the current real portal QR instead of a saved image:
+
+```sh
+./messwa deliver-qr -date 2026-11-04 -meal lunch \
+  -peer '91XXXXXXXXXX@s.whatsapp.net' -amount 60.00 -portal-qr
+```
+
+`-portal-qr` requires `MESS_API_KEY` and cannot be combined with `-qr`. It
+checks for exactly one regular, uncancelled, unused registration before arming.
+After a matching payment, it rechecks that meal and fetches the current QR
+immediately before uploading. A portal error blocks sending; it never falls
+back to a saved or placeholder image. The delivery binds to a hash of the
+account ID, so daily token rotation does not prevent resuming an armed slot,
+while switching portal accounts does. Keep separate keys and state directories
+for separate people. The portal can still invalidate an image after it is sent.
+
 Only a new incoming WhatsApp Pay `sendPaymentMessage` from the selected buyer
 with exactly that amount qualifies. Both the message and decoded transaction
 timestamps must be after arming and before the meal ends. Normal text,
@@ -133,7 +207,7 @@ screenshots, other buyers, wrong amounts and old transactions do not qualify.
 As agreed for this workflow, payment is **assumed**, with no bank receipt or
 completion-status check. It sends the image back to that buyer's DM and exits.
 
-The data database stores the buyer, amount, image hash, arming time, payment
+The data database stores the buyer, amount, image hash or portal-account binding, arming time, payment
 message ID, outgoing image ID and state for each date/meal. It never stores
 the raw payment payload. Repeated events and restarts cannot automatically
 send the same slot twice. An armed slot can resume only with the same buyer,
