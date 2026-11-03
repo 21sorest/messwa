@@ -89,7 +89,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	}
 	imageHash := fmt.Sprintf("%x", sha256.Sum256(data))
 	var portalClient *portal.Client
-	var accountHash string
+	var accountHash, mess, diet string
 	if *portalQR {
 		portalClient, err = portal.FromEnv()
 		if err != nil {
@@ -100,6 +100,10 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 			return err
 		}
 		accountHash = current.AccountHash
+		mess, diet = current.Registration.MessDiet()
+		if diet == "" && cfg.VegOnly(mess) {
+			diet = "veg"
+		}
 		// Bind restarts to the account, not the token that rotates daily.
 		imageHash = "portal:" + accountHash
 	}
@@ -118,7 +122,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		return err
 	}
 	defer st.Close()
-	d := store.Delivery{Date: *date, Meal: *meal, Peer: jid.String(), Amount: *amount, ImageHash: imageHash, ArmedAt: time.Now()}
+	d := store.Delivery{Date: *date, Meal: *meal, Peer: jid.String(), Amount: *amount, ImageHash: imageHash, ArmedAt: time.Now(), Mess: mess, Diet: diet}
 	armedAt, err := st.ArmDelivery(ctx, d)
 	if err != nil {
 		return err
@@ -151,7 +155,8 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		}
 		attempted = true
 		id := c.WA.GenerateMessageID()
-		err := deliverOnce(ctx, st, d, e.Info.ID, id, func() error {
+		paid := store.Payment{ID: e.Info.ID, At: e.Info.Timestamp, BuyerName: e.Info.PushName}
+		err := deliverOnce(ctx, st, d, paid, id, func() error {
 			if portalClient != nil {
 				current, err := portalClient.QRForMeal(ctx, d.Date, d.Meal, accountHash)
 				if err != nil {
@@ -192,6 +197,9 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 			return fmt.Errorf("offer send failed or is uncertain; inspect chat before retrying: %w", err)
 		}
 		log.Info("offer sent to selected buyer")
+		if err := st.MarkOfferSent(ctx, d, time.Now()); err != nil {
+			log.Warn("could not record the offer time", "err", err)
+		}
 	}
 	fmt.Fprintf(os.Stderr, "Armed %s %s for INR %s, ending %s. Only a new payment message from the selected buyer can trigger delivery. Payment is assumed, not bank-verified.\n", d.Date, d.Meal, d.Amount, slot.End.Format(time.RFC3339))
 	select {
@@ -202,8 +210,8 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	}
 }
 
-func deliverOnce(ctx context.Context, st *store.Store, d store.Delivery, paymentID, messageID string, send func() error) error {
-	claimed, err := st.ClaimDelivery(ctx, d, paymentID, messageID)
+func deliverOnce(ctx context.Context, st *store.Store, d store.Delivery, paid store.Payment, messageID string, send func() error) error {
+	claimed, err := st.ClaimDelivery(ctx, d, paid, messageID)
 	if err != nil {
 		return err
 	}

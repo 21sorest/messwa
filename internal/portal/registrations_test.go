@@ -106,3 +106,15 @@ func TestRegistrationConfigAndDates(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMessDiet(t *testing.T) {
+	for raw, want := range map[string][2]string{
+		"kadamba-veg": {"kadamba", "veg"}, "Kadamba-NonVeg": {"kadamba", "nonveg"}, "bakul_non-veg": {"bakul", "nonveg"},
+		"bakul-egg": {"bakul", "egg"}, "palash": {"palash", ""}, "": {"", ""},
+	} {
+		m, d := Registration{Mess: raw}.MessDiet()
+		if m != want[0] || d != want[1] {
+			t.Errorf("%q: got %s/%s, want %s/%s", raw, m, d, want[0], want[1])
+		}
+	}
+}

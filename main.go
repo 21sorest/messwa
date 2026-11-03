@@ -317,6 +317,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	go func() {
 		for t := time.NewTicker(time.Hour); ; {
 			now := time.Now()
+			// Save asking prices before pruning, while every listing of the
+			// last 12 days is still there. Older servings are already saved.
+			if err := st.SnapshotPrices(ctx, now.In(cfg.Location()).AddDate(0, 0, -12).Format("2006-01-02")); err != nil {
+				log.Error("snapshot prices", "err", err)
+			}
 			if err := st.Prune(ctx, now.Add(-cfg.DMs.Retention.Duration), now.Add(-14*24*time.Hour)); err != nil {
 				log.Error("prune", "err", err)
 			}

@@ -473,6 +473,16 @@ func (s *Server) Schedule() ScheduleOut {
 	return out
 }
 
+// Deliveries is every meal armed with deliver-qr, for the sales page.
+func (s *Server) Deliveries(ctx context.Context) ([]store.DeliveryRecord, error) {
+	return s.st.Deliveries(ctx)
+}
+
+// Prices is the asking prices per serving dated from..to, for the sales page.
+func (s *Server) Prices(ctx context.Context, from, to string) ([]store.ServingPrices, error) {
+	return s.st.Prices(ctx, from, to)
+}
+
 // Market is market activity from since until now, for the dashboard's stats.
 func (s *Server) Market(ctx context.Context, since time.Time) ([]store.MarketPost, []store.MarketSale, error) {
 	return s.st.Market(ctx, s.rule(), since, s.now())

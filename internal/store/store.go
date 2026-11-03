@@ -95,7 +95,7 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	os.Chmod(path, 0o600)
-	if _, err := db.Exec(schema + logSchema + deliverySchema); err != nil {
+	if _, err := db.Exec(schema + logSchema + deliverySchema + priceSchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
 	// Columns added after the first release. Listings are derived data, so
@@ -106,6 +106,11 @@ func Open(path string) (*Store, error) {
 		"wants TEXT NOT NULL DEFAULT ''",
 	} {
 		if _, err := db.Exec("ALTER TABLE listings ADD COLUMN " + col); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return nil, fmt.Errorf("migrate: %w", err)
+		}
+	}
+	for _, col := range deliveryColumns {
+		if _, err := db.Exec("ALTER TABLE qr_deliveries ADD COLUMN " + col); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return nil, fmt.Errorf("migrate: %w", err)
 		}
 	}

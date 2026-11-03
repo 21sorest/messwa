@@ -1,0 +1,177 @@
+package dashboard
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"messwa/internal/config"
+	"messwa/internal/ingest"
+	"messwa/internal/mcpserver"
+	"messwa/internal/portal"
+	"messwa/internal/store"
+)
+
+func TestSales(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Default()
+	cfg.Groups = []string{"g1@g.us"}
+	cfg.Sales.MonthlyFee = 5600
+	loc := cfg.Location()
+	st, err := store.Open(filepath.Join(t.TempDir(), "d.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	// The market asked 50, 60 and 70 for Kadamba lunch on the 2nd.
+	in := ingest.New(cfg, st)
+	for i, txt := range []string{"Selling kadamba lunch @50", "Selling kadamba lunch @60", "Selling kadamba lunch @70"} {
+		ts := time.Date(2026, 11, 2, 10, i, 0, 0, loc)
+		if err := in.Post(ctx, ingest.GroupPost{Chat: "g1@g.us", ID: string(rune('a' + i)), Sender: string(rune('1'+i)) + "1@s.whatsapp.net", TS: ts, Text: txt}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Sold dinner on the 2nd; lunch today is armed.
+	sold := store.Delivery{Date: "2026-11-02", Meal: "dinner", Peer: "919876543210@s.whatsapp.net", Amount: "55.00", ImageHash: "h", ArmedAt: time.Date(2026, 11, 2, 18, 0, 0, 0, loc)}
+	if _, err := st.ArmDelivery(ctx, sold); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MarkOfferSent(ctx, sold, sold.ArmedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ClaimDelivery(ctx, sold, store.Payment{ID: "p1", At: sold.ArmedAt.Add(90 * time.Second), BuyerName: "Meera"}, "m1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishDelivery(ctx, sold, "m1"); err != nil {
+		t.Fatal(err)
+	}
+	armed := store.Delivery{Date: "2026-11-03", Meal: "lunch", Peer: "77@lid", Amount: "60.00", ImageHash: "h", ArmedAt: time.Date(2026, 11, 3, 12, 0, 0, 0, loc)}
+	if _, err := st.ArmDelivery(ctx, armed); err != nil {
+		t.Fatal(err)
+	}
+
+	str := func(s string) *string { return &s }
+	orig := readRegistrations
+	defer func() { readRegistrations = orig }()
+	readRegistrations = func(_ context.Context, from, to string) ([]portal.Registration, error) {
+		if from != "2026-10-07" || to != "2026-11-03" {
+			t.Errorf("read %s..%s, want the four weeks to today", from, to)
+		}
+		return []portal.Registration{
+			{Date: "2026-11-02", Meal: "breakfast", Mess: "palash", Category: "registered", AvailedAt: str("2026-11-02T08:00:00Z")},
+			{Date: "2026-11-02", Meal: "lunch", Mess: "kadamba-nonveg", Category: "registered"},
+			{Date: "2026-11-02", Meal: "dinner", Mess: "palash", Category: "registered"},
+			{Date: "2026-11-03", Meal: "lunch", Mess: "palash", Category: "registered"},
+			{Date: "2026-11-03", Meal: "dinner", Mess: "bakul-veg", Category: "registered"},
+			{Date: "2026-11-01", Meal: "snacks", Mess: "palash", Category: "registered", CancelledAt: str("2026-11-01T08:00:00Z")},
+		}, nil
+	}
+
+	ms := mcpserver.New(cfg, st, nil)
+	ms.SetClock(func() time.Time { return time.Date(2026, 11, 3, 13, 0, 0, 0, loc) })
+	srv := httptest.NewServer(Handler(cfg, ms, NewHub()))
+	defer srv.Close()
+
+	get := func() salesState {
+		res, err := http.Get(srv.URL + "/api/sales")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var s salesState
+		if err := json.NewDecoder(res.Body).Decode(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	s := get()
+	cellAt := func(s salesState, date, meal string) cell {
+		for _, d := range s.Days {
+			for _, c := range d.Cells {
+				if d.Date == date && c.Meal == meal {
+					return c
+				}
+			}
+		}
+		t.Fatalf("no cell %s %s", date, meal)
+		return cell{}
+	}
+	for _, tc := range []struct{ date, meal, want, mess, diet string }{
+		{"2026-11-02", "breakfast", "ate", "palash", "veg"},
+		{"2026-11-02", "lunch", "wasted", "kadamba", "nonveg"},
+		{"2026-11-02", "dinner", "sold", "palash", "veg"},
+		{"2026-11-03", "lunch", "armed", "palash", "veg"},
+		{"2026-11-03", "dinner", "open", "bakul", "veg"},
+		{"2026-11-01", "snacks", "none", "", ""},
+	} {
+		c := cellAt(s, tc.date, tc.meal)
+		if c.State != tc.want || c.Mess != tc.mess || c.Diet != tc.diet {
+			t.Errorf("%s %s: got %s %s/%s, want %s %s/%s", tc.date, tc.meal, c.State, c.Mess, c.Diet, tc.want, tc.mess, tc.diet)
+		}
+	}
+	if c := cellAt(s, "2026-11-02", "lunch"); c.Ask == nil || *c.Ask != 60 {
+		t.Errorf("wasted lunch should be worth the 60 median, got %v", c.Ask)
+	}
+	if s.From != "2026-10-07" || s.Today != "2026-11-03" || len(s.Days) != 28 {
+		t.Errorf("window %s..%s, %d days", s.From, s.Today, len(s.Days))
+	}
+	m := s.Month
+	if m.Start != "2026-11-01" || m.Fee != 5600 || m.Earned != 55 || m.Sold != 1 || m.Wasted != 1 || m.Potential != 60 || m.Unpriced != 0 {
+		t.Errorf("month %+v", m)
+	}
+	if len(s.Sales) != 2 {
+		t.Fatalf("sales %+v", s.Sales)
+	}
+	x := s.Sales[0]
+	if x.State != "sold" || x.Phone != "+919876543210" || x.Buyer != "+919876543210" || x.Name != "Meera" || x.Amount != 55 || x.Mess != "palash" || x.PaidAt-x.OfferAt != 90 {
+		t.Errorf("sold %+v", x)
+	}
+	if y := s.Sales[1]; y.State != "armed" || y.Phone != "" || y.Buyer != "77@lid" {
+		t.Errorf("armed %+v", y)
+	}
+	if len(s.Market) != 1 || s.Market[0].Meal != "lunch" || s.Market[0].Median != 60 || s.Market[0].Q1 != 55 || s.Market[0].Q3 != 65 {
+		t.Errorf("market %+v", s.Market)
+	}
+
+	// The board's day track gets today's armed lunch.
+	res, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b state
+	json.NewDecoder(res.Body).Decode(&b)
+	res.Body.Close()
+	if len(b.Mine) != 1 || b.Mine[0].Meal != "lunch" || b.Mine[0].State != "armed" || b.Mine[0].Amount != 60 {
+		t.Errorf("mine %+v", b.Mine)
+	}
+
+	// Without the portal, sales still show and everything else is unknown.
+	readRegistrations = func(context.Context, string, string) ([]portal.Registration, error) {
+		return nil, errors.New("set MESS_API_KEY to enable registration reads")
+	}
+	srv2 := httptest.NewServer(Handler(cfg, ms, NewHub()))
+	defer srv2.Close()
+	srv.URL = srv2.URL
+	s = get()
+	if s.Portal == "" || cellAt(s, "2026-11-02", "dinner").State != "sold" || cellAt(s, "2026-11-02", "lunch").State != "unknown" || s.Month.Wasted != 0 {
+		t.Errorf("portal down: %q dinner %s lunch %s", s.Portal, cellAt(s, "2026-11-02", "dinner").State, cellAt(s, "2026-11-02", "lunch").State)
+	}
+}
+
+func TestPhone(t *testing.T) {
+	for in, want := range map[string]string{
+		"919876543210@s.whatsapp.net": "+919876543210", "919876543210:4@s.whatsapp.net": "+919876543210",
+		"123@lid": "", "abc@s.whatsapp.net": "", "": "",
+	} {
+		if got := phone(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}

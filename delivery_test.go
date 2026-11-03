@@ -82,14 +82,14 @@ func TestDeliverOnce(t *testing.T) {
 				}
 				return nil
 			}
-			err = deliverOnce(ctx, st, d, "payment", "outgoing", send)
+			err = deliverOnce(ctx, st, d, store.Payment{ID: "payment"}, "outgoing", send)
 			if (err != nil) != fail {
 				t.Fatalf("unexpected result: %v", err)
 			}
-			if err := deliverOnce(ctx, st, d, "payment", "outgoing", send); err == nil {
+			if err := deliverOnce(ctx, st, d, store.Payment{ID: "payment"}, "outgoing", send); err == nil {
 				t.Fatal("duplicate accepted")
 			}
-			if err := deliverOnce(ctx, st, d, "new payment", "new outgoing", send); err == nil {
+			if err := deliverOnce(ctx, st, d, store.Payment{ID: "new payment"}, "new outgoing", send); err == nil {
 				t.Fatal("second sale accepted")
 			}
 			if calls != 1 {

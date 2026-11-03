@@ -46,6 +46,15 @@ type state struct {
 	Next     *slot                `json:"next,omitempty"`
 	Listings []mcpserver.FeedItem `json:"listings"`
 	Market   market               `json:"market"`
+	// Mine is today's meals you armed or sold with deliver-qr, for the coins
+	// on the day track.
+	Mine []mine `json:"mine"`
+}
+
+type mine struct {
+	Meal   string  `json:"meal"`
+	State  string  `json:"state"` // sold, sending, armed
+	Amount float64 `json:"amount"`
 }
 
 // marketSpan is how far back the stats panel looks.
@@ -99,6 +108,10 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 		for _, m := range cfg.Messes {
 			st.Messes = append(st.Messes, mess{m.Name, m.VegOnly})
 		}
+		if st.Mine, err = mineToday(r.Context(), cfg, srv); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		sc := srv.Schedule()
 		for _, s := range sc.Today {
 			st.Today = append(st.Today, toSlot(&s))
@@ -113,6 +126,8 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 		}
 		writeJSON(w, r, st)
 	})
+
+	mux.HandleFunc("GET /api/sales", salesHandler(cfg, srv))
 
 	mux.HandleFunc("GET /api/listing", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
@@ -129,6 +144,28 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 	})
 
 	return headers(mux)
+}
+
+func mineToday(ctx context.Context, cfg *config.Config, srv *mcpserver.Server) ([]mine, error) {
+	ds, err := srv.Deliveries(ctx)
+	out := []mine{}
+	if err != nil {
+		return out, err
+	}
+	now := srv.Now()
+	today := now.In(cfg.Location()).Format("2006-01-02")
+	for _, d := range ds {
+		if d.Date != today {
+			continue
+		}
+		state := map[string]string{"sent": "sold", "sending": "sending", "armed": "armed"}[d.State]
+		if state == "" {
+			continue
+		}
+		amount, _ := strconv.ParseFloat(d.Amount, 64)
+		out = append(out, mine{Meal: d.Meal, State: state, Amount: amount})
+	}
+	return out, nil
 }
 
 func marketState(ctx context.Context, srv *mcpserver.Server, since time.Time) (market, error) {

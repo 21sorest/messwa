@@ -37,6 +37,11 @@ token_env = "MESSWA_MCP_TOKEN"
 # loopback or a private address such as a LAN or VPN IP.
 listen = "127.0.0.1:8767"
 
+[sales]
+# What the mess charges you per month, in rupees. The sales page shows how
+# much of it your sales earned back this month. 0 hides the bar's target.
+monthly_fee = 0
+
 # Meal windows and mess names have built-in defaults (internal/config/config.go):
 # breakfast 07:30-09:30, lunch 12:30-14:30, snacks 16:45-18:15, dinner 19:30-21:30,
 # messes kadamba, yuktahar, palash, bakul. Names match with typo tolerance.

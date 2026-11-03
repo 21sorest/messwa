@@ -45,7 +45,23 @@ Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged w
 
 Keys: `1`-`5` messes, arrows for pages, `R` `P` `D` `M` `S` `W` for the bottom row, `/` to search. Right click on the diet or meal button, or Shift with `D` or `M`, cycles backwards.
 
-It shows sellers' names and phone numbers from the groups and nothing from DMs. It has no login, so don't put it on a public address.
+The board shows sellers' names and phone numbers from the groups and nothing from DMs. The sales page below adds the names and numbers of people you sold to. It has no login, so don't put it on a public address.
+
+### My sales
+
+`/sales.html` (the MY SALES button on the board) tracks the meals you sell with `deliver-qr`. On the board's day track, a coin and the price replace the meal icon for any meal you sold or armed today.
+
+- **Sales ledger.** Days across, meals down, for the last four weeks (arrow keys page by week). A sold slot shows the price, the mess, and the buyer's pixel head. Each buyer always gets the same head. An armed slot drains like a listing until the meal ends. ATE means you used the registration yourself. WASTED means the meal ended unsold and unused. Dashed slots are registered meals that haven't ended. Hovering shows the buyer, their number, when they paid, how fast the QR went out, and the median ask for that meal.
+- **Saved this month.** The green bar is what your sales earned back against `sales.monthly_fee`. The striped part after it is what the month's wasted meals would have fetched at the median ask.
+- **Regulars.** Every buyer, all time, with the number of meals they bought from you. Repeat buyers climb rarity tiers: 1 COMMON, 2-3 UNCOMMON, 4-6 RARE, 7-9 EPIC, 10+ LEGENDARY.
+- **Price check.** Your sales over four weeks against the market's middle half and median ask for each meal, with UNDERCUT, AT MARKET or PREMIUM from your average gap to each serving's median.
+- **Earnings.** Meals sold, money earned and median price per mess, with earnings per day on one shared scale.
+
+Eaten, wasted and registered meals come from the portal, so the page needs `MESS_API_KEY` and the IIIT network, like `my_registrations`. The page reads registrations live and keeps the last read in memory for a minute. Without the portal it shows sales only and says why.
+
+The median ask is the median stated price of sell listings for that serving at that mess. With fewer than 3 asks it falls back to every mess for that serving, then to that meal over four weeks. Listings are pruned after 14 days, so `run` saves each serving's asking prices every hour in `market_prices`.
+
+Buyer names are the WhatsApp name on the payment message, or the one stored for that DM peer. Sales from before this page existed have no payment time, offer time or mess. The ledger fills in mess and diet from the portal when it can.
 
 To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` serves the board as it stood at that time on `127.0.0.1:8768`. Sold status reflects reactions up to now, not up to that time.
 
@@ -183,6 +199,10 @@ WhatsApp Pay here and I will send the QR."` to send that text to the selected
 buyer after arming and connecting. It is sent once per invocation; omit the
 flag when resuming if you do not want to repeat the offer. Sending an offer
 does not implement negotiation or posting to groups.
+
+For the sales page, `deliver-qr` also records when the offer went out, when
+the buyer paid, the name on their payment message and when the QR was sent.
+With `-portal-qr` it records the meal's mess and diet from the registration.
 
 To deliver the current real portal QR instead of a saved image:
 

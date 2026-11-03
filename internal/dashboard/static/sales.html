@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d12">
+<title>My sales · Mess Auction House</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="silkscreen-700.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="sales.css">
+<script src="common.js" defer></script>
+<script src="sales.js" defer></script>
+</head>
+<body>
+<div class="app sales">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" id="logo"></span>
+      <div>
+        <h1>My sales</h1>
+        <p class="sub" id="sub">Who bought your meals, and for how much</p>
+      </div>
+      <a class="nav-link" href="./" title="Back to the listings"><span id="navIcon"></span>Auction house</a>
+    </div>
+    <span class="live" id="live"><i></i><span id="liveText">connecting</span></span>
+  </header>
+
+  <p class="notice" id="notice" hidden></p>
+
+  <section class="chest" aria-label="Sales ledger">
+    <div class="chest-head">
+      <span class="head-icon" id="ledIcon"></span>
+      <span class="head-name">Sales ledger</span>
+      <span class="head-meta" id="ledMeta"></span>
+      <span class="pager">
+        <button class="pg" id="pgPrev" aria-label="Earlier week">&lsaquo;</button>
+        <button class="pg" id="pgNext" aria-label="Later week">&rsaquo;</button>
+      </span>
+    </div>
+    <div class="saved" id="saved">
+      <div class="saved-top"><span class="saved-k" id="savedK">Saved this month</span><span class="saved-v" id="savedV"></span></div>
+      <div class="xp-bar" id="xpBar"><i class="earned" id="xpEarned"></i><i class="could" id="xpCould"></i></div>
+      <div class="saved-row" id="savedRow"></div>
+    </div>
+    <div class="ledger">
+      <div class="lgrid" id="lgrid" aria-label="Meals by day"></div>
+      <div class="lside"><div class="side-k">Hover a slot</div><div class="panel" id="insp"></div></div>
+    </div>
+    <div class="slegend">
+      <span><i class="sw s"></i>Sold</span>
+      <span><i class="sw r"></i>Armed, awaiting pay</span>
+      <span><i class="sw a"></i>Ate it</span>
+      <span><i class="sw w"></i>Wasted</span>
+      <span><i class="sw u"></i>Registered</span>
+    </div>
+  </section>
+
+  <section class="chest" aria-label="Regular buyers">
+    <div class="chest-head">
+      <span class="head-icon" id="regIcon"></span>
+      <span class="head-name">Regulars</span>
+      <span class="head-meta" id="regMeta"></span>
+    </div>
+    <div class="heads" id="heads"></div>
+    <div class="rbody"><div class="panel" id="rinsp"></div><div class="tiers" id="tiers"></div></div>
+  </section>
+
+  <section class="chest" aria-label="Your prices against the market">
+    <div class="chest-head">
+      <span class="head-icon" id="pcIcon"></span>
+      <span class="head-name">Price check</span>
+      <span class="head-meta">last 4 weeks</span>
+      <span class="pleg" aria-hidden="true"><span><i class="b"></i>market middle half</span><span><i class="t"></i>median ask</span><span><i class="d"></i>your sale</span></span>
+    </div>
+    <div id="pplot"></div>
+  </section>
+
+  <section class="chest" aria-label="Earnings per mess">
+    <div class="chest-head">
+      <span class="head-icon" id="cardIcon"></span>
+      <span class="head-name">Earnings</span>
+      <span class="head-meta">₹ per day over 4 weeks, one scale for every mess. The shaded band is the ledger's week.</span>
+    </div>
+    <div class="ecards" id="cards"></div>
+  </section>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+</body>
+</html>

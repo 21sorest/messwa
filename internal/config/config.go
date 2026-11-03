@@ -23,6 +23,7 @@ type Config struct {
 	DMs    DMs    `toml:"dms"`
 	MCP    MCP    `toml:"mcp"`
 	Dash   Dash   `toml:"dashboard"`
+	Sales  Sales  `toml:"sales"`
 
 	loc *time.Location
 }
@@ -81,6 +82,12 @@ type Dash struct {
 	// sellers' phone numbers, so keep it on loopback or a private
 	// address like a LAN or VPN IP.
 	Listen string `toml:"listen"`
+}
+
+type Sales struct {
+	// What the mess charges you per month, in rupees. The sales page
+	// measures how much of it your sales earned back. 0 hides that part.
+	MonthlyFee int `toml:"monthly_fee"`
 }
 
 // VegOnly reports whether a mess serves only veg.
