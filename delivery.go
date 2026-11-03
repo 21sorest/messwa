@@ -42,6 +42,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	amount := fs.String("amount", "", "agreed INR amount, e.g. 60.00")
 	qr := fs.String("qr", "", "PNG or JPEG image to send (defaults to an embedded, labelled test image)")
 	portalQR := fs.Bool("portal-qr", false, "fetch the current QR from the portal immediately before delivery; requires MESS_API_KEY")
+	offer := fs.String("offer-text", "", "optional offer to send to the selected buyer once connected and armed")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -183,6 +184,15 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		return err
 	}
 	defer c.WA.Disconnect()
+	if *offer != "" {
+		if !c.WA.WaitForConnection(20 * time.Second) {
+			return errors.New("WhatsApp connection not ready; offer was not sent")
+		}
+		if _, err := c.WA.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(*offer)}); err != nil {
+			return fmt.Errorf("offer send failed or is uncertain; inspect chat before retrying: %w", err)
+		}
+		log.Info("offer sent to selected buyer")
+	}
 	fmt.Fprintf(os.Stderr, "Armed %s %s for INR %s, ending %s. Only a new payment message from the selected buyer can trigger delivery. Payment is assumed, not bank-verified.\n", d.Date, d.Meal, d.Amount, slot.End.Format(time.RFC3339))
 	select {
 	case err := <-done:

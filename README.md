@@ -178,6 +178,12 @@ The date is interpreted in the configured timezone and the configured meal's
 end time is the delivery deadline. Nothing is posted to selling groups and
 payment instructions are not sent by this command; agree the price first.
 
+Optionally pass `-offer-text "Selling Palash breakfast for INR 2.37. Pay through
+WhatsApp Pay here and I will send the QR."` to send that text to the selected
+buyer after arming and connecting. It is sent once per invocation; omit the
+flag when resuming if you do not want to repeat the offer. Sending an offer
+does not implement negotiation or posting to groups.
+
 To deliver the current real portal QR instead of a saved image:
 
 ```sh
