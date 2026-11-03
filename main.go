@@ -42,7 +42,10 @@ commands:
   import-history [-keep]        load the group history saved by login (configured groups only)
   run                           ingest messages and serve MCP over HTTP
   inspect-payment -peer JID     inspect live incoming payment fields from one DM (stop run first)
-  deliver-qr -date DATE -meal MEAL -peer JID -amount INR -qr IMAGE
+  registrations [-from DATE] [-to DATE]
+                                read your meal registrations from the mess portal
+  fetch-qr [-out IMAGE]         fetch the current portal QR into a private PNG file
+  deliver-qr -date DATE -meal MEAL -peer JID -amount INR [-qr IMAGE | -portal-qr]
                                 arm one meal's QR delivery after a matching payment message
 
 inspection (read the database only, safe while run is up):
@@ -82,6 +85,10 @@ func main() {
 		err = run(ctx, cfg, log)
 	case "inspect-payment":
 		err = inspectPayment(ctx, cfg, log, args)
+	case "registrations":
+		err = registrations(ctx, cfg, args)
+	case "fetch-qr":
+		err = fetchPortalQR(ctx, cfg, args)
 	case "deliver-qr":
 		err = deliverQR(ctx, cfg, log, args)
 	case "import-history":

@@ -26,6 +26,7 @@ import (
 
 	"messwa/internal/config"
 	"messwa/internal/meals"
+	"messwa/internal/portal"
 	"messwa/internal/store"
 	"messwa/internal/wa"
 )
@@ -40,11 +41,15 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	peer := fs.String("peer", "", "reserved buyer's full WhatsApp JID")
 	amount := fs.String("amount", "", "agreed INR amount, e.g. 60.00")
 	qr := fs.String("qr", "", "PNG or JPEG image to send (defaults to an embedded, labelled test image)")
+	portalQR := fs.Bool("portal-qr", false, "fetch the current QR from the portal immediately before delivery; requires MESS_API_KEY")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
+	}
+	if *portalQR && *qr != "" {
+		return errors.New("choose either -portal-qr or -qr")
 	}
 	day, err := time.ParseInLocation("2006-01-02", *date, cfg.Location())
 	if err != nil {
@@ -81,6 +86,22 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	if err != nil {
 		return err
 	}
+	imageHash := fmt.Sprintf("%x", sha256.Sum256(data))
+	var portalClient *portal.Client
+	var accountHash string
+	if *portalQR {
+		portalClient, err = portal.FromEnv()
+		if err != nil {
+			return err
+		}
+		current, err := portalClient.QRForMeal(ctx, *date, *meal, "")
+		if err != nil {
+			return err
+		}
+		accountHash = current.AccountHash
+		// Bind restarts to the account, not the token that rotates daily.
+		imageHash = "portal:" + accountHash
+	}
 	c, err := wa.Open(ctx, cfg, log)
 	if err != nil {
 		return err
@@ -96,7 +117,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		return err
 	}
 	defer st.Close()
-	d := store.Delivery{Date: *date, Meal: *meal, Peer: jid.String(), Amount: *amount, ImageHash: fmt.Sprintf("%x", sha256.Sum256(data)), ArmedAt: time.Now()}
+	d := store.Delivery{Date: *date, Meal: *meal, Peer: jid.String(), Amount: *amount, ImageHash: imageHash, ArmedAt: time.Now()}
 	armedAt, err := st.ArmDelivery(ctx, d)
 	if err != nil {
 		return err
@@ -130,6 +151,16 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		attempted = true
 		id := c.WA.GenerateMessageID()
 		err := deliverOnce(ctx, st, d, e.Info.ID, id, func() error {
+			if portalClient != nil {
+				current, err := portalClient.QRForMeal(ctx, d.Date, d.Meal, accountHash)
+				if err != nil {
+					return err
+				}
+				data, mime, width, height, err = deliveryImageBytes(current.PNG)
+				if err != nil {
+					return err
+				}
+			}
 			log.Info("payment assumed; sending meal image", "date", d.Date, "meal", d.Meal, "amount", d.Amount)
 			up, err := c.WA.Upload(ctx, data, whatsmeow.MediaImage)
 			if err != nil {
@@ -202,6 +233,10 @@ func readDeliveryImage(path string) ([]byte, string, int, int, error) {
 			return nil, "", 0, 0, err
 		}
 	}
+	return deliveryImageBytes(data)
+}
+
+func deliveryImageBytes(data []byte) ([]byte, string, int, int, error) {
 	if len(data) > 5*1024*1024 {
 		return nil, "", 0, 0, errors.New("image exceeds 5 MiB")
 	}
