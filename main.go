@@ -41,6 +41,7 @@ commands:
   groups                        list your groups and their JIDs, to fill in config.toml
   import-history [-keep]        load the group history saved by login (configured groups only)
   run                           ingest messages and serve MCP over HTTP
+  inspect-payment -peer JID     inspect live incoming payment fields from one DM (stop run first)
 
 inspection (read the database only, safe while run is up):
   chat [-hours 48]              the merged group stream, each post annotated with its listing
@@ -77,6 +78,8 @@ func main() {
 		err = groups(ctx, cfg, log)
 	case "run":
 		err = run(ctx, cfg, log)
+	case "inspect-payment":
+		err = inspectPayment(ctx, cfg, log, args)
 	case "import-history":
 		err = importHistory(ctx, cfg, args)
 	case "chat":

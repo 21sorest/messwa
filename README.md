@@ -108,4 +108,38 @@ The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don'
 
 ## Next: selling (phase 2)
 
+### Payment diagnostic
+
+`inspect-payment` listens to one explicitly selected DM, including a saved
+contact when selected. Stop `run` before reusing its session.
+
+```sh
+go build -o messwa .
+# First setup only: copy config.example.toml to config.toml and run messwa login.
+./messwa inspect-payment -peer '91XXXXXXXXXX@s.whatsapp.net'
+```
+
+Use the test sender's number with country code, or their full `@lid` JID.
+Only new incoming messages from that peer are processed. Normal messages
+produce field names only. A `sendPaymentMessage` can produce `decoded_prefix`
+with currency, decimal amount, timestamp and an optional note. Amounts remain
+strings to avoid floating-point rounding. The experimental decoder recognizes
+the observed Android UPI Parcel layout, including `interopNote` when the
+separate `noteMessage` is empty. Other layouts may not decode.
+
+Header codes remain unmapped. `completion_status` is `unknown` and
+`bank_verified` is always false. These are sender-provided message details,
+not independent confirmation of a bank credit. No automatic sale or QR release
+is implemented. The diagnostic does not attach the ingester, store DM content
+in the data database, send chat messages, or expose extra MCP tools.
+
+`-raw` includes raw payment fields in stdout for local debugging. It can expose
+account details. Default output omits those fields but includes the decoded
+amount and note. Keep output and session files private. Ctrl+C stops listening.
+
+Validation used real incoming payments for INR 1.00, 3.00, 2.37 and 1.68, with
+a note in the final sample. Fixtures contain only a non-identifying prefix and
+synthetic note data. Tests cover malformed/truncated payloads, unknown note
+wrappers, duplicate note keys and Unicode. No Java objects are deserialized.
+
 The plan from `/home/sdixit/messbuysell/selling-instructions.md`, adapted to WhatsApp. You start a sell task (meal, price range). The agent posts "Selling Kadamba lunch" in the groups without a price, answers unsaved numbers who DM about it, negotiates within the range, then hands the chat to you. The binary enforces the rules: sends happen only during an active task, only to unsaved numbers who messaged first, never below the floor price, and rate-limited.
