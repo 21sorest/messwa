@@ -4,7 +4,7 @@ messwa links to WhatsApp as a companion device (via [whatsmeow](https://github.c
 
 The access limits live in the binary. Ingest drops every chat outside the allowed set before anything touches disk, and the MCP server reads only what ingest stored. So the agent can't reach other chats however it phrases a request.
 
-This is the read-only first milestone. Nothing is ever sent: no messages, no read receipts, no presence. Your phone keeps showing messages as unread and notifications don't change.
+The default `run` service and MCP tools are read-only: no messages, read receipts or presence are sent. Your phone keeps showing messages as unread and notifications don't change. The separate, explicitly armed `deliver-qr` command can send one image after a matching payment message.
 
 ## What gets stored
 
@@ -107,6 +107,47 @@ The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don'
 - whatsmeow is unofficial. A read-only device is low risk, but a ban is possible.
 
 ## Next: selling (phase 2)
+
+### One-meal QR delivery
+
+Stop `run` or `inspect-payment` before using the same linked session. Arm one
+date/meal for a specific buyer and agreed INR amount with two decimal places:
+
+```sh
+./messwa deliver-qr -date 2026-11-04 -meal lunch \
+  -peer '91XXXXXXXXXX@s.whatsapp.net' -amount 2.37
+```
+
+Without `-qr`, this sends an embedded image labelled **TEST IMAGE / NOT A MEAL
+QR**. It works in the Docker image too. For a real sale, pass
+`-qr state/meal-qr.png`; keep your real QR in the ignored state directory.
+The image must be PNG or JPEG, no larger than 5 MiB or 8192 pixels per side.
+The date is interpreted in the configured timezone and the configured meal's
+end time is the delivery deadline. Nothing is posted to selling groups and
+payment instructions are not sent by this command; agree the price first.
+
+Only a new incoming WhatsApp Pay `sendPaymentMessage` from the selected buyer
+with exactly that amount qualifies. Both the message and decoded transaction
+timestamps must be after arming and before the meal ends. Normal text,
+screenshots, other buyers, wrong amounts and old transactions do not qualify.
+As agreed for this workflow, payment is **assumed**, with no bank receipt or
+completion-status check. It sends the image back to that buyer's DM and exits.
+
+The data database stores the buyer, amount, image hash, arming time, payment
+message ID, outgoing image ID and state for each date/meal. It never stores
+the raw payment payload. Repeated events and restarts cannot automatically
+send the same slot twice. An armed slot can resume only with the same buyer,
+price and image. A payment message cannot claim another meal.
+
+Network failures or a crash after claiming leave the delivery as `sending`.
+The command refuses to rearm `sending` or `sent` slots. Check the buyer's chat
+and make any follow-up manually; a timeout does not prove that delivery failed.
+The `sent` state records WhatsApp's send acknowledgement, not the buyer opening
+the image. Keep the same state database when restarting. Do not run two
+connections using the same linked-device session.
+
+This command is not exposed through MCP and does not implement automatic
+registration imports, scheduling, negotiation, buyer reassignment or refunds.
 
 ### Payment diagnostic
 
