@@ -279,3 +279,52 @@ func TestVegOnlyMess(t *testing.T) {
 		t.Errorf("diets: %v", diet)
 	}
 }
+
+func TestMarket(t *testing.T) {
+	in, st, cfg := setup(t)
+	ctx := context.Background()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, b, c := "911111@s.whatsapp.net", "922222@s.whatsapp.net", "933333@s.whatsapp.net"
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "a1", Sender: a, SenderAlt: "1@lid", TS: at(cfg, "18:00"), Text: "selling kadamba dinner @30"}))
+	must(in.Post(ctx, GroupPost{Chat: "g2@g.us", ID: "a2", Sender: a, TS: at(cfg, "18:01"), Text: "selling kadamba dinner @30"}))
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "b1", Sender: b, TS: at(cfg, "18:02"), Text: "selling palash dinner"}))
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "c1", Sender: c, TS: at(cfg, "18:03"), Text: "need kadamba dinner"}))
+	must(in.Post(ctx, GroupPost{Chat: "g1@g.us", ID: "x", Sender: c, TS: at(cfg, "18:04"), Text: "hello"}))
+
+	// a sells via LID tick on the second copy, a stranger's tick on b's post
+	// doesn't count, and c's buy order going through isn't a sale.
+	must(in.Reaction(ctx, "g2@g.us", "a2", "1@lid", a, "✅", at(cfg, "18:20")))
+	must(in.Reaction(ctx, "g1@g.us", "b1", c, "", "✅", at(cfg, "18:21")))
+	must(in.Reaction(ctx, "g1@g.us", "c1", c, "", "✅", at(cfg, "18:22")))
+	// a's reply "sold" later doesn't move the sale time
+	// and, like other replies under a listing, doesn't count as a message.
+	must(in.Handle(ctx, store.LogEntry{Chat: "g1@g.us", ID: "a3", Type: "post", Sender: a, ReplyTo: "a1", TS: at(cfg, "18:30"), Text: "sold"}))
+
+	posts, sales, err := st.Market(ctx, rule(cfg), at(cfg, "17:00"), at(cfg, "19:00"))
+	must(err)
+	if len(posts) != 4 {
+		t.Fatalf("want 4 posts (2 copies, palash, buy order), got %+v", posts)
+	}
+	if posts[0].Mess != "kadamba" || posts[0].Price != 30 || posts[3].Kind != "buy" {
+		t.Errorf("posts: %+v", posts)
+	}
+	if len(sales) != 1 || sales[0].Mess != "kadamba" || !sales[0].TS.Equal(at(cfg, "18:20")) || !sales[0].FirstSeen.Equal(at(cfg, "18:00")) {
+		t.Fatalf("sales: %+v", sales)
+	}
+
+	_, sales, err = st.Market(ctx, rule(cfg), at(cfg, "18:25"), at(cfg, "19:00"))
+	must(err)
+	if len(sales) != 0 {
+		t.Errorf("a sale before the range leaked in: %+v", sales)
+	}
+	posts, _, err = st.Market(ctx, rule(cfg), at(cfg, "17:00"), at(cfg, "18:01"))
+	must(err)
+	if len(posts) != 2 {
+		t.Errorf("posts after until leaked in: %+v", posts)
+	}
+}

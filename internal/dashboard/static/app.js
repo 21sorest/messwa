@@ -214,6 +214,20 @@ const ART = {
     '............',
     '............',
   ], { c: '#5be37a' }],
+  chart: [[
+    '............',
+    '..........bb',
+    '..........bb',
+    '....yy....bb',
+    '....yy....bb',
+    '....yy....bb',
+    '.kk.yy....bb',
+    '.kk.yy....bb',
+    '.kk.yy.pp.bb',
+    '.kk.yy.pp.bb',
+    '.kk.yy.pp.bb',
+    '.kk.yy.pp.bb',
+  ], { k: '#f7c548', y: '#36c9b0', p: '#ff5a36', b: '#b89cff' }],
   next: [[
     '............',
     '.....a......',
@@ -271,10 +285,10 @@ const DIET_COLOR = { veg: 'ca', nonveg: 'cc', egg: 'c6' };
 // ---------- state ----------
 
 const saved = (() => { try { return JSON.parse(localStorage.getItem('mah') || '{}'); } catch { return {}; } })();
-const S = Object.assign({ tab: 'kadamba', mode: 'sell', sort: 'recent', recentDir: 'desc', priceDir: 'asc', diet: 'all', meal: 'all', sold: false }, saved, { page: 0, q: '' });
+const S = Object.assign({ tab: 'kadamba', mode: 'sell', sort: 'recent', recentDir: 'desc', priceDir: 'asc', diet: 'all', meal: 'all', sold: false, win: 30 }, saved, { page: 0, q: '' });
 const persist = () => {
-  const { tab, mode, sort, recentDir, priceDir, diet, meal, sold } = S;
-  localStorage.setItem('mah', JSON.stringify({ tab, mode, sort, recentDir, priceDir, diet, meal, sold }));
+  const { tab, mode, sort, recentDir, priceDir, diet, meal, sold, win } = S;
+  localStorage.setItem('mah', JSON.stringify({ tab, mode, sort, recentDir, priceDir, diet, meal, sold, win }));
 };
 
 let D = null;          // last /api/state
@@ -427,12 +441,24 @@ function sorted(list) {
 // ---------- layout ----------
 
 function layout() {
-  const w = window.innerWidth;
-  const s = w < 420 ? 50 : w < 640 ? 56 : w < 1000 ? 64 : 72;
-  const gap = w < 640 ? 5 : 6;
-  const pad = w < 640 ? 20 + 22 : 40 + 34;
-  const avail = Math.min(w, 1280) - pad - s - gap * 2;
-  const cols = Math.max(4, Math.min(12, Math.floor((avail + gap) / (s + gap))));
+  // clientWidth is the layout viewport. innerWidth on Android Chrome follows
+  // the visual viewport, which widens when anything overflows; sizing the grid
+  // from it then makes the overflow permanent.
+  const w = document.documentElement.clientWidth || window.innerWidth;
+  let s, gap, cols;
+  if (w < 640) {
+    // Phones: a fixed column count, with slots stretched to fill the width.
+    // Budget = app padding 20 + chest padding 20 + chest border 2, then the tab
+    // column (one slot plus a double gap) beside the grid.
+    gap = 5;
+    cols = w < 360 ? 4 : 5;
+    s = Math.max(44, Math.min(72, Math.floor((w - 42 - (cols + 1) * gap) / (cols + 1))));
+  } else {
+    s = w < 1000 ? 64 : 72;
+    gap = 6;
+    const avail = Math.min(w, 1280) - 74 - s - gap * 2;
+    cols = Math.max(4, Math.min(12, Math.floor((avail + gap) / (s + gap))));
+  }
   const rows = cols <= 6 ? 7 : 5;
   L = { s, gap, cols, rows };
   const st = document.documentElement.style;
@@ -452,6 +478,7 @@ function render() {
   renderTabs();
   renderGrid();
   renderControls();
+  renderStats();
   keepTip();
   tickLive();
 }
@@ -568,19 +595,31 @@ function emptyText() {
 }
 
 const FRESH = 120; // seconds a new post shines
+// One glint cycle: a sweep across the slot, then a rest. Every fresh slot
+// runs on the same wall clock, so they all sweep together and a re-render
+// picks the animation up mid-cycle instead of restarting it.
+const GLINT_MS = 3000;
+const GLINT_SWEEP_MS = 2200;
+
+function glintNode(expiresIn) {
+  const g = el('span', 'glint');
+  g.style.animationDelay = `${-(Date.now() % GLINT_MS)}ms`;
+  // Switch off on the dot, but never cut a sweep in half: if time runs out
+  // mid-sweep, wait for it to finish.
+  const phase = (Date.now() + expiresIn) % GLINT_MS;
+  const wait = expiresIn + (phase < GLINT_SWEEP_MS ? GLINT_SWEEP_MS - phase : 0);
+  setTimeout(() => g.remove(), wait);
+  return g;
+}
 
 function slotNode(l) {
   const b = el('button', 'slot item');
   b.dataset.id = l.id;
   b.style.setProperty('--m', messColor(l.mess));
   if (l.status === 'sold' || l.status === 'closed') b.classList.add(l.status);
-  // Shine for 2 minutes after the latest post, then switch off on the dot
-  // rather than at the next re-render.
+  // Shine for 2 minutes after the latest post.
   const fresh = FRESH - (now() - l.last_seen_at);
-  if (fresh > 0 && l.status === 'available') {
-    b.classList.add('fresh');
-    setTimeout(() => b.classList.remove('fresh'), fresh * 1000);
-  }
+  if (fresh > 0 && l.status === 'available') b.append(glintNode(fresh * 1000));
   if (popIds.has(l.id)) b.classList.add('pop');
 
   if (!vegOnly(l.mess) || S.tab === 'all') {
@@ -764,6 +803,7 @@ function hideTip() {
 // tip attaches a hover tooltip to a static element (tabs, buttons).
 // Touch taps never show tooltips; the detail view covers that.
 function tip(node, fn) {
+  node._tip = fn;
   node.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(node, fn, e.clientX, e.clientY); });
   node.addEventListener('pointermove', (e) => { if (tipFor === node) placeTip(e.clientX, e.clientY); });
   node.addEventListener('pointerleave', hideTip);
@@ -784,18 +824,26 @@ grid.addEventListener('pointerover', (e) => {
 });
 
 // keepTip runs after a re-render replaces the hovered node. If the same
-// listing is still under the mouse, the tooltip moves to its new node with
-// fresh data; anything else closes it.
+// listing, or the same stats cell (matched by data-tk), is still under the
+// mouse, the tooltip moves to its new node with fresh data; anything else
+// closes it.
 function keepTip() {
   if (!tipFor || tipFor.isConnected) return;
-  const id = tipFor.dataset.id;
-  const nb = id ? grid.querySelector(`.item[data-id="${id}"]`) : null;
-  const l = nb && byId.get(+id);
+  const { id, tk } = tipFor.dataset;
+  let nb = null, fn = null;
+  if (id) {
+    nb = grid.querySelector(`.item[data-id="${id}"]`);
+    const l = nb && byId.get(+id);
+    fn = l && (() => itemTip(l));
+  } else if (tk) {
+    nb = document.querySelector(`[data-tk="${tk}"]`);
+    fn = nb && nb._tip;
+  }
   const r = nb && nb.getBoundingClientRect();
   // :hover lags until the mouse moves, so test the last mouse position
-  if (l && lastMouse.x >= r.left && lastMouse.x < r.right && lastMouse.y >= r.top && lastMouse.y < r.bottom) {
+  if (fn && lastMouse.x >= r.left && lastMouse.x < r.right && lastMouse.y >= r.top && lastMouse.y < r.bottom) {
     tipFor = nb;
-    tipFn = () => itemTip(l);
+    tipFn = fn;
     fillTip(tipFn());
   } else {
     hideTip();
@@ -947,6 +995,187 @@ function ctl(art, label, cls, onClick, tipFn, markup) {
   b.setAttribute('aria-label', label);
   tip(b, tipFn);
   return b;
+}
+
+// ---------- market stats ----------
+
+// The server sends the last two hours of posts and sales. Rates use the
+// chosen window; the strip always shows the full two hours in 5-minute
+// buckets, on one scale shared by every mess so the cards compare.
+const SPAN = 120, STEP = 5, WINS = [15, 30, 60, 120];
+const winLabel = (m) => (m < 60 ? `${m}M` : `${m / 60}H`);
+const winWords = (m) => (m < 60 ? `${m} min` : m === 60 ? 'hour' : `${m / 60} hours`);
+
+function median(xs) {
+  if (!xs.length) return null;
+  const v = xs.slice().sort((a, b) => a - b), h = v.length >> 1;
+  return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
+}
+
+// rate formats a per-minute rate: 0, 0.03, 0.5, 2.4, 12.
+function rate(v) {
+  if (!v) return '0';
+  if (v < 1) return String(+v.toFixed(2));
+  return v < 10 ? v.toFixed(1) : String(Math.round(v));
+}
+const pctText = (v) => (v == null ? '-' : `${Math.round(v * 100)}%`);
+
+// stats sums one mess (or every mess, for null) over the last `win` minutes.
+// Messages are posts selling or swapping a meal; buy orders count as wanted.
+function stats(mess, win) {
+  const from = now() - win * 60;
+  const M = D.market;
+  const posts = M.posts.filter((p) => p.t > from && (!mess || p.mess === mess));
+  const sales = M.sales.filter((x) => x.t > from && (!mess || x.mess === mess));
+  const offers = posts.filter((p) => p.kind !== 'buy');
+  const asks = [...new Map(offers.filter((p) => p.kind === 'sell' && p.price != null).map((p) => [p.id, p.price])).values()];
+  return {
+    msgs: offers.length,
+    sales: sales.length,
+    wanted: posts.length - offers.length,
+    demand: offers.length ? sales.length / offers.length : null,
+    ask: median(asks),
+    asks: asks.length,
+    sellsIn: median(sales.map((x) => x.t - x.first)),
+  };
+}
+
+// verdict compares a mess's demand with the whole market's, so it reads
+// right at quiet and busy hours alike.
+function verdict(s, all) {
+  if (s.msgs < 6 || !all.demand) return { k: 'quiet', w: 'QUIET', why: 'Too few messages to call it.' };
+  const r = s.demand / all.demand;
+  if (r >= 1.3) return { k: 'hot', w: 'HOT', why: `Sells ${r.toFixed(1)}x as often as the market. Sellers can hold their price.` };
+  if (r <= 0.7) return { k: 'slow', w: 'SLOW', why: `Sells ${r.toFixed(1)}x as often as the market. Buyers can haggle.` };
+  return { k: 'steady', w: 'STEADY', why: 'Selling about as well as the market.' };
+}
+
+function buckets(mess, start) {
+  const out = [];
+  for (let i = 0; i < SPAN / STEP; i++) out.push({ t0: start + i * STEP * 60, msgs: 0, sales: 0 });
+  const at = (t) => out[Math.floor((t - start) / (STEP * 60))];
+  for (const p of D.market.posts) if (p.mess === mess && p.kind !== 'buy' && at(p.t)) at(p.t).msgs++;
+  for (const x of D.market.sales) if (x.mess === mess && at(x.t)) at(x.t).sales++;
+  return out;
+}
+
+function renderStats() {
+  if (!D || !D.market) return;
+  const n = now();
+  const win = WINS.includes(S.win) ? S.win : 30;
+  const all = stats(null, win);
+  const meta = $('pulseMeta');
+  meta.textContent = `All messes: ${rate(all.msgs / win)} msgs/min · ${rate(all.sales / win)} sales/min · ${pctText(all.demand)} demand`;
+  meta.title = meta.textContent;
+
+  const wins = $('wins');
+  wins.replaceChildren(...WINS.map((m) => {
+    const b = el('button', 'win' + (m === win ? ' on' : ''), winLabel(m));
+    b.setAttribute('aria-pressed', String(m === win));
+    b.setAttribute('aria-label', `Last ${winWords(m)}`);
+    b.addEventListener('click', () => update(() => { S.win = m; }));
+    return b;
+  }));
+
+  // Buckets line up with the clock; the last one is still filling.
+  const end = Math.ceil(n / (STEP * 60)) * STEP * 60;
+  const start = end - SPAN * 60;
+  const messes = D.messes.map((m) => m.name);
+  const series = new Map(messes.map((m) => [m, buckets(m, start)]));
+  const top = Math.max(1, ...[...series.values()].flat().map((b) => Math.max(b.msgs, b.sales)));
+
+  $('cards').replaceChildren(...messes.map((m) => {
+    const s = stats(m, win);
+    const v = verdict(s, all);
+    const card = el('div', 'card' + (S.tab === m ? ' on' : ''));
+    card.style.setProperty('--m', messColor(m));
+    card.addEventListener('click', () => setTab(m));
+
+    const head = el('div', 'card-head');
+    head.append(svgEl(messIcon(m)), el('span', 'card-name', cap(m)), el('span', 'verdict ' + v.k, v.w));
+    card.append(head);
+
+    const kpis = el('div', 'kpis');
+    kpis.dataset.tk = `kpi:${m}`;
+    const kpi = (val, label) => {
+      const k = el('div', 'kpi');
+      k.append(el('b', val === '-' ? 'none' : '', val), el('span', '', label));
+      return k;
+    };
+    kpis.append(kpi(rate(s.msgs / win), 'MSGS/MIN'), kpi(rate(s.sales / win), 'SALES/MIN'), kpi(pctText(s.demand), 'DEMAND'));
+    tip(kpis, () => statsTip(m, s, v, win));
+    card.append(kpis);
+
+    const spark = el('div', 'spark');
+    spark.setAttribute('role', 'img');
+    spark.setAttribute('aria-label', `${cap(m)}: messages and sales per 5 minutes over the last 2 hours`);
+    const band = el('span', 'band');
+    band.style.setProperty('left', `${Math.max(0, ((n - win * 60 - start) / (end - start)) * 100)}%`);
+    spark.append(band);
+    for (const b of series.get(m)) {
+      const col = el('span', 'bk');
+      col.dataset.tk = `bk:${m}:${b.t0}`;
+      const bar = (cls, v) => {
+        const i = el('i', cls);
+        i.style.setProperty('height', v ? `max(2px, ${(v / top) * 100}%)` : '0');
+        return i;
+      };
+      col.append(bar('m', b.msgs), bar('s', b.sales));
+      tip(col, () => bucketTip(m, b));
+      spark.append(col);
+    }
+    card.append(spark);
+    const axis = el('div', 'axis');
+    axis.append(el('span', '', hm(start)), el('span', '', hm(start + SPAN * 30)), el('span', '', 'now'));
+    card.append(axis);
+
+    const extras = el('div', 'extras');
+    const x = (label, val) => {
+      const e = el('div', 'x');
+      e.append(el('em', '', label), el('b', val === '-' ? 'none' : '', val));
+      return e;
+    };
+    extras.append(
+      x('ASK', s.ask == null ? '-' : s.ask === 0 ? 'FREE' : `₹${Math.round(s.ask)}`),
+      x('SELLS IN', s.sellsIn == null ? '-' : dur(s.sellsIn)),
+      x('WANTED', `${rate(s.wanted / win)}/min`),
+    );
+    card.append(extras);
+    return card;
+  }));
+}
+
+function statsTip(m, s, v, win) {
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  return [
+    [{ t: `${cap(m)} market`, c: 'nm', color: messColor(m) }],
+    [{ t: `Last ${winWords(win)}`, c: 'c8' }],
+    0,
+    [{ t: 'Messages: ', c: 'c7' }, { t: `${s.msgs} (${rate(s.msgs / win)}/min)`, c: 'cf' }],
+    [{ t: '  posts selling or swapping it, every copy', c: 'c8' }],
+    [{ t: '  in every group, not replies', c: 'c8' }],
+    [{ t: 'Sales: ', c: 'c7' }, { t: `${s.sales} (${rate(s.sales / win)}/min)`, c: 'cf' }],
+    [{ t: '  the seller ticked it or said sold', c: 'c8' }],
+    [{ t: 'Demand: ', c: 'c7' }, { t: s.demand == null ? 'no messages' : `${pctText(s.demand)} sales per message`, c: 'cf' }],
+    0,
+    [{ t: 'Wanted: ', c: 'c7' }, { t: n(s.wanted, 'buy order', 'buy orders'), c: 'cf' }],
+    [{ t: 'Ask: ', c: 'c7' }, s.ask == null ? { t: 'no prices stated', c: 'c8' } : { t: `₹${Math.round(s.ask)} median of ${n(s.asks, 'priced listing', 'priced listings')}`, c: 'c6' }],
+    [{ t: 'Sells in: ', c: 'c7' }, s.sellsIn == null ? { t: 'no sales', c: 'c8' } : { t: `${dur(s.sellsIn)} median, post to tick`, c: 'cf' }],
+    0,
+    [{ t: v.why, c: v.k === 'hot' ? 'c6' : 'c7' }],
+    0,
+    [{ t: S.tab === m ? 'Currently browsing' : 'Click to browse!', c: 'ce' }],
+  ];
+}
+
+function bucketTip(m, b) {
+  const t1 = b.t0 + STEP * 60;
+  return [
+    [{ t: `${cap(m)}, ${hm(b.t0)}-${t1 > now() ? 'now' : hm(t1)}`, c: 'nm', color: messColor(m) }],
+    0,
+    [{ t: 'Messages: ', c: 'c7' }, { t: String(b.msgs), c: 'cf' }],
+    [{ t: 'Sales: ', c: 'c7' }, { t: String(b.sales), c: 'cf' }],
+  ];
 }
 
 // ---------- actions ----------
@@ -1131,6 +1360,7 @@ function tickLive() {
 // ---------- boot ----------
 
 $('logo').append(svgEl(icon('coin')));
+$('pulseIcon').append(svgEl(icon('chart')));
 layout();
 addEventListener('resize', () => {
   const before = `${L.cols}x${L.rows}x${L.s}`;
@@ -1140,5 +1370,5 @@ addEventListener('resize', () => {
 load();
 connect();
 setInterval(tickLive, 1000);
-setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); keepTip(); } }, 30000);
+setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); renderStats(); keepTip(); } }, 30000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });

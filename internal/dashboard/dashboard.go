@@ -8,6 +8,7 @@ package dashboard
 
 import (
 	"compress/gzip"
+	"context"
 	"embed"
 	"encoding/json"
 	"io/fs"
@@ -44,6 +45,34 @@ type state struct {
 	Current  *slot                `json:"current,omitempty"`
 	Next     *slot                `json:"next,omitempty"`
 	Listings []mcpserver.FeedItem `json:"listings"`
+	Market   market               `json:"market"`
+}
+
+// marketSpan is how far back the stats panel looks.
+const marketSpan = 2 * time.Hour
+
+// market is raw activity for the stats panel. The page buckets and rates it,
+// so the stats move with the clock between fetches.
+type market struct {
+	Since int64        `json:"since"`
+	Posts []marketPost `json:"posts"`
+	Sales []marketSale `json:"sales"`
+}
+
+type marketPost struct {
+	T     int64  `json:"t"`
+	ID    int64  `json:"id"`
+	Mess  string `json:"mess"`
+	Kind  string `json:"kind"`
+	Price *int   `json:"price,omitempty"`
+}
+
+type marketSale struct {
+	T     int64  `json:"t"`
+	First int64  `json:"first"`
+	ID    int64  `json:"id"`
+	Mess  string `json:"mess"`
+	Price *int   `json:"price,omitempty"`
 }
 
 // Handler serves the page at / and its data at /api/state and /api/listing.
@@ -63,6 +92,10 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 			return
 		}
 		st := state{Now: now.Unix(), TZ: cfg.Timezone, Listings: items}
+		if st.Market, err = marketState(r.Context(), srv, now.Add(-marketSpan)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		for _, m := range cfg.Messes {
 			st.Messes = append(st.Messes, mess{m.Name, m.VegOnly})
 		}
@@ -96,6 +129,28 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 	})
 
 	return headers(mux)
+}
+
+func marketState(ctx context.Context, srv *mcpserver.Server, since time.Time) (market, error) {
+	posts, sales, err := srv.Market(ctx, since)
+	m := market{Since: since.Unix(), Posts: []marketPost{}, Sales: []marketSale{}}
+	if err != nil {
+		return m, err
+	}
+	for _, p := range posts {
+		m.Posts = append(m.Posts, marketPost{T: p.TS.Unix(), ID: p.ListingID, Mess: p.Mess, Kind: p.Kind, Price: price(p.Price)})
+	}
+	for _, s := range sales {
+		m.Sales = append(m.Sales, marketSale{T: s.TS.Unix(), First: s.FirstSeen.Unix(), ID: s.ListingID, Mess: s.Mess, Price: price(s.Price)})
+	}
+	return m, nil
+}
+
+func price(p int) *int {
+	if p < 0 {
+		return nil
+	}
+	return &p
 }
 
 func toSlot(s *meals.Slot) slot {

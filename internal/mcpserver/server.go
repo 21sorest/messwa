@@ -431,3 +431,8 @@ func (s *Server) Schedule() ScheduleOut {
 	_, out, _ := s.mealSchedule(context.Background(), nil, ScheduleIn{})
 	return out
 }
+
+// Market is market activity from since until now, for the dashboard's stats.
+func (s *Server) Market(ctx context.Context, since time.Time) ([]store.MarketPost, []store.MarketSale, error) {
+	return s.st.Market(ctx, s.rule(), since, s.now())
+}
