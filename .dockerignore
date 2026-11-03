@@ -1,0 +1,6 @@
+# Keep the WhatsApp session, DB, config and local binary out of the build context.
+state/
+config.toml
+.env
+messwa
+.git/

@@ -1,11 +1,16 @@
 services:
   messwa:
     build: .
+    image: messwa:latest
+    container_name: messwa
     restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    env_file: .env          # MESSWA_MCP_TOKEN=...
+    user: "1000:1000"
+    # Host networking so the dashboard can bind the host address from config.toml
+    # and the MCP server stays on loopback, where it needs no token.
+    network_mode: host
+    env_file:
+      - path: .env          # MESSWA_MCP_TOKEN=..., only needed if mcp.listen isn't loopback
+        required: false
     volumes:
       - ./config.toml:/data/config.toml:ro
       - ./state:/data/state
-    ports:
-      - "127.0.0.1:8766:8766"

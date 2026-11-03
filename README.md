@@ -62,7 +62,7 @@ All tools are read-only. Group posts and DM text are written by strangers. The s
 
 ## Setup
 
-Needs Go 1.27+. On this server it's at `~/.local/go` (`export PATH=$HOME/.local/go/bin:$PATH`), the project lives in `~/messwa`, and a systemd user service runs it: `systemctl --user status messwa`. The `messwa` wrapper in `~/.local/bin` runs commands from the project directory.
+Needs Go 1.27+. On this server it's at `~/.local/go` (`export PATH=$HOME/.local/go/bin:$PATH`), the project lives in `~/messwa`, and Docker runs it (see below). The `messwa` wrapper in `~/.local/bin` runs the local binary from the project directory, which is fine for `dashboard -at` and `inspect` but not for `login`, `groups` or `run` while the container is up.
 
 ```sh
 go build -o messwa .
@@ -83,15 +83,18 @@ claude mcp add --transport http messwa http://127.0.0.1:8766/mcp
 
 ### Docker
 
-Inside a container the server has to listen on `0.0.0.0`, which requires a token:
+On this server the container is the live service. It uses host networking, so `config.toml` works unchanged: the dashboard binds the host's private address and MCP stays on loopback without a token. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
 
 ```sh
-echo "MESSWA_MCP_TOKEN=$(openssl rand -hex 32)" > .env
-# in config.toml: [mcp] listen = "0.0.0.0:8766"
-docker compose run --rm messwa login
-docker compose up -d
-claude mcp add --transport http messwa http://127.0.0.1:8766/mcp --header "Authorization: Bearer <token>"
+docker compose up -d --build        # rebuild and redeploy after code changes
+docker compose logs -f
+docker compose stop                 # before `login` or `groups`
+docker compose run --rm messwa groups
 ```
+
+To serve MCP beyond loopback, set `[mcp] listen = "0.0.0.0:8766"` and put `MESSWA_MCP_TOKEN=$(openssl rand -hex 32)` in `.env`. messwa refuses to start on a non-loopback address without it. Clients then pass `--header "Authorization: Bearer <token>"` to `claude mcp add`.
+
+The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don't run both: WhatsApp allows one connection per linked device.
 
 `/healthz` returns 503 when the WhatsApp connection is down.
 
