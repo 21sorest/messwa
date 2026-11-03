@@ -47,7 +47,7 @@ func TestDeliveryClaimSurvivesRestart(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ok, err := s.ClaimDelivery(ctx, d, "payment", "outgoing")
+			ok, err := s.ClaimDelivery(ctx, d, Payment{ID: "payment"}, "outgoing")
 			if err != nil {
 				t.Error(err)
 			}
@@ -80,7 +80,7 @@ func TestDeliveryClaimSurvivesRestart(t *testing.T) {
 	if _, err := s.ArmDelivery(ctx, d); err == nil {
 		t.Fatal("sent meal rearmed")
 	}
-	ok, err := s.ClaimDelivery(ctx, d, "another payment", "another outgoing")
+	ok, err := s.ClaimDelivery(ctx, d, Payment{ID: "another payment"}, "another outgoing")
 	if err != nil || ok {
 		t.Fatal("sent meal reclaimed", err)
 	}
@@ -89,7 +89,7 @@ func TestDeliveryClaimSurvivesRestart(t *testing.T) {
 	if _, err := s.ArmDelivery(ctx, other); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ClaimDelivery(ctx, other, "payment", "second outgoing"); err == nil {
+	if _, err := s.ClaimDelivery(ctx, other, Payment{ID: "payment"}, "second outgoing"); err == nil {
 		t.Fatal("payment reused for another meal")
 	}
 }

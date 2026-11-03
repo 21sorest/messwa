@@ -15,6 +15,8 @@ type CurrentQR struct {
 	PNG []byte
 	// Stable account binding, not the resettable token or raw account ID.
 	AccountHash string
+	// The registration QRForMeal checked. Empty from QR.
+	Registration Registration
 }
 
 // QR matches the portal frontend: encode auth/me.data.token directly, with no
@@ -40,29 +42,30 @@ func (c *Client) QR(ctx context.Context) (CurrentQR, error) {
 }
 
 // RequireRegistration is deliberately conservative for real-QR delivery.
-func (c *Client) RequireRegistration(ctx context.Context, date, meal string) error {
+func (c *Client) RequireRegistration(ctx context.Context, date, meal string) (Registration, error) {
 	rows, err := c.Registrations(ctx, date, date)
 	if err != nil {
-		return err
+		return Registration{}, err
 	}
-	count := 0
+	var found []Registration
 	for _, r := range rows {
 		if r.Meal != meal {
 			continue
 		}
-		if r.Category != "registered" || (r.CancelledAt != nil && *r.CancelledAt != "") || (r.AvailedAt != nil && *r.AvailedAt != "") {
-			return errors.New("meal is cancelled, used or not a regular registration")
+		if r.Category != "registered" || r.Cancelled() || r.Availed() {
+			return Registration{}, errors.New("meal is cancelled, used or not a regular registration")
 		}
-		count++
+		found = append(found, r)
 	}
-	if count != 1 {
-		return errors.New("expected exactly one active registration for this meal")
+	if len(found) != 1 {
+		return Registration{}, errors.New("expected exactly one active registration for this meal")
 	}
-	return nil
+	return found[0], nil
 }
 
 func (c *Client) QRForMeal(ctx context.Context, date, meal, accountHash string) (CurrentQR, error) {
-	if err := c.RequireRegistration(ctx, date, meal); err != nil {
+	reg, err := c.RequireRegistration(ctx, date, meal)
+	if err != nil {
 		return CurrentQR{}, err
 	}
 	image, err := c.QR(ctx)
@@ -72,5 +75,6 @@ func (c *Client) QRForMeal(ctx context.Context, date, meal, accountHash string) 
 	if accountHash != "" && image.AccountHash != accountHash {
 		return CurrentQR{}, errors.New("portal account changed since this delivery was armed")
 	}
+	image.Registration = reg
 	return image, nil
 }

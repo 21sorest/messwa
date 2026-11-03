@@ -24,6 +24,29 @@ type Registration struct {
 	AvailedAt   *string `json:"availed_at"`
 }
 
+func (r Registration) Cancelled() bool { return r.CancelledAt != nil && *r.CancelledAt != "" }
+func (r Registration) Availed() bool   { return r.AvailedAt != nil && *r.AvailedAt != "" }
+
+// MessDiet splits the portal's mess field, such as "kadamba-veg" or
+// "bakul-nonveg", into the mess name and the diet. Diet is empty when the
+// field doesn't say.
+func (r Registration) MessDiet() (mess, diet string) {
+	parts := strings.FieldsFunc(strings.ToLower(r.Mess), func(c rune) bool { return c == '-' || c == '_' || c == ' ' })
+	if len(parts) == 0 {
+		return "", ""
+	}
+	rest := strings.Join(parts[1:], "")
+	switch {
+	case strings.Contains(rest, "non"):
+		diet = "nonveg"
+	case strings.Contains(rest, "egg"):
+		diet = "egg"
+	case strings.Contains(rest, "veg"):
+		diet = "veg"
+	}
+	return parts[0], diet
+}
+
 type Client struct {
 	baseURL string
 	key     string

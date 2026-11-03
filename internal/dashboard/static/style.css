@@ -77,6 +77,14 @@ svg { display: block; }
 .logo { width: 38px; height: 38px; filter: drop-shadow(0 4px 10px rgba(255, 197, 61, .3)); }
 .brand h1 { margin: 0; font: 700 17px Pixel, var(--sans); letter-spacing: .4px; }
 .brand .sub { margin: 1px 0 0; color: var(--muted); font-size: 12px; }
+.nav-link {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 1px; margin-left: 6px;
+  border-radius: 8px; background: var(--slot); border: 1px solid var(--line);
+  font: 700 9px Pixel; letter-spacing: .4px; color: var(--muted); text-decoration: none; white-space: nowrap;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.nav-link:hover { background: var(--slot-hi); color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.nav-link span { width: 14px; height: 14px; }
 
 .day { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .day-label { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -94,6 +102,11 @@ svg { display: block; }
 .seg.now { background: linear-gradient(90deg, #ffd25e, #ff9f3d); box-shadow: 0 0 12px rgba(255, 180, 61, .55); }
 .seg-glyph { position: absolute; top: 12px; width: 11px; height: 11px; transform: translateX(-50%); opacity: .45; }
 .seg-glyph.now { opacity: 1; }
+.seg-glyph.coin { width: auto; display: flex; align-items: center; gap: 3px; opacity: 1; font: 400 8px Pixel; color: var(--gold); white-space: nowrap; }
+.seg-glyph.coin svg { width: 11px; height: 11px; flex: none; }
+.seg-glyph.coin.armed b { color: var(--muted); }
+.seg-glyph.coin.armed svg { border-radius: 50%; animation: ring 1.8s infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(255, 197, 61, .6); } 70% { box-shadow: 0 0 0 6px rgba(255, 197, 61, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 197, 61, 0); } }
 .now-mark { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; border-radius: 2px; background: #fff; box-shadow: 0 0 8px #fff8; }
 .day { padding-bottom: 14px; }
 
