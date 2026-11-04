@@ -10,7 +10,8 @@ The default `run` service and MCP tools are read-only: no messages, read receipt
 
 | Source | Stored |
 | --- | --- |
-| The configured mess groups | Posts that look like a listing (a sell/buy phrase or a meal name), reactions, edits, deletes |
+| The configured mess groups | Posts that look like a listing (a sell/buy phrase or a meal name), reactions, edits, deletes. Pruned after 14 days |
+| Ended listings, kept for good | One row each in `listing_facts`: seller's number and name, mess, meal, date, diet, price, when it was posted and sold. No message text |
 | DMs with saved contacts | Name and last-message times only |
 | DMs with unsaved numbers | Name, times, and message text (deleted after `dms.retention`, default 72h) |
 | Every other group, status, channel, notes-to-self | Nothing |
@@ -42,6 +43,7 @@ Everyone signs in to the dashboard with their own messwa account. There are two 
 | Board, market pulse, listing details | yes | yes |
 | `sales.html` | the linked WhatsApp account's sales, buyers, regulars, earnings, plus their own registrations | their own registrations only: eaten, wasted, still open, and what the wasted meals would have fetched |
 | Coins for armed and sold meals on the day track | yes | no |
+| `insights.html`: market analytics, every seller's number and record | yes | no |
 | MCP `my_registrations`, `my_qr` | with their own mess key | with their own mess key |
 | MCP `list_recent_chats`, `read_unsaved_chat` | yes | no |
 
@@ -122,6 +124,21 @@ Eaten, wasted and registered meals come from the portal, read with the signed-in
 The median ask is the median stated price of sell listings for that serving at that mess. With fewer than 3 asks it falls back to every mess for that serving, then to that meal over four weeks. Listings are pruned after 14 days, so `run` saves each serving's asking prices every hour in `market_prices`.
 
 Buyer names are the WhatsApp name on the payment message, or the one stored for that DM peer. Sales from before this page existed have no payment time, offer time or mess. The ledger fills in mess and diet from the portal when it can.
+
+### Insights
+
+`/insights.html` is for admins only. It's the INSIGHTS button on the board, which members don't see. It charts the market from `listing_facts`. Listings, posts and reactions are pruned after 14 days, so every hour `run` writes one permanent row per listing whose meal has ended. The first run after upgrading backfills whatever the last 14 days still hold. A row keeps updating for 7 days after its meal, so a late tick or un-tick still counts, and is final after that. Rows are keyed by the listing's first post, so `rebuild` updates them instead of adding copies.
+
+Each weekday has its own menu, so the page treats "Bakul, Tuesday lunch" as one slot across weeks. The filters along the top pick 4, 8 or 12 weeks or everything, a mess and a diet. `?mess=bakul&metric=ask` and the like open a view directly.
+
+- **Overview.** Days collected toward four weeks, which is four servings of every slot, then listings, sell-through, median time to sale, median ask, buy requests and sellers.
+- **Weekly menu board.** Weekdays across, meals down, one grid per mess, colored by sold %, listings per serving, median ask, or buy requests per serving. ×N under a day is how many of that weekday the range covers. Clicking a slot shows it week by week. The easiest and hardest slots to sell are listed beside it, counting only slots with 6 or more listings.
+- **Veg vs non-veg.** Sell-through by diet for each meal at messes that serve non-veg.
+- **Rush hours.** Listings, sales and buy requests per hour, averaged per day, over the serving windows.
+- **Seller's playbook.** Time from post to sale, and sell-through by how long before the meal ends a listing went up, how often it was posted, its ask against that serving's median, and how many groups it was in.
+- **Sellers.** New and returning sellers per day (per week past 35 days), listings per seller, and the 15 busiest sellers with their sold rate, usual slot and median ask. NEVER TICKS marks sellers with 3 or more listings and no ticks. Their sales don't show, so they pull sell-through down.
+
+Sold means what it means on the board, the seller's tick or "sold". Deleted listings are left out. `messwa dashboard` writes any missing rows when it starts, so the page works without the live service.
 
 To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` serves the board as it stood at that time on `127.0.0.1:8768`. Sold status reflects reactions up to now, not up to that time.
 

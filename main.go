@@ -332,6 +332,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			if err := st.SnapshotPrices(ctx, now.In(cfg.Location()).AddDate(0, 0, -12).Format("2006-01-02")); err != nil {
 				log.Error("snapshot prices", "err", err)
 			}
+			// Same for the permanent row per ended listing.
+			if err := st.SnapshotFacts(ctx, soldRule(cfg), now); err != nil {
+				log.Error("snapshot facts", "err", err)
+			}
 			if err := st.Prune(ctx, now.Add(-cfg.DMs.Retention.Duration), now.Add(-14*24*time.Hour)); err != nil {
 				log.Error("prune", "err", err)
 			}
@@ -420,6 +424,10 @@ func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, arg
 	if err != nil {
 		return err
 	}
+	// run keeps listing_facts current; catch up here for the insights page.
+	if err := st.SnapshotFacts(ctx, soldRule(cfg), time.Now()); err != nil {
+		return fmt.Errorf("snapshot facts: %w", err)
+	}
 	ms := mcpserver.New(cfg, st, contactsFromDB(cfg))
 	ms.SetAccounts(acc)
 	if *at != "" {
@@ -481,6 +489,10 @@ func privateAddr(addr string) error {
 		return nil
 	}
 	return fmt.Errorf("%s is not a private address; use a loopback, LAN or VPN (Tailscale) IP, not all interfaces or a public one", host)
+}
+
+func soldRule(cfg *config.Config) store.SoldRule {
+	return store.SoldRule{Emojis: cfg.Sold.Emojis, ClosedEmojis: cfg.Sold.ClosedEmojis, AdminsCount: cfg.Sold.AdminsCount}
 }
 
 func loopback(addr string) bool {

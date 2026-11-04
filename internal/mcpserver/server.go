@@ -583,3 +583,14 @@ func (s *Server) Prices(ctx context.Context, from, to string) ([]store.ServingPr
 func (s *Server) Market(ctx context.Context, since time.Time) ([]store.MarketPost, []store.MarketSale, error) {
 	return s.st.Market(ctx, s.rule(), since, s.now())
 }
+
+// Facts is the permanent row per ended listing for meals dated from..to,
+// for the insights page.
+func (s *Server) Facts(ctx context.Context, from, to string) ([]store.Fact, error) {
+	return s.st.Facts(ctx, from, to)
+}
+
+// FirstFactDate is the earliest meal date with a fact, or "".
+func (s *Server) FirstFactDate(ctx context.Context) (string, error) {
+	return s.st.FirstFactDate(ctx)
+}

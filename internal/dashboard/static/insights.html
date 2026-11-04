@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d12">
+<title>Insights · Mess Auction House</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="silkscreen-700.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="sales.css">
+<link rel="stylesheet" href="insights.css">
+<script src="common.js" defer></script>
+<script src="insights.js" defer></script>
+</head>
+<body>
+<div class="app sales insights">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" id="logo"></span>
+      <div>
+        <h1>Market insights</h1>
+        <p class="sub">What sells, when, and who's selling</p>
+      </div>
+      <a class="nav-link" href="./" title="Back to the listings"><span id="navIcon"></span>Auction house</a>
+      <a class="nav-link" href="sales.html" title="Who you sold to, and for how much"><span id="salesIcon"></span>My sales</a>
+      <a class="nav-link" href="account.html" id="accountLink" title="Your account">Account</a>
+    </div>
+  </header>
+
+  <div class="filters" id="filters" aria-label="Filters">
+    <div class="wins" id="fRange" aria-label="Range"></div>
+    <div class="wins" id="fMess" aria-label="Mess"></div>
+    <div class="wins" id="fDiet" aria-label="Diet"></div>
+  </div>
+
+  <p class="notice" id="notice" hidden></p>
+
+  <section class="chest" aria-label="Overview">
+    <div class="chest-head">
+      <span class="head-icon" id="ovIcon"></span>
+      <span class="head-name">Overview</span>
+      <span class="head-meta" id="ovMeta"></span>
+    </div>
+    <div class="saved" id="collect">
+      <div class="saved-top"><span class="saved-k">Data collected</span><span class="saved-v" id="collectV"></span></div>
+      <div class="xp-bar" id="collectBar"><i class="earned" id="collectFill"></i></div>
+      <div class="saved-row" id="collectRow"></div>
+    </div>
+    <div class="kpis six" id="kpis"></div>
+  </section>
+
+  <section class="chest" aria-label="Weekly menu board">
+    <div class="chest-head">
+      <span class="head-icon" id="wkIcon"></span>
+      <span class="head-name">Weekly menu board</span>
+      <span class="head-meta" id="wkMeta">Each weekday has its own menu, so every Tuesday lunch is one slot</span>
+      <div class="wins" id="fMetric" aria-label="Metric"></div>
+    </div>
+    <div class="boards" id="boards"></div>
+    <div class="slotrow">
+      <div class="slotside">
+        <div class="side-k">Easiest to sell</div>
+        <div class="ranks" id="best"></div>
+        <div class="side-k">Hardest to sell</div>
+        <div class="ranks" id="worst"></div>
+      </div>
+      <div class="slotmain">
+        <div class="side-k" id="slotK">Click a slot</div>
+        <div class="panel" id="slot"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chest" aria-label="Veg, non-veg and egg">
+    <div class="chest-head">
+      <span class="head-icon" id="dietIcon"></span>
+      <span class="head-name">Veg vs non-veg</span>
+      <span class="head-meta">Sell-through by diet, for messes that serve non-veg</span>
+      <span class="pleg" id="dietLeg"></span>
+    </div>
+    <div id="diet"></div>
+  </section>
+
+  <section class="chest" aria-label="Rush hours">
+    <div class="chest-head">
+      <span class="head-icon" id="hrIcon"></span>
+      <span class="head-name">Rush hours</span>
+      <span class="head-meta">Average per day by hour. Shaded bands are serving windows.</span>
+      <span class="pleg"><span><i class="lm"></i>listed</span><span><i class="ls"></i>sold</span><span><i class="lb"></i>wanted</span></span>
+    </div>
+    <div id="hours"></div>
+  </section>
+
+  <section class="chest" aria-label="Seller's playbook">
+    <div class="chest-head">
+      <span class="head-icon" id="pbIcon"></span>
+      <span class="head-name">Seller's playbook</span>
+      <span class="head-meta">Sell-through of ended listings. The rule marks the overall rate.</span>
+    </div>
+    <div class="play">
+      <div class="mini wide">
+        <h4>Time to sale</h4>
+        <div id="tts"></div>
+      </div>
+      <div class="odds" id="odds"></div>
+    </div>
+  </section>
+
+  <section class="chest" aria-label="Sellers">
+    <div class="chest-head">
+      <span class="head-icon" id="slIcon"></span>
+      <span class="head-name">Sellers</span>
+      <span class="head-meta" id="slMeta"></span>
+    </div>
+    <div class="play">
+      <div class="mini wide">
+        <h4 id="nrK">People listing per day</h4>
+        <div id="newret"></div>
+        <div class="pleg"><span><i class="ls"></i>returning</span><span><i class="ln"></i>new</span></div>
+      </div>
+      <div class="mini wide">
+        <h4>Listings per seller</h4>
+        <div id="freq"></div>
+      </div>
+    </div>
+    <div class="side-k tophead">Most active sellers</div>
+    <div class="tablewrap"><table class="sellers" id="sellers"></table></div>
+  </section>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+</body>
+</html>
