@@ -227,11 +227,19 @@ type CopyOut struct {
 	Text    string `json:"text"`
 	Edited  bool   `json:"edited,omitempty"`
 	Deleted bool   `json:"deleted,omitempty"`
+
+	// For the dashboard's Beeper links, not sent to agents.
+	Chat string    `json:"-"`
+	TS   time.Time `json:"-"`
 }
 
 type GetOut struct {
 	Listing ListingOut `json:"listing"`
 	Copies  []CopyOut  `json:"copies"`
+
+	// The seller's JIDs (phone and LID forms), for the dashboard's Beeper
+	// links. Not sent to agents.
+	Senders []string `json:"-"`
 }
 
 func (s *Server) getListing(ctx context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp.CallToolResult, GetOut, error) {
@@ -243,9 +251,9 @@ func (s *Server) getListing(ctx context.Context, _ *mcp.CallToolRequest, in GetI
 		return nil, GetOut{}, fmt.Errorf("no listing %d", in.ID)
 	}
 	names, _ := s.st.GroupNames(ctx)
-	out := GetOut{Listing: s.listing(ctx, l, names, s.now())}
+	out := GetOut{Listing: s.listing(ctx, l, names, s.now()), Senders: []string{l.Seller, l.SellerAlt}}
 	for _, p := range posts {
-		out.Copies = append(out.Copies, CopyOut{Group: groupName(names, p.Chat), Time: s.fmt(p.TS), Text: p.Text, Edited: p.Edited, Deleted: p.Deleted})
+		out.Copies = append(out.Copies, CopyOut{Group: groupName(names, p.Chat), Time: s.fmt(p.TS), Text: p.Text, Edited: p.Edited, Deleted: p.Deleted, Chat: p.Chat, TS: p.TS})
 	}
 	return nil, out, nil
 }

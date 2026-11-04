@@ -961,20 +961,33 @@ function openListing(l) {
     copies.append(c);
   }
   sheet.append(copies);
-  fetch(`api/listing?id=${encodeURIComponent(l.id)}`, { cache: 'no-store' })
+  // In Beeper mode the server also sends a beeper:// link per copy, which
+  // opens that exact message in its group.
+  const inBeeper = messagingApp() === 'beeper';
+  fetch(`api/listing?id=${encodeURIComponent(l.id)}${inBeeper ? '&beeper=1' : ''}`, { cache: 'no-store' })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (!d || !d.copies || modal.hidden) return;
       copies.replaceChildren(el('h3', '', `POSTED ${d.copies.length} ${d.copies.length === 1 ? 'TIME' : 'TIMES'}`));
-      for (const cp of d.copies) {
-        const c = el('div', 'copy' + (cp.deleted ? ' deleted' : ''));
+      d.copies.forEach((cp, i) => {
+        const link = inBeeper && !cp.deleted && d.beeper ? d.beeper[i] : '';
+        const c = el(link ? 'a' : 'div', 'copy' + (cp.deleted ? ' deleted' : '') + (link ? ' linked' : ''));
+        if (link) {
+          c.href = link;
+          c.title = 'Open this message in Beeper';
+        }
         const meta = el('div', 'copy-meta');
         meta.append(el('b', '', shortGroup(cp.group)), el('span', '', cp.time.slice(11, 16)));
         if (cp.edited) meta.append(el('span', '', 'edited'));
         if (cp.deleted) meta.append(el('span', '', 'deleted'));
+        if (link) {
+          const go = el('span', 'copy-go');
+          go.append(svgEl(beeperIcon), 'Open in Beeper');
+          meta.append(go);
+        }
         c.append(meta, el('div', 'copy-text', cp.text));
         copies.append(c);
-      }
+      });
     })
     .catch(() => {});
 
