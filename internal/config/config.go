@@ -82,6 +82,10 @@ type Dash struct {
 	// sellers' phone numbers, so keep it on loopback or a private
 	// address like a LAN or VPN IP.
 	Listen string `toml:"listen"`
+	// BeeperDB is Beeper Desktop or Server's index.db. When set, the
+	// dashboard links each copy of a post to that message in Beeper. It is
+	// only ever opened read-only.
+	BeeperDB string `toml:"beeper_db"`
 }
 
 type Sales struct {

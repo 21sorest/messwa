@@ -444,6 +444,11 @@ button.slot { padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-tap
 .copy-meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
 .copy-meta b { color: var(--text); font-weight: 600; }
 .copy-text { white-space: pre-wrap; overflow-wrap: anywhere; color: #d6c3e6; }
+a.copy.linked { display: block; text-decoration: none; color: inherit; cursor: pointer; transition: border-color .12s, background .12s; }
+a.copy.linked:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent); background: var(--slot-hi); }
+.copy-go { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.copy-go svg { width: 12px; height: 12px; }
+a.copy.linked:hover .copy-go { color: var(--gold); }
 .copy.deleted .copy-text { text-decoration: line-through; opacity: .55; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .btn {

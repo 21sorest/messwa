@@ -129,6 +129,7 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 
 	mux.HandleFunc("GET /api/sales", salesHandler(cfg, srv))
 
+	beeper := newBeeperIndex(cfg.Dash.BeeperDB)
 	mux.HandleFunc("GET /api/listing", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
 		if err != nil {
@@ -140,10 +141,37 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		writeJSON(w, r, out)
+		resp := listingResp{GetOut: out}
+		// Only browsers set to Beeper ask for links, so WhatsApp users
+		// never touch Beeper's database.
+		if r.URL.Query().Get("beeper") == "1" && beeper != nil {
+			posts := make([]beeperPost, len(out.Copies))
+			for i, c := range out.Copies {
+				posts[i] = beeperPost{Chat: c.Chat, TS: c.TS}
+			}
+			// A failed lookup only loses the links, so the listing
+			// still goes out.
+			if links, err := beeper.Links(r.Context(), posts, out.Senders); err == nil {
+				resp.Beeper = make([]string, len(out.Copies))
+				for i, l := range links {
+					resp.Beeper[i] = l
+				}
+			} else {
+				w.Header().Set("X-Beeper-Error", err.Error())
+			}
+		}
+		writeJSON(w, r, resp)
 	})
 
 	return headers(mux)
+}
+
+// listingResp is /api/listing's answer. Beeper, when asked for, holds a
+// beeper:// link per copy, in the same order, or "" for copies Beeper
+// doesn't have.
+type listingResp struct {
+	mcpserver.GetOut
+	Beeper []string `json:"beeper,omitempty"`
 }
 
 func mineToday(ctx context.Context, cfg *config.Config, srv *mcpserver.Server) ([]mine, error) {

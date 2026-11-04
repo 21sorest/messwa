@@ -42,6 +42,16 @@ Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged w
 - The bottom row sorts by recency or price (click again to flip), filters by diet on Kadamba and Bakul, filters by meal, shows sold and withdrawn listings, and switches to buy requests.
 - Hovering a slot shows the seller, phone, groups, times and the original text. Clicking opens every copy of the post and a button that opens a draft to the seller. Nothing is sent from messwa.
 - SETTINGS in the header picks your messaging app: WhatsApp (`wa.me`) or Beeper Desktop (`beeper://compose/whatsapp/phone/...`). The message button then opens that app. The choice is saved in the browser. Beeper links only work in Beeper Desktop, so phones and tablets always open WhatsApp.
+- With Beeper picked and `dashboard.beeper_db` set, each copy of a post in the listing is also a link to that message in its group (`beeper://select-thread/whatsapp/<room>/<sortKey>`). messwa finds it in Beeper's `index.db`, opened read-only: the room by the group's JID, the message by its timestamp and the seller's ID. Beeper's room IDs and sortKeys are the same on every device, so the database of a Beeper Server on this machine works for Beeper Desktop on a laptop. These groups delete messages after 24 hours, so older copies have no link. In Docker, mount the Beeper data folder with a `compose.override.yaml`:
+
+  ```yaml
+  services:
+    messwa:
+      volumes:
+        - /home/you/.beeper/profiles/server/server:/beeper:ro
+  ```
+
+  and set `beeper_db = "/beeper/index.db"`.
 - Below the board, the market pulse has a card per mess with messages per minute, sales per minute and demand (sales per message) over the last 15 minutes to 2 hours. A message is a post selling or swapping that mess. Each copy in each group counts, replies under a listing don't. A sale is the seller's tick or "sold". The strip shows messages (faint) and sales (solid) per 5 minutes over the last 2 hours, on one scale for every mess. The bottom row has the median asking price, the median time from post to sale, and buy orders per minute. HOT and SLOW compare a mess's demand with the whole market's. Clicking a card browses that mess.
 
 Keys: `1`-`5` messes, arrows for pages, `R` `P` `D` `M` `S` `W` for the bottom row, `/` to search. Right click on the diet or meal button, or Shift with `D` or `M`, cycles backwards.

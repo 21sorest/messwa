@@ -36,6 +36,10 @@ token_env = "MESSWA_MCP_TOKEN"
 # The listings dashboard. It shows sellers' phone numbers: keep it on
 # loopback or a private address such as a LAN or VPN IP.
 listen = "127.0.0.1:8767"
+# Optional. Beeper Desktop or Server's index.db, opened read-only. With it,
+# a browser that picked Beeper in SETTINGS gets each copy of a post as a
+# link to that message in Beeper Desktop.
+# beeper_db = "/home/you/.beeper/profiles/server/server/index.db"
 
 [sales]
 # What the mess charges you per month, in rupees. The sales page shows how

@@ -3,3 +3,4 @@
 /state/
 config.toml
 .env
+compose.override.yaml
