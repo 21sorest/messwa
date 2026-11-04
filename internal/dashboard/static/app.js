@@ -7,10 +7,10 @@
 // ---------- state ----------
 
 const saved = (() => { try { return JSON.parse(localStorage.getItem('mah') || '{}'); } catch { return {}; } })();
-const S = Object.assign({ tab: 'kadamba', mode: 'sell', sort: 'recent', recentDir: 'desc', priceDir: 'asc', diet: 'all', meal: 'all', sold: false, win: 30 }, saved, { page: 0, q: '' });
+const S = Object.assign({ tab: 'kadamba', mode: 'sell', sort: 'recent', recentDir: 'desc', priceDir: 'asc', diet: 'all', meal: 'all', sold: false, win: 30, via: 'whatsapp' }, saved, { page: 0, q: '' });
 const persist = () => {
-  const { tab, mode, sort, recentDir, priceDir, diet, meal, sold, win } = S;
-  localStorage.setItem('mah', JSON.stringify({ tab, mode, sort, recentDir, priceDir, diet, meal, sold, win }));
+  const { tab, mode, sort, recentDir, priceDir, diet, meal, sold, win, via } = S;
+  localStorage.setItem('mah', JSON.stringify({ tab, mode, sort, recentDir, priceDir, diet, meal, sold, win, via }));
 };
 
 let D = null;          // last /api/state
@@ -978,17 +978,9 @@ function openListing(l) {
     })
     .catch(() => {});
 
-  const actions = el('div', 'actions');
   const ph = digits(l.seller.phone);
+  const actions = el('div', 'actions');
   const wa = el('a', 'btn primary');
-  wa.append(svgEl(waIcon), l.kind === 'buy' ? 'Message buyer' : 'Message seller');
-  if (ph) {
-    wa.href = `https://wa.me/${ph}?text=${encodeURIComponent(greeting(l))}`;
-    wa.target = '_blank';
-    wa.rel = 'noopener noreferrer';
-  } else {
-    wa.setAttribute('aria-disabled', 'true');
-  }
   actions.append(wa);
   if (ph) {
     const copy = el('button', 'btn', 'Copy number');
@@ -1000,11 +992,54 @@ function openListing(l) {
   const close = el('button', 'btn', 'Close');
   close.addEventListener('click', closeModal);
   actions.append(close);
-  sheet.append(actions);
-  sheet.append(el('div', 'note', ph
-    ? 'The message button opens WhatsApp with a draft. Nothing is sent until you send it.'
-    : 'WhatsApp hides this member\'s number. Reply to their post in the group instead.'));
+
+  // Which app the message button opens. Beeper's links only work in Beeper
+  // Desktop, so phones and tablets always get WhatsApp.
+  const via = el('div', 'via');
+  via.setAttribute('role', 'group');
+  via.setAttribute('aria-label', 'Open messages in');
+  via.append(el('span', 'via-label', 'Open in'));
+  const note = el('div', 'note');
+  const choices = [['whatsapp', 'WhatsApp'], ['beeper', 'Beeper']].map(([v, label]) => {
+    const b = el('button', 'via-opt', label);
+    b.addEventListener('click', () => { S.via = v; persist(); paint(); });
+    via.append(b);
+    return [v, b];
+  });
+  const paint = () => {
+    const beeper = S.via === 'beeper' && !touchOnly();
+    for (const [v, b] of choices) b.setAttribute('aria-pressed', String(v === S.via));
+    wa.replaceChildren(svgEl(beeper ? beeperIcon : waIcon), l.kind === 'buy' ? 'Message buyer' : 'Message seller');
+    if (ph) {
+      const text = encodeURIComponent(greeting(l));
+      if (beeper) {
+        wa.href = `beeper://compose/whatsapp/phone/+${ph}?text=${text}`;
+        wa.removeAttribute('target');
+        wa.removeAttribute('rel');
+      } else {
+        wa.href = `https://wa.me/${ph}?text=${text}`;
+        wa.target = '_blank';
+        wa.rel = 'noopener noreferrer';
+      }
+    } else {
+      wa.removeAttribute('href');
+      wa.setAttribute('aria-disabled', 'true');
+    }
+    note.textContent = !ph
+      ? 'WhatsApp hides this member\'s number. Reply to their post in the group instead.'
+      : beeper
+        ? 'The message button opens Beeper Desktop with a draft. Nothing is sent until you send it.'
+        : S.via === 'beeper'
+          ? 'Beeper links only work in Beeper Desktop, so this device opens WhatsApp instead. Nothing is sent until you send it.'
+          : 'The message button opens WhatsApp with a draft. Nothing is sent until you send it.';
+  };
+  paint();
+  sheet.append(actions, via, note);
   modal.hidden = false;
+}
+
+function touchOnly() {
+  return matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
 
 function greeting(l) {
