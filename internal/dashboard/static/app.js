@@ -979,9 +979,23 @@ function openListing(l) {
     .catch(() => {});
 
   const ph = digits(l.seller.phone);
+  const app = messagingApp();
   const actions = el('div', 'actions');
-  const wa = el('a', 'btn primary');
-  actions.append(wa);
+  const msg = el('a', 'btn primary');
+  msg.append(svgEl(app === 'beeper' ? beeperIcon : waIcon), l.kind === 'buy' ? 'Message buyer' : 'Message seller');
+  if (ph) {
+    const text = encodeURIComponent(greeting(l));
+    if (app === 'beeper') {
+      msg.href = `beeper://compose/whatsapp/phone/+${ph}?text=${text}`;
+    } else {
+      msg.href = `https://wa.me/${ph}?text=${text}`;
+      msg.target = '_blank';
+      msg.rel = 'noopener noreferrer';
+    }
+  } else {
+    msg.setAttribute('aria-disabled', 'true');
+  }
+  actions.append(msg);
   if (ph) {
     const copy = el('button', 'btn', 'Copy number');
     copy.addEventListener('click', () => {
@@ -992,55 +1006,74 @@ function openListing(l) {
   const close = el('button', 'btn', 'Close');
   close.addEventListener('click', closeModal);
   actions.append(close);
-
-  // Which app the message button opens. Beeper's links only work in Beeper
-  // Desktop, so phones and tablets always get WhatsApp.
-  const via = el('div', 'via');
-  via.setAttribute('role', 'group');
-  via.setAttribute('aria-label', 'Open messages in');
-  via.append(el('span', 'via-label', 'Open in'));
-  const note = el('div', 'note');
-  const choices = [['whatsapp', 'WhatsApp'], ['beeper', 'Beeper']].map(([v, label]) => {
-    const b = el('button', 'via-opt', label);
-    b.addEventListener('click', () => { S.via = v; persist(); paint(); });
-    via.append(b);
-    return [v, b];
-  });
-  const paint = () => {
-    const beeper = S.via === 'beeper' && !touchOnly();
-    for (const [v, b] of choices) b.setAttribute('aria-pressed', String(v === S.via));
-    wa.replaceChildren(svgEl(beeper ? beeperIcon : waIcon), l.kind === 'buy' ? 'Message buyer' : 'Message seller');
-    if (ph) {
-      const text = encodeURIComponent(greeting(l));
-      if (beeper) {
-        wa.href = `beeper://compose/whatsapp/phone/+${ph}?text=${text}`;
-        wa.removeAttribute('target');
-        wa.removeAttribute('rel');
-      } else {
-        wa.href = `https://wa.me/${ph}?text=${text}`;
-        wa.target = '_blank';
-        wa.rel = 'noopener noreferrer';
-      }
-    } else {
-      wa.removeAttribute('href');
-      wa.setAttribute('aria-disabled', 'true');
-    }
-    note.textContent = !ph
-      ? 'WhatsApp hides this member\'s number. Reply to their post in the group instead.'
-      : beeper
-        ? 'The message button opens Beeper Desktop with a draft. Nothing is sent until you send it.'
-        : S.via === 'beeper'
-          ? 'Beeper links only work in Beeper Desktop, so this device opens WhatsApp instead. Nothing is sent until you send it.'
-          : 'The message button opens WhatsApp with a draft. Nothing is sent until you send it.';
-  };
-  paint();
-  sheet.append(actions, via, note);
+  sheet.append(actions);
+  sheet.append(el('div', 'note', !ph
+    ? 'WhatsApp hides this member\'s number. Reply to their post in the group instead.'
+    : `The message button opens ${app === 'beeper' ? 'Beeper' : 'WhatsApp'} with a draft. Nothing is sent until you send it.`));
   modal.hidden = false;
 }
 
+// ---------- settings ----------
+
+// Beeper's links only work in Beeper Desktop, so phones and tablets always
+// get WhatsApp whatever the setting says.
 function touchOnly() {
   return matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
+function messagingApp() {
+  return S.via === 'beeper' && !touchOnly() ? 'beeper' : 'whatsapp';
+}
+function paintSettingsIcon() {
+  $('settingsIcon').replaceChildren(svgEl(messagingApp() === 'beeper' ? beeperIcon : waIcon));
+}
+
+function openSettings() {
+  hideTip();
+  sheet.replaceChildren();
+  const head = el('div', 'sheet-head');
+  const h = el('div');
+  h.append(el('h2', '', 'SETTINGS'), el('div', 'sub', 'Saved in this browser only.'));
+  head.append(h);
+  sheet.append(head);
+
+  const sec = el('div', 'setting');
+  sec.append(el('h3', '', 'MESSAGING APP'));
+  sec.append(el('div', 'note', 'Which app the message button on a listing opens. Either way it only fills in a draft.'));
+  const row = el('div', 'choices');
+  row.setAttribute('role', 'radiogroup');
+  row.setAttribute('aria-label', 'Messaging app');
+  const touch = touchOnly();
+  const note = el('div', 'note');
+  const opts = [['whatsapp', 'WhatsApp', waIcon], ['beeper', 'Beeper Desktop', beeperIcon]].map(([v, label, ic]) => {
+    const b = el('button', 'choice');
+    b.setAttribute('role', 'radio');
+    b.append(svgEl(ic), el('span', '', label));
+    b.addEventListener('click', () => { S.via = v; persist(); paint(); paintSettingsIcon(); });
+    row.append(b);
+    return [v, b];
+  });
+  const paint = () => {
+    for (const [v, b] of opts) b.setAttribute('aria-checked', String(v === S.via));
+    note.textContent = S.via !== 'beeper'
+      ? 'Opens wa.me in a new tab, which hands off to WhatsApp.'
+      : touch
+        ? 'Beeper links only work in Beeper Desktop, so this device still opens WhatsApp.'
+        : 'Opens the chat in Beeper Desktop. Phones and tablets still open WhatsApp, because Beeper has no links on mobile.';
+  };
+  paint();
+  sec.append(row, note);
+  sheet.append(sec);
+
+  const actions = el('div', 'actions');
+  const done = el('button', 'btn primary', 'Done');
+  done.addEventListener('click', closeModal);
+  actions.append(done);
+  sheet.append(actions);
+  modal.hidden = false;
+  done.focus();
+}
+$('settingsBtn').addEventListener('click', openSettings);
+
 
 function greeting(l) {
   const meal = `${cap(l.mess)} ${l.meal}`;
@@ -1072,6 +1105,7 @@ function tickLive() {
 
 $('logo').append(svgEl(icon('coin')));
 $('navIcon').append(svgEl(icon('ingot')));
+paintSettingsIcon();
 $('pulseIcon').append(svgEl(icon('chart')));
 layout();
 addEventListener('resize', () => {
