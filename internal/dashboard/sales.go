@@ -98,15 +98,27 @@ type mealMarket struct {
 }
 
 type month struct {
-	Start  string  `json:"start"`
-	Fee    int     `json:"fee"`
-	Earned float64 `json:"earned"`
-	Sold   int     `json:"sold"`
-	Wasted int     `json:"wasted"`
+	Start string `json:"start"`
+	// Fee is the month's mess bill in rupees: the portal's bill when it
+	// loads, else sales.monthly_fee. 0 when neither is there.
+	Fee float64 `json:"fee"`
+	// Bill splits Fee when it came from the portal.
+	Bill    *bill   `json:"bill,omitempty"`
+	BillErr string  `json:"bill_err,omitempty"`
+	Earned  float64 `json:"earned"`
+	Sold    int     `json:"sold"`
+	Wasted  int     `json:"wasted"`
 	// Potential is what the wasted meals would have fetched at the median
 	// ask. Unpriced counts wasted meals with no market price to go on.
 	Potential float64 `json:"potential"`
 	Unpriced  int     `json:"unpriced"`
+}
+
+// bill is the portal's bill for the month, in rupees. Availed is for meals
+// already served, Projected for registered meals still to come.
+type bill struct {
+	Availed   float64 `json:"availed"`
+	Projected float64 `json:"projected"`
 }
 
 // readRegistrations reads the portal with that user's own mess API key.
@@ -119,12 +131,22 @@ var readRegistrations = func(ctx context.Context, acc *accounts.Accounts, userID
 	return c.Registrations(ctx, from, to)
 }
 
-// regCache keeps each user's last portal read in memory for a minute, so
+// readBill reads that user's mess bill for a month. Tests replace it.
+var readBill = func(ctx context.Context, acc *accounts.Accounts, userID int64, year, month int) (portal.Bill, error) {
+	c, err := acc.Portal(ctx, userID)
+	if err != nil {
+		return portal.Bill{}, err
+	}
+	return c.Bill(ctx, year, month)
+}
+
+// regCache keeps each user's last portal reads in memory for a minute, so
 // live updates on the page don't hit the portal for every market post.
 type regCache struct {
 	mu    sync.Mutex
 	acc   *accounts.Accounts
 	users map[int64]*regEntry
+	bills map[int64]*billEntry
 }
 
 type regEntry struct {
@@ -134,8 +156,28 @@ type regEntry struct {
 	err  error
 }
 
+type billEntry struct {
+	year, month int
+	at          time.Time
+	bill        portal.Bill
+	err         error
+}
+
 func newRegCache(acc *accounts.Accounts) *regCache {
-	return &regCache{acc: acc, users: map[int64]*regEntry{}}
+	return &regCache{acc: acc, users: map[int64]*regEntry{}, bills: map[int64]*billEntry{}}
+}
+
+func (c *regCache) bill(ctx context.Context, userID int64, year, month int) (portal.Bill, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e := c.bills[userID]
+	if e != nil && e.year == year && e.month == month && time.Since(e.at) < time.Minute {
+		return e.bill, e.err
+	}
+	e = &billEntry{year: year, month: month, at: time.Now()}
+	e.bill, e.err = readBill(ctx, c.acc, userID, year, month)
+	c.bills[userID] = e
+	return e.bill, e.err
 }
 
 func (c *regCache) get(ctx context.Context, userID int64, from, to string) ([]portal.Registration, error) {
@@ -156,6 +198,7 @@ func (c *regCache) get(ctx context.Context, userID int64, from, to string) ([]po
 func (c *regCache) forget(userID int64) {
 	c.mu.Lock()
 	delete(c.users, userID)
+	delete(c.bills, userID)
 	c.mu.Unlock()
 }
 
@@ -186,7 +229,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	}
 	ymd := func(t time.Time) string { return t.Format("2006-01-02") }
 	out := salesState{Now: now.Unix(), TZ: cfg.Timezone, Today: ymd(today), From: ymd(from), Recent: ymd(recent),
-		Days: []salesDay{}, Sales: []sale{}, Market: []mealMarket{}, Month: month{Start: ymd(monthStart), Fee: cfg.Sales.MonthlyFee}, Owner: u.IsAdmin()}
+		Days: []salesDay{}, Sales: []sale{}, Market: []mealMarket{}, Month: month{Start: ymd(monthStart), Fee: float64(cfg.Sales.MonthlyFee)}, Owner: u.IsAdmin()}
 	for _, m := range cfg.Messes {
 		out.Messes = append(out.Messes, mess{m.Name, m.VegOnly})
 	}
@@ -250,6 +293,13 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 		}
 		byMeal[d.Date+"|"+d.Meal] = len(out.Sales)
 		out.Sales = append(out.Sales, s)
+	}
+
+	if b, err := cache.bill(ctx, u.ID, local.Year(), int(local.Month())); err != nil {
+		out.Month.BillErr = err.Error()
+	} else {
+		out.Month.Bill = &bill{Availed: float64(b.Availed) / 100, Projected: float64(b.Projected) / 100}
+		out.Month.Fee = float64(b.Total()) / 100
 	}
 
 	regs := map[string][]portal.Registration{}

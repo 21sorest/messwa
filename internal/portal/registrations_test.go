@@ -114,3 +114,45 @@ func TestMessDiet(t *testing.T) {
 		}
 	}
 }
+
+func TestBillContract(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/api/registrations/bill" || r.URL.Query().Get("month") != "11" || r.URL.Query().Get("year") != "2026" || r.Header.Get("Authorization") != "test-key" {
+			t.Error("wrong bill request")
+		}
+		fmt.Fprint(w, `{"data":{"non_projected":77000,"projected":66400}}`)
+	}))
+	defer srv.Close()
+	t.Setenv("MESS_API_URL", srv.URL+"/api")
+	c, err := New("test-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.http.Transport = srv.Client().Transport
+	b, err := c.Bill(context.Background(), 2026, 11)
+	if err != nil || b.Availed != 77000 || b.Projected != 66400 || b.Total() != 143400 {
+		t.Fatalf("bill %+v, %v", b, err)
+	}
+	if _, err := c.Bill(context.Background(), 2026, 13); err == nil {
+		t.Fatal("accepted month 13")
+	}
+}
+
+func TestBadBill(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing data": `{}`, "null": `{"data":null}`, "empty": `{"data":{}}`,
+		"one field": `{"data":{"projected":100}}`, "negative": `{"data":{"non_projected":-1,"projected":0}}`,
+		"string": `{"data":{"non_projected":"100","projected":0}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }))
+			defer srv.Close()
+			t.Setenv("MESS_API_URL", srv.URL+"/api")
+			c, _ := New("test-key")
+			c.http.Transport = srv.Client().Transport
+			if _, err := c.Bill(context.Background(), 2026, 11); err == nil {
+				t.Fatal("accepted a bad bill")
+			}
+		})
+	}
+}

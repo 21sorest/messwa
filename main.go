@@ -45,6 +45,8 @@ commands:
   inspect-payment -peer JID     inspect live incoming payment fields from one DM (stop run first)
   registrations [-user NAME] [-from DATE] [-to DATE]
                                 read your meal registrations from the mess portal
+  bill [-user NAME] [-month YYYY-MM]
+                                read a month's mess bill from the portal
   fetch-qr [-user NAME] [-out IMAGE]
                                 fetch the current portal QR into a private PNG file
   deliver-qr -date DATE -meal MEAL -peer JID -amount INR [-qr IMAGE | -portal-qr [-user NAME]]
@@ -91,6 +93,8 @@ func main() {
 		err = inspectPayment(ctx, cfg, log, args)
 	case "registrations":
 		err = registrations(ctx, cfg, args)
+	case "bill":
+		err = bill(ctx, cfg, args)
 	case "fetch-qr":
 		err = fetchPortalQR(ctx, cfg, args)
 	case "deliver-qr":
