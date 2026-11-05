@@ -72,15 +72,16 @@ type DMs struct {
 
 type MCP struct {
 	Listen string `toml:"listen"`
-	// Name of the env var holding a bearer token. Empty disables auth,
-	// which is only acceptable when Listen is loopback.
+	// Name of the env var holding a shared bearer token that acts as the
+	// first admin. Per-user tokens work either way. With it unset, requests
+	// without a token are allowed when Listen is loopback.
 	TokenEnv string `toml:"token_env"`
 }
 
 type Dash struct {
 	// Where the listings dashboard listens. Empty turns it off. It shows
-	// sellers' phone numbers, so keep it on loopback or a private
-	// address like a LAN or VPN IP.
+	// sellers' phone numbers, so it must be loopback or a private address
+	// like a LAN or Tailscale IP; run refuses anything else.
 	Listen string `toml:"listen"`
 	// BeeperDB is Beeper Desktop or Server's index.db. When set, the
 	// dashboard links each copy of a post to that message in Beeper. It is

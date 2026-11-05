@@ -3,7 +3,8 @@
 // sort and filter buttons along the bottom.
 //
 // It shows sellers' names and phone numbers from the groups and nothing
-// from DMs. It has no write endpoints.
+// from DMs. People sign in with a messwa account; the only write endpoints
+// are for their own account (password, mess API key, MCP tokens).
 package dashboard
 
 import (
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
 	"messwa/internal/meals"
@@ -86,14 +88,19 @@ type marketSale struct {
 
 // Handler serves the page at / and its data at /api/state and /api/listing.
 // /api/events is a server-sent event stream that fires when hub does.
-func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
+// Everything except the sign-in page needs a session from acc; see
+// pageRoles and requireRole.
+func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.Accounts) http.Handler {
 	mux := http.NewServeMux()
 	files, _ := fs.Sub(static, "static")
-	mux.Handle("GET /", http.FileServerFS(files))
+	mux.Handle("GET /", pages(http.FileServerFS(files)))
+	member := func(h http.HandlerFunc) http.Handler { return requireRole(accounts.Member, h) }
+	regs := newRegCache(acc)
+	authRoutes(mux, acc, regs, "http://"+cfg.MCP.Listen+"/mcp")
 
-	mux.HandleFunc("GET /api/events", hub.events)
+	mux.Handle("GET /api/events", member(hub.events))
 
-	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /api/state", member(func(w http.ResponseWriter, r *http.Request) {
 		now := srv.Now()
 		items, err := srv.Feed(r.Context(), now.Add(-30*time.Hour))
 		if err != nil {
@@ -108,9 +115,13 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 		for _, m := range cfg.Messes {
 			st.Messes = append(st.Messes, mess{m.Name, m.VegOnly})
 		}
-		if st.Mine, err = mineToday(r.Context(), cfg, srv); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		// Meals armed with deliver-qr belong to the linked WhatsApp account.
+		st.Mine = []mine{}
+		if accounts.UserFrom(r.Context()).IsAdmin() {
+			if st.Mine, err = mineToday(r.Context(), cfg, srv); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		sc := srv.Schedule()
 		for _, s := range sc.Today {
@@ -125,12 +136,12 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 			st.Next = &n
 		}
 		writeJSON(w, r, st)
-	})
+	}))
 
-	mux.HandleFunc("GET /api/sales", salesHandler(cfg, srv))
+	mux.Handle("GET /api/sales", member(salesHandler(cfg, srv, regs)))
 
 	beeper := newBeeperIndex(cfg.Dash.BeeperDB)
-	mux.HandleFunc("GET /api/listing", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /api/listing", member(func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
 		if err != nil {
 			http.Error(w, "bad id", http.StatusBadRequest)
@@ -161,9 +172,9 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub) http.Handler {
 			}
 		}
 		writeJSON(w, r, resp)
-	})
+	}))
 
-	return headers(mux)
+	return headers(withSession(acc, mux))
 }
 
 // listingResp is /api/listing's answer. Beeper, when asked for, holds a

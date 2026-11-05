@@ -53,14 +53,15 @@ type Client struct {
 	http    *http.Client
 }
 
-func FromEnv() (*Client, error) {
+// New returns a client that reads the portal with one person's mess API
+// key. MESS_API_URL overrides the portal address.
+func New(key string) (*Client, error) {
 	base := os.Getenv("MESS_API_URL")
 	if base == "" {
 		base = "https://mess.iiit.ac.in/api"
 	}
-	key := os.Getenv("MESS_API_KEY")
 	if strings.TrimSpace(key) == "" {
-		return nil, errors.New("set MESS_API_KEY to enable registration reads")
+		return nil, ErrNoKey
 	}
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -68,6 +69,9 @@ func FromEnv() (*Client, error) {
 	}
 	return &Client{baseURL: strings.TrimRight(base, "/"), key: key, http: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
+
+// ErrNoKey means the account has no mess API key saved.
+var ErrNoKey = errors.New("no mess API key saved on this account; add one on the account page")
 
 func ValidateRange(from, to string) error {
 	start, err := time.Parse("2006-01-02", from)
@@ -133,7 +137,7 @@ func (c *Client) getData(ctx context.Context, endpoint string, params url.Values
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, errors.New("mess portal rejected MESS_API_KEY")
+		return nil, errors.New("mess portal rejected the mess API key")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("mess portal returned HTTP %d", resp.StatusCode)

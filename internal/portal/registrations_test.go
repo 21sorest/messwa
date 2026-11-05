@@ -19,8 +19,7 @@ func TestRegistrationsContract(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("MESS_API_URL", srv.URL+"/api")
-	t.Setenv("MESS_API_KEY", "test-key")
-	c, err := FromEnv()
+	c, err := New("test-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +64,7 @@ func TestBadResponses(t *testing.T) {
 			}))
 			defer srv.Close()
 			t.Setenv("MESS_API_URL", srv.URL)
-			t.Setenv("MESS_API_KEY", "test-key")
-			c, err := FromEnv()
+			c, err := New("test-key")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,14 +84,12 @@ func TestBadResponses(t *testing.T) {
 }
 
 func TestRegistrationConfigAndDates(t *testing.T) {
-	t.Setenv("MESS_API_KEY", "")
-	if _, err := FromEnv(); err == nil {
+	if _, err := New(" "); err == nil {
 		t.Fatal("missing key accepted")
 	}
-	t.Setenv("MESS_API_KEY", "test-key")
 	for _, u := range []string{"http://example.com/api", "https://user:password@example.com/api", "https://example.com?key=x"} {
 		t.Setenv("MESS_API_URL", u)
-		if _, err := FromEnv(); err == nil {
+		if _, err := New("test-key"); err == nil {
 			t.Fatal("unsafe URL accepted")
 		}
 	}

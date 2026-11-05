@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
 	"messwa/internal/meals"
@@ -37,6 +38,9 @@ type salesState struct {
 	Month   month        `json:"month"`
 	// Portal says why registrations are missing. Empty when they loaded.
 	Portal string `json:"portal,omitempty"`
+	// Owner is true for admins, who see the linked WhatsApp account's
+	// sales. Everyone else sees only their own registrations.
+	Owner bool `json:"owner"`
 }
 
 type salesDay struct {
@@ -105,41 +109,59 @@ type month struct {
 	Unpriced  int     `json:"unpriced"`
 }
 
-// readRegistrations reads the portal. Tests replace it.
-var readRegistrations = func(ctx context.Context, from, to string) ([]portal.Registration, error) {
-	c, err := portal.FromEnv()
+// readRegistrations reads the portal with that user's own mess API key.
+// Tests replace it.
+var readRegistrations = func(ctx context.Context, acc *accounts.Accounts, userID int64, from, to string) ([]portal.Registration, error) {
+	c, err := acc.Portal(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	return c.Registrations(ctx, from, to)
 }
 
-// regCache keeps the last portal read in memory for a minute, so live
-// updates on the page don't hit the portal for every market post.
+// regCache keeps each user's last portal read in memory for a minute, so
+// live updates on the page don't hit the portal for every market post.
 type regCache struct {
-	mu   sync.Mutex
+	mu    sync.Mutex
+	acc   *accounts.Accounts
+	users map[int64]*regEntry
+}
+
+type regEntry struct {
 	key  string
 	at   time.Time
 	rows []portal.Registration
 	err  error
 }
 
-func (c *regCache) get(ctx context.Context, from, to string) ([]portal.Registration, error) {
+func newRegCache(acc *accounts.Accounts) *regCache {
+	return &regCache{acc: acc, users: map[int64]*regEntry{}}
+}
+
+func (c *regCache) get(ctx context.Context, userID int64, from, to string) ([]portal.Registration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	key := from + ".." + to
-	if c.key == key && time.Since(c.at) < time.Minute {
-		return c.rows, c.err
+	e := c.users[userID]
+	if e != nil && e.key == key && time.Since(e.at) < time.Minute {
+		return e.rows, e.err
 	}
-	c.rows, c.err = readRegistrations(ctx, from, to)
-	c.key, c.at = key, time.Now()
-	return c.rows, c.err
+	e = &regEntry{key: key, at: time.Now()}
+	e.rows, e.err = readRegistrations(ctx, c.acc, userID, from, to)
+	c.users[userID] = e
+	return e.rows, e.err
 }
 
-func salesHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc {
-	cache := &regCache{}
+// forget drops a user's cached read, after their key changes.
+func (c *regCache) forget(userID int64) {
+	c.mu.Lock()
+	delete(c.users, userID)
+	c.mu.Unlock()
+}
+
+func salesHandler(cfg *config.Config, srv *mcpserver.Server, cache *regCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		st, err := buildSales(r.Context(), cfg, srv, cache)
+		st, err := buildSales(r.Context(), cfg, srv, cache, accounts.UserFrom(r.Context()))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -148,7 +170,10 @@ func salesHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc {
 	}
 }
 
-func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, cache *regCache) (salesState, error) {
+// buildSales is the sales page for user u. Registrations come from u's own
+// mess API key. Sales belong to the linked WhatsApp account, so only admins
+// get them.
+func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, cache *regCache, u *accounts.User) (salesState, error) {
 	loc := cfg.Location()
 	now := srv.Now()
 	local := now.In(loc)
@@ -161,7 +186,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	}
 	ymd := func(t time.Time) string { return t.Format("2006-01-02") }
 	out := salesState{Now: now.Unix(), TZ: cfg.Timezone, Today: ymd(today), From: ymd(from), Recent: ymd(recent),
-		Days: []salesDay{}, Sales: []sale{}, Market: []mealMarket{}, Month: month{Start: ymd(monthStart), Fee: cfg.Sales.MonthlyFee}}
+		Days: []salesDay{}, Sales: []sale{}, Market: []mealMarket{}, Month: month{Start: ymd(monthStart), Fee: cfg.Sales.MonthlyFee}, Owner: u.IsAdmin()}
 	for _, m := range cfg.Messes {
 		out.Messes = append(out.Messes, mess{m.Name, m.VegOnly})
 	}
@@ -181,9 +206,11 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 		}
 	}
 
-	ds, err := srv.Deliveries(ctx)
-	if err != nil {
-		return out, err
+	var ds []store.DeliveryRecord
+	if out.Owner {
+		if ds, err = srv.Deliveries(ctx); err != nil {
+			return out, err
+		}
 	}
 	byMeal := map[string]int{}
 	for _, d := range ds {
@@ -226,7 +253,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	}
 
 	regs := map[string][]portal.Registration{}
-	rows, err := cache.get(ctx, ymd(from), ymd(today))
+	rows, err := cache.get(ctx, u.ID, ymd(from), ymd(today))
 	if err != nil {
 		out.Portal = err.Error()
 	}

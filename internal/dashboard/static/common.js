@@ -350,3 +350,52 @@ function tip(node, fn) {
 
 // rupees prints whole amounts bare and paise with two decimals: ₹60, ₹2.37.
 const rupees = (v) => '₹' + (Number.isInteger(v) ? v.toLocaleString('en-IN') : v.toFixed(2));
+
+// ---------- session ----------
+
+// Pages need a signed-in account. A 401 from any API call sends the browser
+// to the sign-in page, which brings it back here afterwards.
+function toLogin() {
+  const next = location.pathname.split('/').pop();
+  location.href = 'login.html' + (next && next !== 'index.html' && next !== 'login.html' ? `?next=${encodeURIComponent(next)}` : '');
+}
+
+let mePromise = null;
+// me is the signed-in user: {name, role, mess_key_set, can_store_keys, csrf}.
+function me() {
+  if (!mePromise) {
+    mePromise = fetch('api/me', { cache: 'no-store' }).then((r) => {
+      if (r.status === 401) { toLogin(); throw new Error('signed out'); }
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    });
+    mePromise.catch(() => { mePromise = null; });
+  }
+  return mePromise;
+}
+
+// send makes a JSON request that changes something, with the CSRF token.
+// It resolves to the parsed body ({} when empty) or throws Error(message).
+async function send(method, path, body) {
+  const m = await me();
+  const r = await fetch(path, {
+    method,
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': m.csrf },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (r.status === 401) { toLogin(); throw new Error('signed out'); }
+  const text = await r.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+// userLink fills the header's account link with the user's name.
+function userLink(m) {
+  const a = $('accountLink');
+  if (!a) return;
+  a.replaceChildren(el('span', '', ''), m.name);
+  a.firstChild.append(svgEl(icon('paper')));
+  a.title = m.role === 'admin' ? 'Your account (admin)' : 'Your account';
+}

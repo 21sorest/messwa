@@ -9,19 +9,19 @@ import (
 	"path/filepath"
 
 	"messwa/internal/config"
-	"messwa/internal/portal"
 )
 
 func fetchPortalQR(ctx context.Context, cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("fetch-qr", flag.ContinueOnError)
 	out := fs.String("out", filepath.Join(cfg.StateDir, "current-qr.png"), "private PNG output path")
+	user := fs.String("user", "", "fetch with this account's mess API key; defaults to the first admin")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
-	c, err := portal.FromEnv()
+	c, err := userPortal(ctx, cfg, *user)
 	if err != nil {
 		return err
 	}

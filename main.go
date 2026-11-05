@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -23,9 +22,9 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.mau.fi/whatsmeow/types/events"
 
+	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/dashboard"
 	"messwa/internal/ingest"
@@ -38,14 +37,17 @@ const usage = `usage: messwa [-config config.toml] <command>
 
 commands:
   login [-phone 91XXXXXXXXXX]   link as a WhatsApp companion device (QR, or pairing code with -phone)
+  user <add|list|passwd|role|disable|enable|remove|mess-key|token|tokens|revoke> ...
+                                manage dashboard accounts and MCP tokens (messwa user help)
   groups                        list your groups and their JIDs, to fill in config.toml
   import-history [-keep]        load the group history saved by login (configured groups only)
   run                           ingest messages and serve MCP over HTTP
   inspect-payment -peer JID     inspect live incoming payment fields from one DM (stop run first)
-  registrations [-from DATE] [-to DATE]
+  registrations [-user NAME] [-from DATE] [-to DATE]
                                 read your meal registrations from the mess portal
-  fetch-qr [-out IMAGE]         fetch the current portal QR into a private PNG file
-  deliver-qr -date DATE -meal MEAL -peer JID -amount INR [-qr IMAGE | -portal-qr]
+  fetch-qr [-user NAME] [-out IMAGE]
+                                fetch the current portal QR into a private PNG file
+  deliver-qr -date DATE -meal MEAL -peer JID -amount INR [-qr IMAGE | -portal-qr [-user NAME]]
                                 arm one meal's QR delivery after a matching payment message
 
 inspection (read the database only, safe while run is up):
@@ -79,6 +81,8 @@ func main() {
 	switch flag.Arg(0) {
 	case "login":
 		err = login(ctx, cfg, log, args)
+	case "user":
+		err = userCmd(ctx, cfg, args)
 	case "groups":
 		err = groups(ctx, cfg, log)
 	case "run":
@@ -277,8 +281,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if cfg.MCP.TokenEnv != "" {
 		token = os.Getenv(cfg.MCP.TokenEnv)
 	}
-	if token == "" && !loopback(cfg.MCP.Listen) {
-		return fmt.Errorf("mcp.listen %q is not loopback; set %s to a bearer token", cfg.MCP.Listen, cfg.MCP.TokenEnv)
+	if cfg.Dash.Listen != "" {
+		if err := privateAddr(cfg.Dash.Listen); err != nil {
+			return fmt.Errorf("dashboard.listen: %w", err)
+		}
 	}
 
 	// Bind first so a port clash fails before touching WhatsApp.
@@ -297,6 +303,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
+	acc, err := openAccounts(ctx, st, log)
+	if err != nil {
+		return err
+	}
 	c, err := wa.Open(ctx, cfg, log)
 	if err != nil {
 		return err
@@ -335,14 +345,17 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}()
 
 	ms := mcpserver.New(cfg, st, c)
+	ms.SetAccounts(acc)
 	if dashLn != nil {
-		go serve(ctx, log, dashLn, dashboard.Handler(cfg, ms, hub))
+		go serve(ctx, log, dashLn, dashboard.Handler(cfg, ms, hub, acc))
 		log.Info("serving dashboard", "url", "http://"+cfg.Dash.Listen+"/")
 	}
-	srv := ms.MCP()
-	var h http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
-	if token != "" {
-		h = bearer(token, h)
+	// Tokenless requests act as the owner, as before accounts, but only on
+	// loopback and only while no shared token is set.
+	anonymous := token == "" && loopback(cfg.MCP.Listen)
+	h, err := ms.HTTPHandler(token, anonymous)
+	if err != nil {
+		return err
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", h)
@@ -360,7 +373,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		defer cancel()
 		hs.Shutdown(sctx)
 	}()
-	log.Info("serving MCP", "url", "http://"+cfg.MCP.Listen+"/mcp", "auth", token != "")
+	log.Info("serving MCP", "url", "http://"+cfg.MCP.Listen+"/mcp", "tokenless", anonymous, "shared_token", token != "")
 	if err := hs.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -396,11 +409,19 @@ func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, arg
 		return err
 	}
 	defer st.Close()
+	if err := privateAddr(*listen); err != nil {
+		return fmt.Errorf("-listen: %w", err)
+	}
+	acc, err := openAccounts(ctx, st, log)
+	if err != nil {
+		return err
+	}
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
 		return err
 	}
 	ms := mcpserver.New(cfg, st, contactsFromDB(cfg))
+	ms.SetAccounts(acc)
 	if *at != "" {
 		t, err := time.ParseInLocation("2006-01-02 15:04", *at, cfg.Location())
 		if err != nil {
@@ -410,18 +431,56 @@ func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, arg
 		ms.SetClock(func() time.Time { return time.Now().Add(offset) })
 	}
 	fmt.Printf("dashboard on http://%s/\n", *listen)
-	return serve(ctx, log, ln, dashboard.Handler(cfg, ms, dashboard.NewHub()))
+	return serve(ctx, log, ln, dashboard.Handler(cfg, ms, dashboard.NewHub(), acc))
 }
 
-func bearer(token string, next http.Handler) http.Handler {
-	want := []byte("Bearer " + token)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), want) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+// openAccounts opens the account service and moves MESS_API_KEY onto the
+// first admin if it's still in the environment.
+func openAccounts(ctx context.Context, st *store.Store, log *slog.Logger) (*accounts.Accounts, error) {
+	acc, err := accounts.FromEnv(st)
+	if err != nil {
+		return nil, err
+	}
+	// A failed move only leaves the key in the environment, where the
+	// owner's portal reads still find it, so it doesn't stop the service.
+	moved, warning, err := acc.MigrateEnvKey(ctx)
+	if err != nil {
+		log.Error("could not move "+accounts.LegacyKeyEnv+" onto an account", "err", err)
+	}
+	if moved != "" {
+		log.Warn("moved "+accounts.LegacyKeyEnv+" onto an account; remove it from .env", "user", moved)
+	}
+	if warning != "" {
+		log.Warn(warning)
+	}
+	if admin, err := acc.FirstAdmin(ctx); err == nil && admin == nil {
+		log.Warn("no admin account yet; the dashboard needs one to sign in. Run: messwa user add -admin NAME")
+	}
+	return acc, nil
+}
+
+// tailnet is Tailscale's address range (CGNAT space).
+var tailnet = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// privateAddr refuses listen addresses reachable from the internet. The
+// dashboard has sign-in, but it shows every seller's number, so it stays on
+// loopback, a LAN, or a VPN such as Tailscale as well.
+func privateAddr(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("%q is not an IP address; use a loopback, LAN or VPN IP", host)
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || tailnet.Contains(ip) {
+		return nil
+	}
+	return fmt.Errorf("%s is not a private address; use a loopback, LAN or VPN (Tailscale) IP, not all interfaces or a public one", host)
 }
 
 func loopback(addr string) bool {

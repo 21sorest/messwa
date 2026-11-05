@@ -84,6 +84,7 @@ async function load() {
   schedule();
   try {
     const r = await fetch('api/state', { cache: 'no-store' });
+    if (r.status === 401) return toLogin();
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     skew = d.now - Date.now() / 1000;
@@ -1119,6 +1120,14 @@ function tickLive() {
 $('logo').append(svgEl(icon('coin')));
 $('navIcon').append(svgEl(icon('ingot')));
 paintSettingsIcon();
+me().then((m) => {
+  userLink(m);
+  // Sales belong to the linked WhatsApp account; members get their meals.
+  if (m.role !== 'admin') {
+    $('salesLabel').textContent = 'My meals';
+    $('salesLink').title = 'Your registrations: eaten, wasted and still open';
+  }
+}).catch(() => {});
 $('pulseIcon').append(svgEl(icon('chart')));
 layout();
 addEventListener('resize', () => {

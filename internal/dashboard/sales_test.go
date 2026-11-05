@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/ingest"
 	"messwa/internal/mcpserver"
@@ -60,7 +59,11 @@ func TestSales(t *testing.T) {
 	str := func(s string) *string { return &s }
 	orig := readRegistrations
 	defer func() { readRegistrations = orig }()
-	readRegistrations = func(_ context.Context, from, to string) ([]portal.Registration, error) {
+	var admin *testClient
+	readRegistrations = func(_ context.Context, _ *accounts.Accounts, userID int64, from, to string) ([]portal.Registration, error) {
+		if userID != admin.user.ID {
+			return nil, errors.New("portal read with someone else's key")
+		}
 		if from != "2026-10-07" || to != "2026-11-03" {
 			t.Errorf("read %s..%s, want the four weeks to today", from, to)
 		}
@@ -76,11 +79,11 @@ func TestSales(t *testing.T) {
 
 	ms := mcpserver.New(cfg, st, nil)
 	ms.SetClock(func() time.Time { return time.Date(2026, 11, 3, 13, 0, 0, 0, loc) })
-	srv := httptest.NewServer(Handler(cfg, ms, NewHub()))
-	defer srv.Close()
+	srv := startDashboard(t, cfg, st, ms, NewHub())
+	admin = srv.as(t, accounts.Admin)
 
 	get := func() salesState {
-		res, err := http.Get(srv.URL + "/api/sales")
+		res, err := admin.Get(srv.URL + "/api/sales")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,8 +143,12 @@ func TestSales(t *testing.T) {
 		t.Errorf("market %+v", s.Market)
 	}
 
+	if !s.Owner {
+		t.Error("admin is not the owner")
+	}
+
 	// The board's day track gets today's armed lunch.
-	res, err := http.Get(srv.URL + "/api/state")
+	res, err := admin.Get(srv.URL + "/api/state")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,13 +159,33 @@ func TestSales(t *testing.T) {
 		t.Errorf("mine %+v", b.Mine)
 	}
 
-	// Without the portal, sales still show and everything else is unknown.
-	readRegistrations = func(context.Context, string, string) ([]portal.Registration, error) {
-		return nil, errors.New("set MESS_API_KEY to enable registration reads")
+	// A member sees their own registrations and none of the owner's sales.
+	member := srv.as(t, accounts.Member)
+	readRegistrations = func(_ context.Context, _ *accounts.Accounts, userID int64, _, _ string) ([]portal.Registration, error) {
+		if userID != member.user.ID {
+			return nil, errors.New("portal read with someone else's key")
+		}
+		return []portal.Registration{{Date: "2026-11-02", Meal: "lunch", Mess: "kadamba-nonveg", Category: "registered"}}, nil
 	}
-	srv2 := httptest.NewServer(Handler(cfg, ms, NewHub()))
-	defer srv2.Close()
-	srv.URL = srv2.URL
+	var ms2 salesState
+	member.get(t, "/api/sales", &ms2)
+	if ms2.Owner || len(ms2.Sales) != 0 || ms2.Portal != "" || cellAt(ms2, "2026-11-02", "lunch").State != "wasted" || cellAt(ms2, "2026-11-02", "dinner").State != "none" || ms2.Month.Earned != 0 || ms2.Month.Wasted != 1 {
+		t.Errorf("member sales: owner %v, %d sales, portal %q, lunch %s, dinner %s, month %+v", ms2.Owner, len(ms2.Sales), ms2.Portal,
+			cellAt(ms2, "2026-11-02", "lunch").State, cellAt(ms2, "2026-11-02", "dinner").State, ms2.Month)
+	}
+	var mb state
+	member.get(t, "/api/state", &mb)
+	if len(mb.Mine) != 0 {
+		t.Errorf("member sees the owner's armed meals: %+v", mb.Mine)
+	}
+
+	// Without the portal, sales still show and everything else is unknown.
+	readRegistrations = func(context.Context, *accounts.Accounts, int64, string, string) ([]portal.Registration, error) {
+		return nil, portal.ErrNoKey
+	}
+	srv2 := startDashboard(t, cfg, st, ms, NewHub())
+	admin = srv2.as(t, accounts.Admin)
+	srv = srv2
 	s = get()
 	if s.Portal == "" || cellAt(s, "2026-11-02", "dinner").State != "sold" || cellAt(s, "2026-11-02", "lunch").State != "unknown" || s.Month.Wasted != 0 {
 		t.Errorf("portal down: %q dinner %s lunch %s", s.Portal, cellAt(s, "2026-11-02", "dinner").State, cellAt(s, "2026-11-02", "lunch").State)
