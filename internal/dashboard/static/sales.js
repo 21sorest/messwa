@@ -590,7 +590,11 @@ function renderEarnings() {
 
 $('logo').append(svgEl(icon('ingot')));
 $('navIcon').append(svgEl(icon('prev')));
-me().then(userLink).catch(() => {});
+$('insIcon').append(svgEl(icon('chart')));
+me().then((m) => {
+  userLink(m);
+  $('insLink').hidden = m.role !== 'admin';
+}).catch(() => {});
 $('ledIcon').append(svgEl(icon('coin')));
 $('regIcon').append(svgEl(icon('paper')));
 $('pcIcon').append(svgEl(icon('chart')));

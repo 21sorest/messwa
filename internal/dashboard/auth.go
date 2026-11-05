@@ -18,10 +18,11 @@ const cookieName = "messwa_session"
 // pageRoles is the role each page needs. Paths not listed (the sign-in page,
 // styles, scripts, fonts, icons) are public: they hold no data.
 var pageRoles = map[string]accounts.Role{
-	"/":             accounts.Member,
-	"/index.html":   accounts.Member,
-	"/sales.html":   accounts.Member,
-	"/account.html": accounts.Member,
+	"/":              accounts.Member,
+	"/index.html":    accounts.Member,
+	"/sales.html":    accounts.Member,
+	"/account.html":  accounts.Member,
+	"/insights.html": accounts.Admin,
 }
 
 type sessKey struct{}

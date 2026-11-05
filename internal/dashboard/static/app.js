@@ -1119,9 +1119,11 @@ function tickLive() {
 
 $('logo').append(svgEl(icon('coin')));
 $('navIcon').append(svgEl(icon('ingot')));
+$('insIcon').append(svgEl(icon('chart')));
 paintSettingsIcon();
 me().then((m) => {
   userLink(m);
+  $('insLink').hidden = m.role !== 'admin';
   // Sales belong to the linked WhatsApp account; members get their meals.
   if (m.role !== 'admin') {
     $('salesLabel').textContent = 'My meals';
