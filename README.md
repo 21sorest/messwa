@@ -114,12 +114,12 @@ The board shows sellers' names and phone numbers from the groups and nothing fro
 `/sales.html` (the MY SALES button on the board) tracks the meals you sell with `deliver-qr`. Members get MY MEALS instead: the same ledger with their own registrations and no sales, regulars, price check or earnings. On the board's day track, a coin and the price replace the meal icon for any meal you sold or armed today.
 
 - **Sales ledger.** Days across, meals down, for the last four weeks (arrow keys page by week). A sold slot shows the price, the mess, and the buyer's pixel head. Each buyer always gets the same head. An armed slot drains like a listing until the meal ends. ATE means you used the registration yourself. WASTED means the meal ended unsold and unused. Dashed slots are registered meals that haven't ended. Hovering shows the buyer, their number, when they paid, how fast the QR went out, and the median ask for that meal.
-- **Saved this month.** The green bar is what your sales earned back against `sales.monthly_fee`. The striped part after it is what the month's wasted meals would have fetched at the median ask.
+- **Saved this month.** The green bar is what your sales earned back against this month's mess bill. The striped part after it is what the month's wasted meals would have fetched at the median ask. The bill comes from the portal's `/registrations/bill`, the same read as IIITH-mess-MCP's `get_bill`: availed meals plus the projected cost of meals you're registered for, so it grows as you register. When the portal can't be read, the page uses `sales.monthly_fee` from `config.toml` instead.
 - **Regulars.** Every buyer, all time, with the number of meals they bought from you. Repeat buyers climb rarity tiers: 1 COMMON, 2-3 UNCOMMON, 4-6 RARE, 7-9 EPIC, 10+ LEGENDARY.
 - **Price check.** Your sales over four weeks against the market's middle half and median ask for each meal, with UNDERCUT, AT MARKET or PREMIUM from your average gap to each serving's median.
 - **Earnings.** Meals sold, money earned and median price per mess, with earnings per day on one shared scale.
 
-Eaten, wasted and registered meals come from the portal, read with the signed-in person's own mess API key, so the page needs that key saved and the IIIT network, like `my_registrations`. The page reads registrations live and keeps each person's last read in memory for a minute. Without the portal it shows sales only and says why.
+Eaten, wasted and registered meals and the bill come from the portal, read with the signed-in person's own mess API key, so the page needs that key saved and the IIIT network, like `my_registrations`. The page reads registrations and the bill live and keeps each person's last read in memory for a minute. Without the portal it shows sales only and says why.
 
 The median ask is the median stated price of sell listings for that serving at that mess. With fewer than 3 asks it falls back to every mess for that serving, then to that meal over four weeks. Listings are pruned after 14 days, so `run` saves each serving's asking prices every hour in `market_prices`.
 
@@ -177,6 +177,8 @@ binary uses its process environment and does not load `.env`.
 ```sh
 ./messwa registrations -from 2026-11-04 -to 2026-11-10
 ./messwa registrations -user asha    # with asha's key; the default is the first admin
+./messwa bill                        # this month's bill: availed, projected and total
+./messwa bill -month 2026-10 -user asha
 ```
 
 With no dates, this reads today in the configured timezone. If only `-from`

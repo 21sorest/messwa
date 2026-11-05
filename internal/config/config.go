@@ -90,8 +90,9 @@ type Dash struct {
 }
 
 type Sales struct {
-	// What the mess charges you per month, in rupees. The sales page
-	// measures how much of it your sales earned back. 0 hides that part.
+	// What the mess charges you per month, in rupees. The sales page uses
+	// the portal's bill and falls back to this when the portal can't be
+	// read. 0 hides that part.
 	MonthlyFee int `toml:"monthly_fee"`
 }
 

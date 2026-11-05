@@ -77,6 +77,18 @@ func TestSales(t *testing.T) {
 		}, nil
 	}
 
+	origBill := readBill
+	defer func() { readBill = origBill }()
+	readBill = func(_ context.Context, _ *accounts.Accounts, userID int64, year, month int) (portal.Bill, error) {
+		if userID != admin.user.ID {
+			return portal.Bill{}, errors.New("bill read with someone else's key")
+		}
+		if year != 2026 || month != 11 {
+			t.Errorf("read the bill for %d-%d, want this month", year, month)
+		}
+		return portal.Bill{Availed: 77000, Projected: 66450}, nil
+	}
+
 	ms := mcpserver.New(cfg, st, nil)
 	ms.SetClock(func() time.Time { return time.Date(2026, 11, 3, 13, 0, 0, 0, loc) })
 	srv := startDashboard(t, cfg, st, ms, NewHub())
@@ -126,7 +138,7 @@ func TestSales(t *testing.T) {
 		t.Errorf("window %s..%s, %d days", s.From, s.Today, len(s.Days))
 	}
 	m := s.Month
-	if m.Start != "2026-11-01" || m.Fee != 5600 || m.Earned != 55 || m.Sold != 1 || m.Wasted != 1 || m.Potential != 60 || m.Unpriced != 0 {
+	if m.Start != "2026-11-01" || m.Fee != 1434.5 || m.Bill == nil || m.Bill.Availed != 770 || m.Bill.Projected != 664.5 || m.Earned != 55 || m.Sold != 1 || m.Wasted != 1 || m.Potential != 60 || m.Unpriced != 0 {
 		t.Errorf("month %+v", m)
 	}
 	if len(s.Sales) != 2 {
@@ -180,8 +192,12 @@ func TestSales(t *testing.T) {
 	}
 
 	// Without the portal, sales still show and everything else is unknown.
+	// The bill falls back to sales.monthly_fee.
 	readRegistrations = func(context.Context, *accounts.Accounts, int64, string, string) ([]portal.Registration, error) {
 		return nil, portal.ErrNoKey
+	}
+	readBill = func(context.Context, *accounts.Accounts, int64, int, int) (portal.Bill, error) {
+		return portal.Bill{}, portal.ErrNoKey
 	}
 	srv2 := startDashboard(t, cfg, st, ms, NewHub())
 	admin = srv2.as(t, accounts.Admin)
@@ -189,6 +205,9 @@ func TestSales(t *testing.T) {
 	s = get()
 	if s.Portal == "" || cellAt(s, "2026-11-02", "dinner").State != "sold" || cellAt(s, "2026-11-02", "lunch").State != "unknown" || s.Month.Wasted != 0 {
 		t.Errorf("portal down: %q dinner %s lunch %s", s.Portal, cellAt(s, "2026-11-02", "dinner").State, cellAt(s, "2026-11-02", "lunch").State)
+	}
+	if s.Month.Fee != 5600 || s.Month.Bill != nil || s.Month.BillErr == "" {
+		t.Errorf("bill fallback: %+v", s.Month)
 	}
 }
 

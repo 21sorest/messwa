@@ -180,7 +180,8 @@ function renderSaved() {
   const left = el('span');
   left.append(el('b', '', `${M.sold} meal${M.sold === 1 ? '' : 's'}`), ' sold');
   if (M.fee > 0) left.append(` against a ${rupees(M.fee)} mess bill`);
-  else left.append(el('span', 'dim', '. Set sales.monthly_fee in config.toml to measure it against your bill'));
+  else if (M.bill) left.append(el('span', 'dim', '. The portal shows no mess bill this month'));
+  else left.append(el('span', 'dim', '. Couldn\'t read your mess bill from the portal to measure it against'));
   const right = el('span');
   if (M.wasted) {
     right.append(el('span', 'g', `+${rupees(Math.round(M.potential))}`),
@@ -199,7 +200,8 @@ function savedTip() {
     [{ t: `${monthName} so far`, c: 'nm' }],
     D.owner ? [{ t: 'Earned ', c: 'c7' }, { t: rupees(M.earned), c: 'ca' }, { t: ` from ${M.sold} sold`, c: 'c8' }] : null,
     M.wasted ? [{ t: 'Left on the table ', c: 'c7' }, { t: rupees(Math.round(M.potential)), c: 'c6' }, { t: ` from ${M.wasted} wasted`, c: 'c8' }] : null,
-    M.fee > 0 ? [{ t: 'Mess bill ', c: 'c7' }, { t: rupees(M.fee), c: 'cf' }] : null,
+    M.fee > 0 ? [{ t: 'Mess bill ', c: 'c7' }, { t: rupees(M.fee), c: 'cf' }, { t: M.bill ? '' : ' from config.toml', c: 'c8' }] : null,
+    ...(M.bill ? [[{ t: 'Availed ', c: 'c7' }, { t: rupees(M.bill.availed), c: 'cf' }, { t: ' + projected ', c: 'c7' }, { t: rupees(M.bill.projected), c: 'cf' }]] : []),
   ];
 }
 

@@ -45,8 +45,9 @@ listen = "127.0.0.1:8767"
 # beeper_db = "/home/you/.beeper/profiles/server/server/index.db"
 
 [sales]
-# What the mess charges you per month, in rupees. The sales page shows how
-# much of it your sales earned back this month. 0 hides the bar's target.
+# The sales page measures your sales against this month's bill from the mess
+# portal. This fee, in rupees, is used only when the portal can't be read.
+# 0 hides the bar's target then.
 monthly_fee = 0
 
 # Meal windows and mess names have built-in defaults (internal/config/config.go):
