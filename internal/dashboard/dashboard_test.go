@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/ingest"
 	"messwa/internal/mcpserver"
@@ -32,10 +32,10 @@ func TestHandler(t *testing.T) {
 	}
 	ms := mcpserver.New(cfg, st, nil)
 	ms.SetClock(func() time.Time { return now.Add(time.Minute) })
-	srv := httptest.NewServer(Handler(cfg, ms, NewHub()))
-	defer srv.Close()
+	srv := startDashboard(t, cfg, st, ms, NewHub())
+	c := srv.as(t, accounts.Member)
 
-	res, err := http.Get(srv.URL + "/api/state")
+	res, err := c.Get(srv.URL + "/api/state")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestHandler(t *testing.T) {
 		t.Error("missing CSP")
 	}
 
-	res, err = http.Get(srv.URL + "/")
+	res, err = c.Get(srv.URL + "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,10 +63,7 @@ func TestHandler(t *testing.T) {
 		t.Errorf("index: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
 	}
 
-	res, err = http.Post(srv.URL+"/api/state", "application/json", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	res = c.send(t, "POST", "/api/state", nil)
 	res.Body.Close()
 	if res.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST got %d, want 405", res.StatusCode)
@@ -84,13 +81,13 @@ func TestEvents(t *testing.T) {
 	hub := NewHub()
 	in := ingest.New(cfg, st)
 	in.OnChange(hub.Notify)
-	srv := httptest.NewServer(Handler(cfg, mcpserver.New(cfg, st, nil), hub))
-	defer srv.Close()
+	srv := startDashboard(t, cfg, st, mcpserver.New(cfg, st, nil), hub)
+	c := srv.as(t, accounts.Member)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/events", nil)
-	res, err := http.DefaultClient.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

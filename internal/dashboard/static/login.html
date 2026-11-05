@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d12">
+<title>Sign in · Mess Auction House</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="silkscreen-700.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="account.css">
+<script src="common.js" defer></script>
+<script src="login.js" defer></script>
+</head>
+<body>
+<div class="app account login">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" id="logo"></span>
+      <div>
+        <h1>Mess Auction House</h1>
+        <p class="sub">Sign in with your messwa account</p>
+      </div>
+    </div>
+  </header>
+
+  <p class="notice" id="setup" hidden>No admin account exists yet. On the server, run <code>messwa user add -admin NAME</code> (in Docker: <code>docker compose run --rm messwa user add -admin NAME</code>), then sign in here.</p>
+
+  <section class="chest" aria-label="Sign in">
+    <div class="chest-head">
+      <span class="head-icon" id="headIcon"></span>
+      <span class="head-name">Sign in</span>
+    </div>
+    <form class="form" id="form" autocomplete="on">
+      <label>Name<input id="name" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+      <p class="err" id="err" role="alert" hidden></p>
+      <div class="actions"><button class="btn primary" type="submit" id="go">Sign in</button></div>
+      <p class="note">An admin creates accounts with <code>messwa user add</code>. Ask them for one.</p>
+    </form>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+</body>
+</html>

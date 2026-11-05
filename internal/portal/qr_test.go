@@ -47,8 +47,7 @@ func TestQRRefreshAndMealChecks(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("MESS_API_URL", srv.URL+"/api")
-	t.Setenv("MESS_API_KEY", "test-key")
-	c, err := FromEnv()
+	c, err := New("test-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,8 +85,7 @@ func TestQRBadProfiles(t *testing.T) {
 	for _, body := range []string{`{"data":null}`, `{"data":{}}`, `{"data":{"id":"account"}}`, `{"data":{"id":"account","token":""}}`, `{"data":{"id":"account","token":5}}`, `{"data":{"id":"account","token":"` + strings.Repeat("x", 2049) + `"}}`} {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 		t.Setenv("MESS_API_URL", srv.URL)
-		t.Setenv("MESS_API_KEY", "test-key")
-		c, err := FromEnv()
+		c, err := New("test-key")
 		if err != nil {
 			t.Fatal(err)
 		}

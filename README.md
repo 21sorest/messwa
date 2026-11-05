@@ -2,7 +2,7 @@
 
 messwa links to WhatsApp as a companion device (via [whatsmeow](https://github.com/tulir/whatsmeow)), merges the mess buy/sell groups you pick into one deduplicated list of listings, and serves that list plus limited DM info to an agent over MCP.
 
-The WhatsApp access limits live in the binary. Ingest drops every chat outside the allowed set before anything touches disk, and WhatsApp MCP tools read only that stored data. Optional portal tools separately read your own registrations and current QR using `MESS_API_KEY`.
+The WhatsApp access limits live in the binary. Ingest drops every chat outside the allowed set before anything touches disk, and WhatsApp MCP tools read only that stored data. Optional portal tools separately read your own registrations and current QR, using the mess API key saved on your messwa account.
 
 The default `run` service and MCP tools are read-only: no messages, read receipts or presence are sent. Your phone keeps showing messages as unread and notifications don't change. The separate, explicitly armed `deliver-qr` command can send one image after a matching payment message.
 
@@ -33,9 +33,58 @@ If you save a number later, its stored DM text is deleted on its next message, a
 
 Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged when the text mentions them, with typo tolerance. Palash and Yuktahar serve only veg, so their listings are always veg. Prices ("@30", "30/-", "free"), quantities ("x2") and exchanges ("have palash want kadamba") are parsed too, and a seller replying to their own post with a new price updates the listing.
 
+## Accounts
+
+Everyone signs in to the dashboard with their own messwa account. There are two roles:
+
+| | Admin | Member |
+| --- | --- | --- |
+| Board, market pulse, listing details | yes | yes |
+| `sales.html` | the linked WhatsApp account's sales, buyers, regulars, earnings, plus their own registrations | their own registrations only: eaten, wasted, still open, and what the wasted meals would have fetched |
+| Coins for armed and sold meals on the day track | yes | no |
+| MCP `my_registrations`, `my_qr` | with their own mess key | with their own mess key |
+| MCP `list_recent_chats`, `read_unsaved_chat` | yes | no |
+
+Everything tied to the one linked WhatsApp device belongs to admins: `deliver-qr`, the sales ledger, DMs and saved contacts. `login`, `groups` and `inspect-payment` are CLI-only and need shell access anyway. Make yourself the admin and everyone else a member.
+
+Each person saves their own mess API key on the account page (`/account.html`, the ACCOUNT button on the board). The key never leaves the server again after that. The page also changes your password and creates and revokes your MCP tokens.
+
+**Keys at rest.** Mess API keys are encrypted with AES-256-GCM. The key for that lives in `MESSWA_SECRET_KEY` (64 hex characters, `openssl rand -hex 32`) in `.env`, not in `state/`, so a copy of the state directory alone can't decrypt them. Each encrypted key is bound to its user, so copying it to another account's row doesn't decrypt either. Without `MESSWA_SECRET_KEY` messwa runs, but can't save or read mess keys. If you lose or change it, everyone has to save their key again.
+
+**Passwords and sessions.** Passwords are hashed with argon2id and must be at least 10 characters. Signing in sets an `HttpOnly`, `SameSite=Strict` session cookie that lasts 30 days. Sessions live in the database as SHA-256 hashes. Every change the pages make sends a per-session CSRF token and must come from the dashboard's own origin. Five wrong passwords for one name from one address lock that pair out for a minute. Changing a password signs out your other devices.
+
+**Managing accounts** is CLI-only:
+
+```sh
+./messwa user add -admin shourya    # asks for a password
+./messwa user add asha              # a member
+./messwa user list
+./messwa user passwd asha           # set a new password, sign asha out everywhere
+./messwa user role asha admin
+./messwa user disable asha          # blocks sign-in and MCP tokens; enable undoes it
+./messwa user remove -yes asha      # deletes the account, its key and tokens
+./messwa user mess-key asha         # save a key for someone (asks for it); -clear removes it
+./messwa user token -label laptop asha
+./messwa user tokens
+./messwa user revoke 3
+```
+
+In Docker, prefix these with `docker compose run --rm messwa`. They can run while the service is up.
+
+### Upgrading from `MESS_API_KEY`
+
+Before accounts, one `MESS_API_KEY` in `.env` served everything. To move over:
+
+1. Add `MESSWA_SECRET_KEY=$(openssl rand -hex 32)` to `.env`.
+2. `docker compose up -d --build`.
+3. `docker compose run --rm messwa user add -admin <you>`. This encrypts `MESS_API_KEY` onto your account.
+4. Remove `MESS_API_KEY` from `.env` and `docker compose up -d` again.
+
+Until the key has moved, the first admin's portal reads (MCP, the sales page, the portal commands) still use `MESS_API_KEY`, so nothing stops working halfway. Before step 3 the sign-in page says to create an admin. If you skip step 1, step 3 creates the account but leaves the key in the environment and says so. `run` moves the key onto the first admin by itself once `MESSWA_SECRET_KEY` is set. After that the env var is ignored, and `run` logs a warning until you remove it.
+
 ## Dashboard
 
-`run` also serves a read-only dashboard at `dashboard.listen` (set it to a private address so only your own network reaches it). It's laid out like an auction house's buy-it-now browser:
+`run` also serves the dashboard at `dashboard.listen`. It needs a signed-in account (see [Accounts](#accounts)), and messwa refuses to listen on anything but loopback, a private LAN range, or Tailscale's `100.64.0.0/10`. It shows every seller's number, so sign-in is a second lock, not a replacement for keeping it off the internet. It's laid out like an auction house's buy-it-now browser:
 
 - The left column picks the mess, or all of them. Badges count what's available.
 - Each slot is one listing, showing its price, "?" when none was stated, FREE, or SWAP with the mess wanted. The corners show the diet mark, the meal, and the quantity. The bar along the bottom drains as the meal's serving window runs out. Listings posted in the last 2 minutes shine, and an amber dot means someone other than the seller ticked it.
@@ -56,11 +105,11 @@ Mess (Kadamba, Yuktahar, Palash, Bakul) and diet (veg, nonveg, egg) are tagged w
 
 Keys: `1`-`5` messes, arrows for pages, `R` `P` `D` `M` `S` `W` for the bottom row, `/` to search. Right click on the diet or meal button, or Shift with `D` or `M`, cycles backwards.
 
-The board shows sellers' names and phone numbers from the groups and nothing from DMs. The sales page below adds the names and numbers of people you sold to. It has no login, so don't put it on a public address.
+The board shows sellers' names and phone numbers from the groups and nothing from DMs. The sales page below adds the names and numbers of people you sold to, for admins only.
 
 ### My sales
 
-`/sales.html` (the MY SALES button on the board) tracks the meals you sell with `deliver-qr`. On the board's day track, a coin and the price replace the meal icon for any meal you sold or armed today.
+`/sales.html` (the MY SALES button on the board) tracks the meals you sell with `deliver-qr`. Members get MY MEALS instead: the same ledger with their own registrations and no sales, regulars, price check or earnings. On the board's day track, a coin and the price replace the meal icon for any meal you sold or armed today.
 
 - **Sales ledger.** Days across, meals down, for the last four weeks (arrow keys page by week). A sold slot shows the price, the mess, and the buyer's pixel head. Each buyer always gets the same head. An armed slot drains like a listing until the meal ends. ATE means you used the registration yourself. WASTED means the meal ended unsold and unused. Dashed slots are registered meals that haven't ended. Hovering shows the buyer, their number, when they paid, how fast the QR went out, and the median ask for that meal.
 - **Saved this month.** The green bar is what your sales earned back against `sales.monthly_fee`. The striped part after it is what the month's wasted meals would have fetched at the median ask.
@@ -68,7 +117,7 @@ The board shows sellers' names and phone numbers from the groups and nothing fro
 - **Price check.** Your sales over four weeks against the market's middle half and median ask for each meal, with UNDERCUT, AT MARKET or PREMIUM from your average gap to each serving's median.
 - **Earnings.** Meals sold, money earned and median price per mess, with earnings per day on one shared scale.
 
-Eaten, wasted and registered meals come from the portal, so the page needs `MESS_API_KEY` and the IIIT network, like `my_registrations`. The page reads registrations live and keeps the last read in memory for a minute. Without the portal it shows sales only and says why.
+Eaten, wasted and registered meals come from the portal, read with the signed-in person's own mess API key, so the page needs that key saved and the IIIT network, like `my_registrations`. The page reads registrations live and keeps each person's last read in memory for a minute. Without the portal it shows sales only and says why.
 
 The median ask is the median stated price of sell listings for that serving at that mess. With fewer than 3 asks it falls back to every mess for that serving, then to that meal over four weeks. Listings are pruned after 14 days, so `run` saves each serving's asking prices every hour in `market_prices`.
 
@@ -83,12 +132,17 @@ To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` s
 | `meal_schedule` | Now, current/next meal, today's windows |
 | `list_listings` | Listings filtered by kind, status, meal, mess, hours. Default: available sells, last 24h |
 | `get_listing` | One listing with every copy across groups |
-| `list_recent_chats` | DM peers in the last 24h (max 72h): saved or not, new or not, last in/out. No content |
-| `read_unsaved_chat` | Message text for one unsaved number. Errors for saved contacts |
-| `my_registrations` | Live portal registrations for a date range, including cancellation and usage fields. Requires `MESS_API_KEY` |
-| `my_qr` | Current portal QR as a PNG image. Sensitive; fetch again after token resets. Requires `MESS_API_KEY` |
+| `list_recent_chats` | DM peers in the last 24h (max 72h): saved or not, new or not, last in/out. No content. Admins only |
+| `read_unsaved_chat` | Message text for one unsaved number. Errors for saved contacts. Admins only |
+| `my_registrations` | Live portal registrations for a date range, including cancellation and usage fields. Uses the caller's own mess API key |
+| `my_qr` | Current portal QR as a PNG image. Sensitive; fetch again after token resets. Uses the caller's own mess API key |
 
-All tools are read-only. Group posts and DM text are written by strangers. The server's instructions tell the agent to treat them as untrusted, but read-only tools are what actually limits the damage.
+All tools are read-only.
+
+Each MCP request acts as a messwa user. A client sends `Authorization: Bearer mwa_...`, a token made on the account page or with `messwa user token`. Tokens are stored as SHA-256 hashes, shown once, and stop working on the next request after they're revoked or their user is disabled. Two more ways in act as the owner (the first admin):
+
+- No `Authorization` header, allowed only when `mcp.listen` is loopback and `MESSWA_MCP_TOKEN` is unset. This is how the Docker setup works today.
+- The shared `MESSWA_MCP_TOKEN`, kept so existing clients don't break. Setting it turns tokenless access off. Group posts and DM text are written by strangers. The server's instructions tell the agent to treat them as untrusted, but read-only tools are what actually limits the damage.
 
 ### Read your portal registrations
 
@@ -96,14 +150,16 @@ Registration reads reuse the API contract from IIITH-mess-MCP: an HTTP GET to
 `/api/registrations?from=YYYY-MM-DD&to=YYYY-MM-DD`, with the API key in the
 `Authorization` header. No Node server is needed for this integration.
 
-Set `MESS_API_KEY` in the process environment. `MESS_API_URL` defaults to
-`https://mess.iiit.ac.in/api` and must be an HTTPS base URL. Do not put keys in
-`config.toml` or commit them. For Docker Compose, set these variables in the
-ignored `.env` file; the existing `env_file` passes them to the container.
-The standalone binary uses its process environment and does not load `.env`.
+Save your key on the account page, or with `messwa user mess-key NAME`.
+`MESS_API_URL` defaults to `https://mess.iiit.ac.in/api` and must be an HTTPS
+base URL. Do not put keys in `config.toml` or commit them. Reading a stored
+key needs `MESSWA_SECRET_KEY`; for Docker Compose it's in the ignored `.env`
+file, which the existing `env_file` passes to the container. The standalone
+binary uses its process environment and does not load `.env`.
 
 ```sh
 ./messwa registrations -from 2026-11-04 -to 2026-11-10
+./messwa registrations -user asha    # with asha's key; the default is the first admin
 ```
 
 With no dates, this reads today in the configured timezone. If only `-from`
@@ -126,6 +182,7 @@ Registration reads do not register, cancel or skip meals.
 ```sh
 ./messwa fetch-qr                          # writes state/current-qr.png
 ./messwa fetch-qr -out state/meal-qr.png    # choose a private output path
+./messwa fetch-qr -user asha                # with asha's key, not the first admin's
 ```
 
 This reads `/api/auth/me` and encodes its current `token` directly, matching
@@ -150,6 +207,7 @@ cp config.example.toml config.toml
 
 ./messwa login                       # asks for your number (pairing code) or Enter for a QR
 ./messwa groups                      # copy the mess groups' JIDs into config.toml
+./messwa user add -admin <you>       # your dashboard account
 ./messwa run                         # serves http://127.0.0.1:8766/mcp
 ```
 
@@ -163,7 +221,7 @@ claude mcp add --transport http messwa http://127.0.0.1:8766/mcp
 
 ### Docker
 
-On this server the container is the live service. It uses host networking, so `config.toml` works unchanged: the dashboard binds the host's private address and MCP stays on loopback without a token. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
+On this server the container is the live service. It uses host networking, so `config.toml` works unchanged: the dashboard binds the host's Tailscale address and MCP stays on loopback, where tokenless requests act as the first admin. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
 
 ```sh
 docker compose up -d --build        # rebuild and redeploy after code changes
@@ -172,7 +230,7 @@ docker compose stop                 # before `login` or `groups`
 docker compose run --rm messwa groups
 ```
 
-To serve MCP beyond loopback, set `[mcp] listen = "0.0.0.0:8766"` and put `MESSWA_MCP_TOKEN=$(openssl rand -hex 32)` in `.env`. messwa refuses to start on a non-loopback address without it. Clients then pass `--header "Authorization: Bearer <token>"` to `claude mcp add`.
+To serve MCP beyond loopback, set `[mcp] listen` to that address. Every request then needs a token: each person makes their own on the account page and passes `--header "Authorization: Bearer mwa_..."` to `claude mcp add`. Tokenless access only works on loopback.
 
 The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don't run both: WhatsApp allows one connection per linked device.
 
@@ -222,7 +280,7 @@ To deliver the current real portal QR instead of a saved image:
   -peer '91XXXXXXXXXX@s.whatsapp.net' -amount 60.00 -portal-qr
 ```
 
-`-portal-qr` requires `MESS_API_KEY` and cannot be combined with `-qr`. It
+`-portal-qr` reads with the first admin's saved mess API key (`-user NAME` picks another account) and cannot be combined with `-qr`. It
 checks for exactly one regular, uncancelled, unused registration before arming.
 After a matching payment, it rechecks that meal and fetches the current QR
 immediately before uploading. A portal error blocks sending; it never falls

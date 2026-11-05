@@ -1,0 +1,50 @@
+/* The sign-in and account pages. Shares style.css with the board. */
+
+.app.account { width: min(720px, 100%); }
+.account .top { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.account.login { width: min(440px, 100%); margin-top: 8vh; }
+
+.notice {
+  margin: 0; padding: 10px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--egg) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--egg) 35%, transparent);
+  color: var(--muted); font-size: 12.5px;
+}
+code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--slot); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+.account a { color: var(--gold); }
+.account a.nav-link { color: var(--muted); }
+
+.form { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 2px; }
+.form label { display: flex; flex-direction: column; gap: 5px; font: 700 9px Pixel; letter-spacing: .5px; color: var(--muted); text-transform: uppercase; }
+.form input {
+  height: 40px; padding: 0 12px; border-radius: 10px;
+  background: #10141c; border: 1px solid var(--line); color: var(--text);
+  font: 14px var(--sans); outline: none;
+}
+.form input:focus { border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
+.form .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.form .grow { flex: 1 1 220px; }
+.form .actions { margin-top: 2px; }
+.note { margin: 0; color: var(--muted); font-size: 12.5px; }
+.err { margin: 0; color: #ff6b5b; font-size: 13px; }
+.ok { margin: 0; color: #5be37a; font-size: 13px; }
+.red { color: #ff6b5b; }
+.dim { color: var(--dim); }
+.head-meta b { color: var(--text); font-weight: 600; }
+.btn:disabled { opacity: .6; cursor: progress; }
+.btn.small { height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12px; }
+
+.fresh { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--veg) 7%, var(--panel)); border: 1px solid color-mix(in srgb, var(--veg) 35%, transparent); }
+.fresh p { margin: 0; font-size: 13px; }
+.fresh code { display: block; padding: 8px 10px; user-select: all; }
+
+.tokens { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tokens th { text-align: left; font: 700 9px Pixel; letter-spacing: .5px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.tokens td { padding: 8px; border-bottom: 1px solid #1c2230; vertical-align: middle; }
+.tokens td:last-child { text-align: right; }
+.tokens .mono { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+.tokens tr.revoked td { opacity: .5; }
+.tokens tr.revoked td:last-child { opacity: 1; }
+
+@media (max-width: 560px) {
+  .tokens th:nth-child(3), .tokens td:nth-child(3) { display: none; }
+}

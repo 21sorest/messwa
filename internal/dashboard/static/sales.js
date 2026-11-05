@@ -89,6 +89,7 @@ function face(key) {
 async function load() {
   try {
     const r = await fetch('api/sales', { cache: 'no-store' });
+    if (r.status === 401) return toLogin();
     if (!r.ok) throw new Error(r.status);
     D = await r.json();
     skew = D.now - Date.now() / 1000;
@@ -120,13 +121,26 @@ function render() {
   n.hidden = !D.portal;
   if (D.portal) {
     n.replaceChildren(el('b', '', 'Registrations unavailable. '),
-      `The portal said: ${D.portal}. The ledger shows sales only, so eaten and wasted meals are missing.`);
+      D.owner
+        ? `The portal said: ${D.portal}. The ledger shows sales only, so eaten and wasted meals are missing.`
+        : `The portal said: ${D.portal}.`);
   }
+  // Sales belong to the linked WhatsApp account. Members see their own
+  // registrations only.
+  if (!D.owner) {
+    $('title').textContent = 'My meals';
+    $('sub').textContent = 'Your registrations: eaten, wasted and still open';
+    document.title = 'My meals · Mess Auction House';
+  }
+  for (const id of ['regSec', 'pcSec', 'earnSec']) $(id).hidden = !D.owner;
+  for (const e of document.querySelectorAll('.own')) e.hidden = !D.owner;
   renderSaved();
   renderLedger();
-  renderRegulars();
-  renderPrices();
-  renderEarnings();
+  if (D.owner) {
+    renderRegulars();
+    renderPrices();
+    renderEarnings();
+  }
   // A re-render replaces whatever the tooltip was attached to.
   if (tipFor && !tipFor.isConnected) hideTip();
 }
@@ -144,6 +158,19 @@ function renderSaved() {
   could.style.setProperty('left', `${ew * 100}%`);
   could.style.setProperty('width', `${cw * 100}%`);
 
+  if (!D.owner) {
+    // Members don't sell through messwa, so this is only what went to waste.
+    $('savedK').textContent = `Wasted in ${monthName}`;
+    $('savedV').replaceChildren(rupees(Math.round(M.potential)));
+    const row = $('savedRow');
+    const left = el('span');
+    left.append(el('b', '', `${M.wasted} meal${M.wasted === 1 ? '' : 's'}`), ' ended unsold and uneaten');
+    const right = el('span');
+    if (M.wasted) right.append(`worth about ${rupees(Math.round(M.potential))} at the median ask`);
+    if (M.unpriced) right.append(` (${M.unpriced} with no asks to go on)`);
+    row.replaceChildren(left, right);
+    return;
+  }
   $('savedK').textContent = `Saved in ${monthName}`;
   const v = $('savedV');
   v.replaceChildren(rupees(M.earned));
@@ -170,7 +197,7 @@ function savedTip() {
   const monthName = fmt(M.start, { month: 'long' });
   return [
     [{ t: `${monthName} so far`, c: 'nm' }],
-    [{ t: 'Earned ', c: 'c7' }, { t: rupees(M.earned), c: 'ca' }, { t: ` from ${M.sold} sold`, c: 'c8' }],
+    D.owner ? [{ t: 'Earned ', c: 'c7' }, { t: rupees(M.earned), c: 'ca' }, { t: ` from ${M.sold} sold`, c: 'c8' }] : null,
     M.wasted ? [{ t: 'Left on the table ', c: 'c7' }, { t: rupees(Math.round(M.potential)), c: 'c6' }, { t: ` from ${M.wasted} wasted`, c: 'c8' }] : null,
     M.fee > 0 ? [{ t: 'Mess bill ', c: 'c7' }, { t: rupees(M.fee), c: 'cf' }] : null,
   ];
@@ -229,8 +256,13 @@ function renderLedger() {
   const wasted = cells.filter(([, c]) => c.state === 'wasted');
   const lost = sum(wasted.map(([, c]) => c.ask || 0));
   const meta = $('ledMeta');
-  meta.replaceChildren(`${fmtDay(first)} - ${dates[6] === D.today ? 'today' : fmtDay(dates[6])} · `,
-    el('b', '', String(soldHere.length)), ' sold · ', el('span', 'gold', rupees(earned)));
+  const span = `${fmtDay(first)} - ${dates[6] === D.today ? 'today' : fmtDay(dates[6])}`;
+  if (D.owner) {
+    meta.replaceChildren(`${span} · `, el('b', '', String(soldHere.length)), ' sold · ', el('span', 'gold', rupees(earned)));
+  } else {
+    $('ledName').textContent = 'Meal ledger';
+    meta.replaceChildren(span);
+  }
   if (wasted.length) meta.append(' · ', el('span', 'red', `${wasted.length} wasted`), lost ? ` (${rupees(Math.round(lost))} at median)` : '');
   $('pgPrev').disabled = page >= pages() - 1;
   $('pgNext').disabled = page === 0;
@@ -558,13 +590,14 @@ function renderEarnings() {
 
 $('logo').append(svgEl(icon('ingot')));
 $('navIcon').append(svgEl(icon('prev')));
+me().then(userLink).catch(() => {});
 $('ledIcon').append(svgEl(icon('coin')));
 $('regIcon').append(svgEl(icon('paper')));
 $('pcIcon').append(svgEl(icon('chart')));
 $('cardIcon').append(svgEl(icon('chart')));
 tip($('xpBar'), () => (D ? savedTip() : []));
-$('pgPrev').addEventListener('click', () => { if (D) { page = Math.min(pages() - 1, page + 1); renderLedger(); renderEarnings(); } });
-$('pgNext').addEventListener('click', () => { if (D) { page = Math.max(0, page - 1); renderLedger(); renderEarnings(); } });
+$('pgPrev').addEventListener('click', () => { if (D) { page = Math.min(pages() - 1, page + 1); renderLedger(); if (D.owner) renderEarnings(); } });
+$('pgNext').addEventListener('click', () => { if (D) { page = Math.max(0, page - 1); renderLedger(); if (D.owner) renderEarnings(); } });
 addEventListener('keydown', (e) => {
   if (!D || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'ArrowLeft') $('pgPrev').click();

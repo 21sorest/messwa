@@ -19,10 +19,11 @@
     <div class="brand">
       <span class="logo" id="logo"></span>
       <div>
-        <h1>My sales</h1>
+        <h1 id="title">My sales</h1>
         <p class="sub" id="sub">Who bought your meals, and for how much</p>
       </div>
       <a class="nav-link" href="./" title="Back to the listings"><span id="navIcon"></span>Auction house</a>
+      <a class="nav-link" href="account.html" id="accountLink" title="Your account">Account</a>
     </div>
     <span class="live" id="live"><i></i><span id="liveText">connecting</span></span>
   </header>
@@ -32,7 +33,7 @@
   <section class="chest" aria-label="Sales ledger">
     <div class="chest-head">
       <span class="head-icon" id="ledIcon"></span>
-      <span class="head-name">Sales ledger</span>
+      <span class="head-name" id="ledName">Sales ledger</span>
       <span class="head-meta" id="ledMeta"></span>
       <span class="pager">
         <button class="pg" id="pgPrev" aria-label="Earlier week">&lsaquo;</button>
@@ -49,15 +50,15 @@
       <div class="lside"><div class="side-k">Hover a slot</div><div class="panel" id="insp"></div></div>
     </div>
     <div class="slegend">
-      <span><i class="sw s"></i>Sold</span>
-      <span><i class="sw r"></i>Armed, awaiting pay</span>
+      <span class="own"><i class="sw s"></i>Sold</span>
+      <span class="own"><i class="sw r"></i>Armed, awaiting pay</span>
       <span><i class="sw a"></i>Ate it</span>
       <span><i class="sw w"></i>Wasted</span>
       <span><i class="sw u"></i>Registered</span>
     </div>
   </section>
 
-  <section class="chest" aria-label="Regular buyers">
+  <section class="chest" id="regSec" aria-label="Regular buyers">
     <div class="chest-head">
       <span class="head-icon" id="regIcon"></span>
       <span class="head-name">Regulars</span>
@@ -67,7 +68,7 @@
     <div class="rbody"><div class="panel" id="rinsp"></div><div class="tiers" id="tiers"></div></div>
   </section>
 
-  <section class="chest" aria-label="Your prices against the market">
+  <section class="chest" id="pcSec" aria-label="Your prices against the market">
     <div class="chest-head">
       <span class="head-icon" id="pcIcon"></span>
       <span class="head-name">Price check</span>
@@ -77,7 +78,7 @@
     <div id="pplot"></div>
   </section>
 
-  <section class="chest" aria-label="Earnings per mess">
+  <section class="chest" id="earnSec" aria-label="Earnings per mess">
     <div class="chest-head">
       <span class="head-icon" id="cardIcon"></span>
       <span class="head-name">Earnings</span>

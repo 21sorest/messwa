@@ -41,7 +41,8 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	peer := fs.String("peer", "", "reserved buyer's full WhatsApp JID")
 	amount := fs.String("amount", "", "agreed INR amount, e.g. 60.00")
 	qr := fs.String("qr", "", "PNG or JPEG image to send (defaults to an embedded, labelled test image)")
-	portalQR := fs.Bool("portal-qr", false, "fetch the current QR from the portal immediately before delivery; requires MESS_API_KEY")
+	portalQR := fs.Bool("portal-qr", false, "fetch the current QR from the portal immediately before delivery, with -user's mess API key")
+	user := fs.String("user", "", "with -portal-qr, whose mess API key to use; defaults to the first admin")
 	offer := fs.String("offer-text", "", "optional offer to send to the selected buyer once connected and armed")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -91,7 +92,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	var portalClient *portal.Client
 	var accountHash, mess, diet string
 	if *portalQR {
-		portalClient, err = portal.FromEnv()
+		portalClient, err = userPortal(ctx, cfg, *user)
 		if err != nil {
 			return err
 		}

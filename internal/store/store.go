@@ -95,7 +95,7 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	os.Chmod(path, 0o600)
-	if _, err := db.Exec(schema + logSchema + deliverySchema + priceSchema); err != nil {
+	if _, err := db.Exec(schema + logSchema + deliverySchema + priceSchema + accountSchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
 	// Columns added after the first release. Listings are derived data, so
@@ -574,6 +574,9 @@ func (s *Store) Prune(ctx context.Context, dmBefore, listingsBefore time.Time) e
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM listings WHERE last_seen < ?`, listingsBefore.Unix()); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, time.Now().Unix()); err != nil {
 		return err
 	}
 	return s.pruneLog(ctx, listingsBefore)

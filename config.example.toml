@@ -29,12 +29,15 @@ retention = "72h"
 
 [mcp]
 listen = "127.0.0.1:8766"
-# Env var holding the bearer token. Required when listen isn't loopback.
+# Each person makes their own MCP token on the dashboard's account page.
+# On loopback, requests without a token act as the first admin, unless this
+# env var holds a shared token, which then acts as the first admin instead.
 token_env = "MESSWA_MCP_TOKEN"
 
 [dashboard]
-# The listings dashboard. It shows sellers' phone numbers: keep it on
-# loopback or a private address such as a LAN or VPN IP.
+# The listings dashboard, behind sign-in. It shows sellers' phone numbers,
+# so messwa only listens on loopback or a private address such as a LAN or
+# Tailscale IP.
 listen = "127.0.0.1:8767"
 # Optional. Beeper Desktop or Server's index.db, opened read-only. With it,
 # a browser that picked Beeper in SETTINGS gets each copy of a post as a

@@ -15,6 +15,7 @@ func registrations(ctx context.Context, cfg *config.Config, args []string) error
 	fs := flag.NewFlagSet("registrations", flag.ContinueOnError)
 	from := fs.String("from", time.Now().In(cfg.Location()).Format("2006-01-02"), "first date, YYYY-MM-DD; defaults to today in the configured timezone")
 	to := fs.String("to", "", "last date, YYYY-MM-DD; defaults to from")
+	user := fs.String("user", "", "read with this account's mess API key; defaults to the first admin")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -24,7 +25,7 @@ func registrations(ctx context.Context, cfg *config.Config, args []string) error
 	if err := portal.ValidateRange(*from, *to); err != nil {
 		return err
 	}
-	c, err := portal.FromEnv()
+	c, err := userPortal(ctx, cfg, *user)
 	if err != nil {
 		return err
 	}

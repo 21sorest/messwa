@@ -86,6 +86,7 @@ svg { display: block; }
 .nav-link:hover { background: var(--slot-hi); color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
 .nav-link span { width: 14px; height: 14px; }
 button.nav-link { cursor: pointer; }
+.nav-link b { font-weight: inherit; }
 .nav-link span svg { width: 14px; height: 14px; display: block; }
 
 .day { display: flex; flex-direction: column; gap: 7px; min-width: 0; }

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d12">
+<title>Account · Mess Auction House</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="silkscreen-700.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="account.css">
+<script src="common.js" defer></script>
+<script src="account.js" defer></script>
+</head>
+<body>
+<div class="app account">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" id="logo"></span>
+      <div>
+        <h1 id="who">Account</h1>
+        <p class="sub" id="role">&nbsp;</p>
+      </div>
+      <a class="nav-link" href="./" title="Back to the listings"><span id="navIcon"></span>Auction house</a>
+    </div>
+    <button class="nav-link" id="logout" type="button">Sign out</button>
+  </header>
+
+  <section class="chest" aria-label="Mess API key">
+    <div class="chest-head">
+      <span class="head-icon" id="keyIcon"></span>
+      <span class="head-name">Mess API key</span>
+      <span class="head-meta" id="keyMeta"></span>
+    </div>
+    <div class="form">
+      <p class="note">Your key for the IIIT mess portal. messwa uses it to read your own registrations and QR: on <a href="sales.html">your meals page</a>, and in the <code>my_registrations</code> and <code>my_qr</code> MCP tools. It's stored encrypted and never shown again after you save it.</p>
+      <p class="notice" id="noSecret" hidden>The server has no <code>MESSWA_SECRET_KEY</code>, so it can't store keys yet. Ask the admin to set it.</p>
+      <form id="keyForm" class="row">
+        <label class="grow">New key<input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your mess API key" required></label>
+        <button class="btn primary" type="submit">Save key</button>
+        <button class="btn" type="button" id="keyClear" hidden>Remove</button>
+      </form>
+      <p class="err" id="keyErr" role="alert" hidden></p>
+    </div>
+  </section>
+
+  <section class="chest" aria-label="MCP tokens">
+    <div class="chest-head">
+      <span class="head-icon" id="tokIcon"></span>
+      <span class="head-name">MCP tokens</span>
+      <span class="head-meta" id="tokMeta"></span>
+    </div>
+    <div class="form">
+      <p class="note">An agent connects to messwa's MCP server with one of these as its bearer token, and acts as you. Make one per device so you can revoke it alone.</p>
+      <form id="tokForm" class="row">
+        <label class="grow">Label<input id="label" maxlength="64" placeholder="laptop" autocomplete="off"></label>
+        <button class="btn primary" type="submit">Create token</button>
+      </form>
+      <div class="fresh" id="fresh" hidden>
+        <p><b>Copy this token now.</b> It won't be shown again.</p>
+        <code id="freshTok"></code>
+        <p class="note">Add it to Claude Code with:</p>
+        <code id="freshCmd"></code>
+      </div>
+      <p class="err" id="tokErr" role="alert" hidden></p>
+      <table class="tokens" id="tokens" hidden>
+        <thead><tr><th>Label</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+        <tbody id="tokBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="chest" aria-label="Password">
+    <div class="chest-head">
+      <span class="head-icon" id="pwIcon"></span>
+      <span class="head-name">Password</span>
+    </div>
+    <form class="form" id="pwForm">
+      <input type="text" name="username" autocomplete="username" id="pwUser" hidden>
+      <label>Current password<input id="pwOld" type="password" autocomplete="current-password" required></label>
+      <label>New password<input id="pwNew" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label>New password again<input id="pwAgain" type="password" autocomplete="new-password" minlength="10" required></label>
+      <p class="err" id="pwErr" role="alert" hidden></p>
+      <p class="ok" id="pwOk" hidden>Password changed. Your other devices are signed out.</p>
+      <div class="actions"><button class="btn primary" type="submit">Change password</button></div>
+    </form>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+</body>
+</html>
