@@ -398,6 +398,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	go syncMealTimes(ctx, cfg, log)
 	hub := dashboard.NewHub()
 	manager := &deviceAccounts{ctx: ctx, cfg: cfg, log: log, st: st, acc: acc, hub: hub, users: map[int64]*deviceAccount{}}
 	defer manager.close()
@@ -529,6 +530,7 @@ func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, arg
 		ms.SetClock(func() time.Time { return time.Now().Add(offset) })
 	}
 	fmt.Printf("dashboard on http://%s/\n", *listen)
+	go syncMealTimes(ctx, cfg, log)
 	hub := dashboard.NewHub()
 	manager := &deviceAccounts{ctx: ctx, cfg: cfg, log: log, st: st, acc: acc, hub: hub, users: map[int64]*deviceAccount{}, readOnly: true, clock: ms.Now}
 	defer manager.close()

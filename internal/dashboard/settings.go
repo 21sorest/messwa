@@ -7,6 +7,7 @@ import (
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/meals"
 	"messwa/internal/wording"
 )
 
@@ -28,6 +29,9 @@ type settingsState struct {
 	Meals    []string        `json:"meals"`
 	Messes   []string        `json:"messes"`
 	Wording  wordingInfo     `json:"wording"`
+	// PortalMeals are the meal windows the mess portal gave, which the bot
+	// uses instead of meals.times. Empty until the portal has answered.
+	PortalMeals map[string]config.MealTime `json:"portal_meals,omitempty"`
 }
 
 // wordingInfo describes the bot's messages for the Messages tab: what each
@@ -103,6 +107,7 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 		for _, m := range cfg.Messes {
 			out.Messes = append(out.Messes, m.Name)
 		}
+		out.PortalMeals = meals.PortalTimes()
 		writeJSON(w, r, out)
 	}
 

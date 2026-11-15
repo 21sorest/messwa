@@ -63,6 +63,7 @@ type haggle struct {
 	haveMedian bool
 	unit       int // concessions round to this: ₹5, or ₹1 for tiny prices
 	end        time.Time
+	meal       string // "lunch"; a buyer who names only other meals is out
 	// l says the replies. The session adds the buyer's name before decide.
 	l lines
 }
@@ -79,6 +80,12 @@ func (h haggle) withRange(minRupees, maxRupees int) haggle {
 	if h.haveMedian {
 		h.target = min(max(int(math.Round(h.median)), minRupees), maxRupees)
 	}
+	return h
+}
+
+// forMeal is h selling meal.
+func (h haggle) forMeal(meal string) haggle {
+	h.meal = meal
 	return h
 }
 
@@ -127,6 +134,7 @@ type step struct {
 	reply     reply  // to send; empty sends nothing
 	agree     int    // > 0: agreed at this price
 	pass      bool   // the buyer is out
+	why       string // for a pass the bot reads into the message, why
 	passFrom  int    // > 0: the buyer passed at this ask and reply is the one lower price they get
 	park      string // non-empty: stop and hand the buyer to you, saying why
 	paidClaim bool   // the buyer says they paid
@@ -212,10 +220,17 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		return step{next: next, agree: price}
 	}
 
+	if in.kind != intentPaid && in.kind != intentAccept && in.wantsOtherMeal(h.meal) {
+		// "i texted for breakfast" to a lunch seller: no price changes that.
+		return step{next: st, pass: true, why: "wants another meal"}
+	}
 	switch in.kind {
 	case intentPass:
 		k, ok := h.passCounter(st)
-		if !ok || in.bought {
+		if in.bought {
+			return step{next: st, pass: true, why: "bought elsewhere"}
+		}
+		if !ok {
 			return step{next: st, pass: true}
 		}
 		next.passCountered = true
@@ -374,7 +389,7 @@ func newNegotiation(ctx context.Context, m *sellManager, t store.SellTask, s *sa
 	}
 	n := &negotiation{
 		m: m, t: t, s: s, gate: gate, log: m.log.With("task", t.ID), join: join, pay: newOfferQueue(),
-		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, t.EndsAt, s.lines(types.EmptyJID)),
+		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, t.EndsAt, s.lines(types.EmptyJID)).forMeal(baseMeal(t.Meal)),
 		slots: make(chan struct{}, maxSessions), sessions: map[types.JID]*session{}, direct: make(chan error, 1),
 		silence: m.cfg.Live().Sell.NegotiationSilence.Duration, revived: make(chan *session, maxSessions),
 		ownMin: int(t.MinPaise / 100), moved: map[types.JID]bool{},
@@ -1312,8 +1327,8 @@ func (ss *session) handle(texts []string) handled {
 		n.mu.Lock()
 		ss.state = sessionEnded
 		n.mu.Unlock()
-		n.log.Info("buyer passed", "buyer", ss.buyer)
-		n.event(ss.buyer, store.EventPassed, 0, "")
+		n.log.Info("buyer passed", "buyer", ss.buyer, "why", st.why)
+		n.event(ss.buyer, store.EventPassed, 0, st.why)
 		return handledEnded
 	case st.park != "":
 		ss.keepOffer(hs, st.next)

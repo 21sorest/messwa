@@ -8,6 +8,7 @@ import (
 
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/meals"
 	"messwa/internal/store"
 )
 
@@ -151,7 +152,7 @@ func insightsHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc
 		for _, m := range cfg.Messes {
 			st.Messes = append(st.Messes, mess{m.Name, m.VegOnly})
 		}
-		for _, m := range cfg.Meals {
+		for _, m := range meals.Times(cfg) {
 			if seasons.HiddenMeal(m.Name) {
 				continue
 			}

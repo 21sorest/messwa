@@ -214,3 +214,40 @@ func TestHagglePassGetsOneCounter(t *testing.T) {
 		t.Fatalf("pass at the message cap: %+v", s)
 	}
 }
+
+// The 15 Nov chat: a lunch seller messaged someone whose post at 09:32
+// was for breakfast.
+func TestHaggleOtherMeal(t *testing.T) {
+	end := time.Date(2026, 11, 15, 15, 30, 0, 0, time.UTC)
+	h := newHaggle(100, 140, 0, false, end, testLines("nonveg", "")).forMeal("lunch")
+	cases := []struct {
+		name string
+		msgs []string
+		want []string
+	}{
+		{"names another meal", []string{"price?", "i actually texted for breakfast"}, []string{"140", "PASS"}},
+		{"offers for another meal", []string{"price?", "bf 60?"}, []string{"140", "PASS"}},
+		{"names the meal on sale", []string{"price?", "lunch for 120?"}, []string{"140", "140 / final offer"}},
+		{"names both", []string{"price?", "breakfast or lunch, 120?"}, []string{"140", "140 / final offer"}},
+		{"not req is a pass", []string{"price?", "not req", "not req"}, []string{"140", "how about 120", "PASS"}},
+	}
+	for _, c := range cases {
+		if got := replay(h, end.Add(-4*time.Hour), c.msgs...); strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+	// A haggle that doesn't know its meal reads meals as before.
+	if got := replay(newHaggle(100, 140, 0, false, end, testLines("nonveg", "")), end.Add(-4*time.Hour), "price?", "breakfast?"); len(got) != 2 || got[1] == "PASS" {
+		t.Errorf("no meal: got %q", got)
+	}
+}
+
+func TestCombineIntentsMeals(t *testing.T) {
+	in := combineIntents([]string{"i texted for breakfast", "price?"})
+	if !in.wantsOtherMeal("lunch") || in.wantsOtherMeal("breakfast") {
+		t.Errorf("meals = %v", in.meals)
+	}
+	if in := combineIntents([]string{"bf?", "or lunch"}); in.wantsOtherMeal("lunch") {
+		t.Errorf("bf then lunch = %v", in.meals)
+	}
+}
