@@ -7,12 +7,14 @@ const path = require('node:path');
 
 function planner(send = async () => ({})) {
   class Element {
-    constructor() { this.children = []; this.dataset = {}; this.classList = { toggle() {} }; this.style = { setProperty() {} }; }
+    constructor() { this.children = []; this.dataset = {}; this.classList = { toggle() {}, add() {}, remove() {} }; this.style = { setProperty() {} }; }
     append(...items) { this.children.push(...items); }
     after() {}
     prepend(item) { this.children.unshift(item); }
     replaceChildren(...items) { this.children = items; }
     setAttribute() {}
+    removeAttribute() {}
+    focus() {}
     addEventListener() {}
     contains() { return false; }
     querySelectorAll() { return []; }
@@ -28,6 +30,7 @@ function planner(send = async () => ({})) {
     svgEl: () => new Element(), icon: () => '', messColor: () => '', messIcon: () => '',
     priceSlider: () => ({ nodes: [], get: () => [40, 80] }),
     now: () => 1794800000, dayOf: (d) => new Date(d + 'T12:00:00Z'), load: async () => {}, openSell() {}, priceText: () => '', hm: () => '',
+    cellNode: () => new Element(), rupees: (v) => `₹${v}`, DIET_LABEL: { veg: 'Veg' }, confirm: () => true,
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'static/planner.js'), 'utf8'), ctx);
   return { run: (code) => vm.runInContext(code, ctx), nodes, c, ctx };
@@ -105,4 +108,17 @@ test('range selection supports weekday lunches without selecting other meals',()
  const p=planner();p.run("D.upcoming.push({date:'2026-11-21',cells:[{...D.upcoming[0].cells[0]}]});D.upcoming[0].cells.push({...D.upcoming[0].cells[0],meal:'dinner'});renderPlanner()");
  p.ctx.$('planFrom').value='2026-11-16';p.ctx.$('planTo').value='2026-11-21';p.ctx.$('planMeal').value='lunch';p.ctx.$('planWeekdays').checked=true;
  p.run("$('planRangeSelect').onclick()");assert.equal(p.run('planActions().length'),2);assert.equal(p.run("planActions().every(a=>a.body.meal==='lunch')"),true);
+});
+test('clicking a meal selects it and opens it; clicking the open meal again keeps it', () => {
+  const p = planner();
+  const key = "planKey(D.upcoming[1].date, D.upcoming[1].cells[0])";
+  p.run(`planClick(${key})`);
+  assert.equal(p.run('planPicked'), '2026-11-17|lunch');
+  assert.equal(p.run('planActions().length'), 1);
+  p.run(`planClick(${key})`);
+  assert.equal(p.run('planActions().length'), 0);
+  p.run("D.upcoming[0].cells.push({ meal: 'dinner', state: 'selling', task: { id: 8, min: 30, max: 30 } })");
+  p.run("planClick('2026-11-16|dinner')");
+  assert.equal(p.run('planPicked'), '2026-11-16|dinner');
+  assert.equal(p.run('planActions().length'), 0);
 });
