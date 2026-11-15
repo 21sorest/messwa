@@ -53,6 +53,9 @@
 .cell.is-wasted .stamp { color: #ff6b5b; }
 .cell.is-open { background: transparent; border: 1px dashed #2e3646; box-shadow: none; }
 .cell.is-open .ghost { opacity: .32; }
+/* Time left in the serving window for a sale that is armed to deliver. */
+.cell .bar { position: absolute; left: calc(var(--c) + 1px); right: calc(var(--c) + 1px); bottom: calc(var(--c) - 2px); height: 3px; border-radius: 2px; background: rgba(0, 0, 0, .55); overflow: hidden; }
+.cell .bar i { display: block; height: 100%; width: 100%; transform-origin: left; }
 .cell.is-unknown .ghost { color: var(--dim); font: 700 16px var(--sans); }
 .cell.is-sending .ticked { background: var(--egg); }
 .cell.is-handoff > :not(.stamp) { opacity: .4; }
