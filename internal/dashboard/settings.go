@@ -7,6 +7,7 @@ import (
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/wording"
 )
 
 type settingsGroup struct {
@@ -26,6 +27,27 @@ type settingsState struct {
 	Groups   []settingsGroup `json:"groups"`
 	Meals    []string        `json:"meals"`
 	Messes   []string        `json:"messes"`
+	Wording  wordingInfo     `json:"wording"`
+}
+
+// wordingInfo describes the bot's messages for the Messages tab: what each
+// one is for, the variables, and the limits the server checks.
+type wordingInfo struct {
+	Slots       []wording.Slot `json:"slots"`
+	Vars        []wording.Var  `json:"vars"`
+	MaxVariants int            `json:"max_variants"`
+	MaxParts    int            `json:"max_parts"`
+	MaxLen      int            `json:"max_len"`
+}
+
+func newWordingInfo() wordingInfo {
+	slots := make([]wording.Slot, len(wording.Slots))
+	for i, s := range wording.Slots {
+		// The page lists every variable a slot can use.
+		s.Uses = s.Allowed()
+		slots[i] = s
+	}
+	return wordingInfo{Slots: slots, Vars: wording.Vars, MaxVariants: wording.MaxVariants, MaxParts: wording.MaxParts, MaxLen: wording.MaxLen}
 }
 
 // settingsRoutes adds the settings API. srv and cfg are the signed-in
@@ -59,7 +81,7 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 		}
 		live := cfg.Live()
 		out := settingsState{Values: only(r, live.Values()), Defaults: only(r, cfg.File().Values()),
-			Saved: []string{}, Restart: []string{}, Groups: []settingsGroup{}, Meals: []string{}, Messes: []string{}}
+			Saved: []string{}, Restart: []string{}, Groups: []settingsGroup{}, Meals: []string{}, Messes: []string{}, Wording: newWordingInfo()}
 		for _, k := range config.SettingKeys() {
 			if !mine(r, k) {
 				continue

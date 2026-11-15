@@ -34,6 +34,7 @@
     <button class="set-tab" type="button" data-pane="offer" data-mine hidden><span class="ic" aria-hidden="true">📣</span>Offer</button>
     <button class="set-tab" type="button" data-pane="repost" data-mine hidden><span class="ic" aria-hidden="true">🔁</span>Repost</button>
     <button class="set-tab" type="button" data-pane="buyers" data-mine hidden><span class="ic" aria-hidden="true">🤝</span>Buyers</button>
+    <button class="set-tab" type="button" data-pane="messages" data-mine hidden><span class="ic" aria-hidden="true">💬</span>Messages</button>
     <button class="set-tab" type="button" data-pane="market" data-admin hidden><span class="crown" aria-hidden="true">👑</span><span class="ic" aria-hidden="true">✅</span>Market</button>
     <button class="set-tab" type="button" data-pane="calendar" data-admin hidden><span class="crown" aria-hidden="true">👑</span><span class="ic" aria-hidden="true">🗓️</span>Calendar</button>
   </nav>
@@ -138,6 +139,19 @@
     </div>
   </section>
 
+  <section class="pane" id="messages">
+    <div class="master">
+      <span class="ic" aria-hidden="true">✍️</span>
+      <div class="lbl">Use my wording<small>Off sends the built-in lines. Your edits are kept either way.</small></div>
+      <span class="tag gold" id="msgEdited" hidden></span>
+      <button class="tg" type="button" data-key="sell.own_wording" aria-label="Use my wording"></button>
+    </div>
+    <div class="msg-cols" id="msgCols">
+      <nav class="box msg-list" id="msgList" aria-label="Messages"></nav>
+      <div class="box msg-ed" id="msgEd"></div>
+    </div>
+  </section>
+
   <section class="pane" id="market">
     <div class="box">
       <div class="h">Sold when seller reacts</div>
@@ -180,5 +194,18 @@
   <p class="err" id="err" role="alert" hidden></p>
 </div>
 <div class="tip" id="tip" hidden></div>
+<dialog class="var-help" id="varHelp" aria-labelledby="varHelpTitle">
+  <div class="vh-top"><span aria-hidden="true">🧩</span><b id="varHelpTitle">Variables</b><button class="icon-btn" type="button" id="varHelpX" aria-label="Close">✕</button></div>
+  <p id="varHelpLead"></p>
+  <table>
+    <thead><tr><th>Variable</th><th>Example</th><th>What it is</th></tr></thead>
+    <tbody id="varHelpRows"></tbody>
+  </table>
+  <ul class="vh-tips">
+    <li><span class="var req">{price}</span> A red star means this message can't be saved without it.</li>
+    <li><b>[ ]</b> Wrap anything that can be empty in square brackets. <code>its {price}[, for {day}]</code> sends "its 35" for today's meal and "its 35, for tmrw" otherwise.</li>
+    <li><b>🎲</b> Add a few variants so buyers who come back every meal don't get the same line twice. The bot picks one at random.</li>
+  </ul>
+</dialog>
 </body>
 </html>

@@ -63,12 +63,12 @@ type haggle struct {
 	haveMedian bool
 	unit       int // concessions round to this: ₹5, or ₹1 for tiny prices
 	end        time.Time
-	what       string // the mess and diet, "kadamba non-veg"
-	day        string // "" for today's meal, else "tmrw" or "13 nov"
+	// l says the replies. The session adds the buyer's name before decide.
+	l lines
 }
 
-func newHaggle(minRupees, maxRupees int, median float64, haveMedian bool, end time.Time, what, day string) haggle {
-	h := haggle{end: end, what: what, day: day, median: median, haveMedian: haveMedian}
+func newHaggle(minRupees, maxRupees int, median float64, haveMedian bool, end time.Time, l lines) haggle {
+	h := haggle{end: end, l: l, median: median, haveMedian: haveMedian}
 	return h.withRange(minRupees, maxRupees)
 }
 
@@ -183,9 +183,9 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 	next := st
 	next.quoted = slices.Clone(st.quoted)
 	say := func(price int, text reply) step {
-		if !priced && h.day != "" && in.kind == intentOffer {
+		if day := h.l.vals["day"]; !priced && day != "" && in.kind == intentOffer && !strings.Contains(strings.Join(text, "\n"), day) {
 			// A counter as the first price: still say which day.
-			text = append(text[:len(text)-1:len(text)-1], text[len(text)-1]+", its for "+h.day)
+			text = append(text[:len(text)-1:len(text)-1], text[len(text)-1]+", its for "+day)
 		}
 		next.ask = price
 		if !slices.Contains(next.quoted, price) {
@@ -194,18 +194,18 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		return step{next: next, reply: text}
 	}
 	opening := func() step {
-		return say(a, sayOpening(a, h.day))
+		return say(a, h.l.opening(a))
 	}
 	lowest := func() step {
 		next.saidLowest = true
-		return say(w, sayLowest(w))
+		return say(w, h.l.lowest(w, a))
 	}
 	counter := func(k int) step {
 		if k <= w {
 			return lowest()
 		}
 		next.rounds++
-		return say(k, sayCounter(k, next.rounds))
+		return say(k, h.l.counter(k, a, next.rounds))
 	}
 	agree := func(price int) step {
 		next.ask = price
@@ -220,7 +220,7 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		}
 		next.passCountered = true
 		next.rounds++
-		s := say(k, sayCounter(k, next.rounds))
+		s := say(k, h.l.counter(k, a, next.rounds))
 		s.passFrom = a
 		return s
 	case intentPaid:
@@ -263,7 +263,7 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		if !priced {
 			return opening()
 		}
-		return say(a, sayWhich(h.what, a))
+		return say(a, h.l.which(a))
 	}
 	if !priced {
 		return opening()
@@ -272,7 +272,7 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		return step{next: next, park: "sent messages the bot couldn't read"}
 	}
 	next.unknowns++
-	return say(a, sayRestate(a))
+	return say(a, h.l.restate(a))
 }
 
 // Session states, in memory. The store keeps the same story in
@@ -374,7 +374,7 @@ func newNegotiation(ctx context.Context, m *sellManager, t store.SellTask, s *sa
 	}
 	n := &negotiation{
 		m: m, t: t, s: s, gate: gate, log: m.log.With("task", t.ID), join: join, pay: newOfferQueue(),
-		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, t.EndsAt, portalMealLabel(s.mess, s.diet, ""), offerDay(m.cfg, t.Date)),
+		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, t.EndsAt, s.lines(types.EmptyJID)),
 		slots: make(chan struct{}, maxSessions), sessions: map[types.JID]*session{}, direct: make(chan error, 1),
 		silence: m.cfg.Live().Sell.NegotiationSilence.Duration, revived: make(chan *session, maxSessions),
 		ownMin: int(t.MinPaise / 100), moved: map[types.JID]bool{},
@@ -389,6 +389,11 @@ func newNegotiation(ctx context.Context, m *sellManager, t store.SellTask, s *sa
 		n.log.Warn("could not record the target price", "err", err)
 	}
 	return n
+}
+
+// lines are the bot's lines for this task, said to buyer.
+func (n *negotiation) lines(buyer types.JID) lines {
+	return n.prices().l.forBuyer(n.join.name(buyer))
 }
 
 // prices returns the haggle as it stands now. A range edit can change it
@@ -808,7 +813,7 @@ func (n *negotiation) lostTurn(ctx context.Context, buyer types.JID, handedOff b
 	n.event(buyer, store.EventOutbid, int(paise(agreed)/100), "")
 	if prompted {
 		// It goes out whatever the message limit: they must not pay now.
-		r := sayOutbid(handedOff)
+		r := n.lines(buyer).outbid(handedOff)
 		if err := n.send(ctx, buyer, r); err != nil {
 			n.log.Warn("could not tell an outbid buyer not to pay", "buyer", buyer, "err", err)
 		} else {
@@ -1044,7 +1049,7 @@ func (n *negotiation) dropTurn(ctx context.Context, buyer types.JID, note string
 	n.log.Info("autopilot ended a skipped buyer's turn", "buyer", buyer, "prompted", prompted)
 	if prompted {
 		// It goes out whatever the message limit: they must not pay now.
-		r := sayDropped()
+		r := n.lines(buyer).dropped()
 		if err := n.send(ctx, buyer, r); err != nil {
 			n.log.Warn("could not tell a skipped buyer not to pay", "buyer", buyer, "err", err)
 		} else {
@@ -1214,7 +1219,7 @@ func (ss *session) quietNudge() handled {
 	next.quoted = slices.Clone(hs.quoted)
 	next.nudges++
 	if hs.nudges == 0 {
-		if !ss.say(next, sayNudge()) {
+		if !ss.say(next, n.lines(ss.buyer).nudge(min(hs.ask, n.prices().max))) {
 			return handledEnded
 		}
 		n.event(ss.buyer, store.EventNudged, next.ask, "quiet after the first message; asked if they're buying")
@@ -1227,7 +1232,7 @@ func (ss *session) quietNudge() handled {
 		if !slices.Contains(next.quoted, k) {
 			next.quoted = append(next.quoted, k)
 		}
-		if !ss.say(next, sayQuietDrop(k)) {
+		if !ss.say(next, n.lines(ss.buyer).quietDrop(k, min(hs.ask, n.prices().max))) {
 			return handledEnded
 		}
 		n.event(ss.buyer, store.EventNudged, k, fmt.Sprintf("still quiet; dropped from ₹%d to ₹%d", min(hs.ask, n.prices().max), k))
@@ -1298,7 +1303,9 @@ func (ss *session) handle(texts []string) handled {
 	if in.kind == intentPayOther && ss.sayPayOther() {
 		return handledReplied
 	}
-	st := n.prices().decide(hs, in, time.Now(), n.competing())
+	h := n.prices()
+	h.l = n.lines(ss.buyer)
+	st := h.decide(hs, in, time.Now(), n.competing())
 	switch {
 	case st.pass:
 		n.m.st.MoveSellTaskBuyerFrom(ctx, n.t.ID, ss.buyer.String(), []string{store.BuyerQueued, store.BuyerNegotiating}, store.BuyerPassed)
@@ -1443,9 +1450,9 @@ func (ss *session) agree(st step) handled {
 	switch {
 	case !busy || outbid:
 	case n.t.Handoff == string(config.HandoffOnAgreement):
-		ss.sayAgreed(sayQueuedHandoff(st.agree))
+		ss.sayAgreed(n.lines(ss.buyer).queuedHandoff(st.agree))
 	default:
-		ss.sayAgreed(sayQueued(st.agree))
+		ss.sayAgreed(n.lines(ss.buyer).queued(st.agree))
 	}
 	// Highest price pays first. A revived buyer whose earlier payment turn
 	// lapsed queues again.
@@ -1487,7 +1494,7 @@ func (ss *session) sayPayOther() bool {
 	if ok, err := n.m.st.ClaimBuyerLine(n.talk, n.t.ID, ss.buyer.String(), linePayOther); err != nil || !ok {
 		return false
 	}
-	if err := n.send(n.talk, ss.buyer, sayPayOther()); err != nil {
+	if err := n.send(n.talk, ss.buyer, n.lines(ss.buyer).payOther()); err != nil {
 		n.log.Warn("negotiation message failed or is uncertain", "buyer", ss.buyer, "err", err)
 	}
 	return true
@@ -1694,7 +1701,7 @@ func (n *negotiation) adopt(b store.SellBuyer) {
 	case sessionAgreed:
 		if busy {
 			if a, err := store.ParsePaise(b.Agreed); err == nil {
-				ss.sayAgreed(sayQueued(int(a / 100)))
+				ss.sayAgreed(n.lines(ss.buyer).queued(int(a / 100)))
 			}
 		}
 		n.pay.requeue(peer)
