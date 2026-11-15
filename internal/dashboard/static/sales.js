@@ -90,9 +90,15 @@ function openFromHash() {
       page = Math.floor(age / 7); renderLedger(); pickCell(date + '|' + meal);
       $('insp').scrollIntoView({ block: 'center' });
     } else {
-      const index = (D.upcoming || []).findIndex(d => d.date === date);
-      if (index >= 0) { planPage = Math.floor(index / 7); planPicked = date + '|' + meal; renderPlanner(); }
-      $('planner').scrollIntoView({ block: 'start' });
+      // A meal still to come: its slot in the planner, else the tomorrow box.
+      const index = (D.upcoming || []).findIndex((d) => d.date === date);
+      if (D.owner && index >= 0) {
+        planPage = Math.floor(index / 7); planPicked = date + '|' + meal; renderPlanner();
+        $('planner').scrollIntoView({ block: 'start' });
+      } else {
+        const a = $('ahead');
+        (!a.hidden && D.ahead && D.ahead.date === date ? a : $('insp')).scrollIntoView({ block: 'center' });
+      }
     }
     return;
   }
