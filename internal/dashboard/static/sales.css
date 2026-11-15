@@ -343,3 +343,11 @@ button.friend { cursor: pointer; }
   .plan-tools [role="status"] { width: 100%; margin: 4px 0 0; }
   .plan-form-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+.rule-list { display: grid; gap: 8px; margin: 12px 0; }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-list .friend { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.rule-list .fr-what span { white-space: normal; }
+
+.rule-editor { margin-top: 12px; }
+.rule-editor > summary { color: var(--muted); }

@@ -118,6 +118,7 @@ type cell struct {
 	// Sellable is set on the open meal being served now and the next one,
 	// the meals the ledger offers to sell.
 	Sellable      bool   `json:"sellable,omitempty"`
+	Kept          bool   `json:"kept,omitempty"`
 	ScheduleIssue string `json:"schedule_issue,omitempty"`
 	ScheduleState string `json:"schedule_state,omitempty"`
 }
@@ -142,15 +143,17 @@ type aheadCell struct {
 // cellSchedule is a sale waiting for its meal: it starts a sell task at
 // At (unix seconds) with this price range in rupees.
 type cellSchedule struct {
-	Revision  int64   `json:"revision"`
-	State     string  `json:"state"`
-	Detail    string  `json:"detail,omitempty"`
-	RetryAt   int64   `json:"retry_at,omitempty"`
-	ID        int64   `json:"id"`
-	At        int64   `json:"at"`
-	Min       float64 `json:"min"`
-	Max       float64 `json:"max"`
-	Autopilot bool    `json:"autopilot,omitempty"`
+	RuleID     int64   `json:"rule_id,omitempty"`
+	Overridden bool    `json:"overridden,omitempty"`
+	Revision   int64   `json:"revision"`
+	State      string  `json:"state"`
+	Detail     string  `json:"detail,omitempty"`
+	RetryAt    int64   `json:"retry_at,omitempty"`
+	ID         int64   `json:"id"`
+	At         int64   `json:"at"`
+	Min        float64 `json:"min"`
+	Max        float64 `json:"max"`
+	Autopilot  bool    `json:"autopilot,omitempty"`
 }
 
 // taskBuyer is one of a running task's buyers. Key is what the sell
@@ -402,7 +405,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 				issues[sc.Date+"|"+sc.Meal] = sc
 			}
 			if sc.State == store.ScheduleWaiting || sc.State == store.ScheduleStarting {
-				waiting[sc.Date+"|"+sc.Meal] = &cellSchedule{ID: sc.ID, Revision: sc.Revision, State: sc.State, Detail: sc.Detail, RetryAt: unix(sc.RetryAt), At: sc.StartsAt.Unix(), Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
+				waiting[sc.Date+"|"+sc.Meal] = &cellSchedule{ID: sc.ID, RuleID: sc.RuleID, Overridden: sc.Overridden, Revision: sc.Revision, State: sc.State, Detail: sc.Detail, RetryAt: unix(sc.RetryAt), At: sc.StartsAt.Unix(), Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
 			}
 		}
 		if _, err := srv.SellControl(); err != nil {
@@ -473,6 +476,10 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 		out.Month.Fee = float64(b.Total()) / 100
 	}
 
+	kept, err := srv.KeptMeals(ctx, u.ID)
+	if err != nil {
+		return out, err
+	}
 	regs := map[string][]portal.Registration{}
 	// Owners can plan registered meals over the next four weeks.
 	to := ymd(today)
@@ -492,7 +499,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	// cellFor is what became of the meal in window w on date.
 	cellFor := func(date string, w meals.Slot) cell {
 		key := date + "|" + w.Meal
-		c := cell{Meal: w.Meal, Start: w.Start.Unix(), End: w.End.Unix(), State: "none"}
+		c := cell{Meal: w.Meal, Start: w.Start.Unix(), End: w.End.Unix(), State: "none", Kept: kept[key]}
 		if issue, ok := issues[key]; ok && (issue.State == store.ScheduleFailed || issue.State == store.ScheduleCancelled) {
 			c.ScheduleIssue = issue.Detail
 			c.ScheduleState = issue.State

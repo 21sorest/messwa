@@ -99,7 +99,7 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	os.Chmod(path, 0o600)
-	if _, err := db.Exec(attentionSchema + schema + logSchema + deliverySchema + priceSchema + accountSchema + factSchema + sellTaskSchema + sellScheduleSchema + sellEventSchema + settingsSchema + friendMealSchema); err != nil {
+	if _, err := db.Exec(recurringSchema + attentionSchema + schema + logSchema + deliverySchema + priceSchema + accountSchema + factSchema + sellTaskSchema + sellScheduleSchema + sellEventSchema + settingsSchema + friendMealSchema); err != nil {
 		return nil, fmt.Errorf("schema: %w", err)
 	}
 	if _, err := db.Exec(`INSERT OR IGNORE INTO account_ids SELECT id FROM users`); err != nil {
@@ -139,6 +139,9 @@ func Open(path string) (*Store, error) {
 	for _, c := range []struct{ table, col string }{
 		{"sell_tasks", "target_paise INTEGER NOT NULL DEFAULT 0"},
 		{"sell_schedules", "revision INTEGER NOT NULL DEFAULT 1"},
+		{"sell_schedules", "rule_id INTEGER NOT NULL DEFAULT 0"},
+		{"sell_schedules", "rule_revision INTEGER NOT NULL DEFAULT 0"},
+		{"sell_schedules", "overridden INTEGER NOT NULL DEFAULT 0"},
 		{"sell_schedules", "attempts INTEGER NOT NULL DEFAULT 0"},
 		{"sell_schedules", "retry_at INTEGER NOT NULL DEFAULT 0"},
 		{"sell_tasks", "autopilot INTEGER NOT NULL DEFAULT 0"},

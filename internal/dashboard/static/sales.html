@@ -15,6 +15,7 @@
 <script src="attention.js" defer></script>
 <script src="planner.js" defer></script>
 <script src="sales.js" defer></script>
+<script src="recurring.js" defer></script>
 </head>
 <body>
 <div class="app sales">
@@ -74,6 +75,42 @@
           <p class="sell-note">Equal prices sell at a fixed price. Negative minutes post after serving starts. Applying these settings replaces overrides on selected meals across all four weeks.</p>
           <button class="sell-btn" type="button" id="planApply">Apply to selected meals</button>
         </fieldset>
+      </details>
+      <details class="plan-bulk" id="recurringSection">
+        <summary>Recurring rules</summary>
+        <p class="sell-note">Rules generate the next four weeks of confirmed registrations, refresh every five minutes while the service runs, and check registrations again before selling. Unchecking a scheduled meal keeps it out of recurring rules until you explicitly restore it.</p>
+        <div id="ruleList" class="rule-list"></div>
+        <button class="sell-btn" id="ruleNew" type="button">New rule</button>
+        <details class="rule-editor" id="ruleEditor">
+          <summary>Rule settings</summary>
+        <form id="ruleForm">
+          <fieldset class="plan-fieldset sell-form" id="ruleFields">
+            <input id="ruleID" type="hidden"><input id="ruleRevision" type="hidden">
+            <label>Rule name<input id="ruleName" maxlength="80" required placeholder="Weekday lunches"></label>
+            <div class="plan-form-row">
+              <label>Start date<input type="date" id="ruleFrom" required></label>
+              <label>End date<input type="date" id="ruleThrough" required></label>
+            </div>
+            <fieldset class="chips" aria-label="Rule weekdays"><legend>Weekdays</legend><div id="ruleDays" class="rule-chips"></div></fieldset>
+            <fieldset class="chips" aria-label="Rule meals"><legend>Meals</legend><div id="ruleMeals" class="rule-chips"></div></fieldset>
+            <div class="plan-form-row">
+              <label>Minimum (&#8377;)<input id="ruleMin" type="number" min="1" max="10000" step="1" required></label>
+              <label>Opening (&#8377;)<input id="ruleMax" type="number" min="1" max="10000" step="1" required></label>
+              <label>Minutes before serving<input id="ruleBefore" type="number" min="-90" max="30" step="1" required></label>
+            </div>
+            <p class="sell-note">Equal prices sell at a fixed price. Negative minutes post after serving starts.</p>
+            <label class="plan-auto"><input id="ruleAuto" type="checkbox">Autopilot: skip buyers who need your help</label>
+            <label class="plan-auto"><input id="ruleEnabled" type="checkbox">Generate schedules</label>
+            <label class="plan-auto"><input id="ruleApply" type="checkbox">Apply changes to this rule's waiting schedules, preserving individual overrides</label>
+            <p class="sell-note">Disabling stops new generation. Existing schedules stay saved unless you apply the change. Individual overrides are preserved; deleting with removal below also removes those waiting overrides. Removed waiting meals stay out of all rules until restored in the planner. Active sales are always managed separately.</p>
+            <p class="sell-note" id="rulePreviewText" role="status"></p>
+            <div class="plan-tools"><button type="button" class="sell-btn" id="rulePreview">Preview</button><button type="submit" class="sell-btn gold" id="ruleSave" disabled>Save rule</button></div>
+            <label class="plan-auto"><input id="ruleRemoveWaiting" type="checkbox">Also remove this rule's waiting schedules when deleting</label>
+            <button type="button" class="sell-btn red" id="ruleDelete" hidden>Delete rule</button>
+          </fieldset>
+        </form>
+        </details>
+        <p class="sell-err" id="ruleError" role="alert"></p>
       </details>
       <div class="ledger plan-ledger">
         <div class="lgrid plan-grid" id="planGrid" role="group" aria-label="Meal sale schedule"></div>

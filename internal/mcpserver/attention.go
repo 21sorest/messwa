@@ -9,6 +9,7 @@ import (
 )
 
 type AttentionItem struct {
+	Rule       int64  `json:"rule,omitempty"`
 	ID         string `json:"id"`
 	Title      string `json:"title"`
 	Detail     string `json:"detail"`
@@ -28,7 +29,7 @@ func (s *Server) Attention(ctx context.Context, user int64) ([]AttentionItem, er
 	add := func(key, title, detail, date, meal string, task int64, account, resolvable bool) {
 		id := fmt.Sprintf("%x", sha256.Sum256([]byte(key+"|"+detail)))
 		if !resolved[id] {
-			out = append(out, AttentionItem{id, title, detail, date, meal, task, account, resolvable})
+			out = append(out, AttentionItem{ID: id, Title: title, Detail: detail, Date: date, Meal: meal, Task: task, Account: account, Resolvable: resolvable})
 		}
 	}
 	ds, err := s.Deliveries(ctx)
@@ -89,6 +90,20 @@ func (s *Server) Attention(ctx context.Context, user int64) ([]AttentionItem, er
 		}
 		if sc.State == store.ScheduleFailed {
 			add(fmt.Sprintf("schedule:%d", sc.ID), "Schedule failed", sc.Detail, sc.Date, sc.Meal, 0, false, true)
+		}
+	}
+	rules, err := s.RecurringRules(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rules {
+		if !r.Enabled || r.LastError == "" {
+			continue
+		}
+		key := fmt.Sprintf("rule:%d:%d|%s", r.ID, r.Revision, r.LastError)
+		id := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
+		if !resolved[id] {
+			out = append(out, AttentionItem{ID: id, Rule: r.ID, Title: "Recurring rule needs attention", Detail: r.Name + ": " + r.LastError, Resolvable: true})
 		}
 	}
 	if active && s.Device != nil {

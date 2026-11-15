@@ -227,7 +227,23 @@ Save changes reports success or failure for each meal, continues saving the othe
 
 At posting time the runtime rechecks the registration, delivery/task records, selling settings, posting groups, connection and serving window. Connection outages, network timeouts, portal HTTP 429 and server errors get up to five retries, at 15, 30, 60, 120 and 240 seconds, while the meal is still open. Invalid registrations and other permanent failures stop with a visible reason. Retry timing survives restart. Task creation and its schedule link commit together; restart also reconciles schedules interrupted before task creation and legacy starts with a missing task link. The existing task send claims still govern external message delivery.
 
-The live `run` service is required to save and execute schedules; the standalone `dashboard` command only previews data. Planner checks: `node --test internal/dashboard/planner_test.cjs`; Go checks cover schedule edits, timer races, retry limits, invalid registrations, authorization, task linking and restart recovery. Recurring rules are the next phase in [TODO.md](TODO.md).
+The live `run` service is required to save and execute schedules; the standalone `dashboard` command only previews data. Planner checks: `node --test internal/dashboard/planner_test.cjs`; Go checks cover schedule edits, timer races, retry limits, invalid registrations, authorization, task linking and restart recovery. Recurring rules are available in the planner, as described below.
+
+### Recurring meal rules
+
+Open **Recurring rules** inside the planner. Give the rule a name, start/end dates, weekdays, meal choices, price range, posting offset and optional autopilot. Date ranges may span up to one year. Preview shows new schedules, immediate starts, affected waiting schedules, preserved overrides and kept meals before Save is enabled. Changing the form invalidates its preview.
+
+The account runtime generates ordinary schedules for confirmed, unused regular registrations over the coming four weeks, checks again on startup and refreshes every five minutes. As more registrations become available, they join the planner without editing the rule. The existing scheduler then owns posting, registration rechecks, bounded retries and restart recovery. The rule does not create another WhatsApp connection. Enabling a rule requires selling to be enabled and the account to be linked.
+
+Manual schedules and previously handled meals take priority. Overlapping rules do not create duplicate sales or silently restart terminally failed occurrences. An explicit manual sale can still retry a meal after its failure has been reviewed. Every generated schedule retains its source rule and revision.
+
+Unchecking a saved meal stores a durable, account-specific keep exception. It cannot be recreated by another rule or after a restart. **Allow recurring sale again** in that meal's settings explicitly clears the exception and regenerates matching schedules, potentially starting immediately. Explicitly scheduling a kept meal manually also clears its exception.
+
+Rule edits normally affect only newly generated schedules. **Apply changes to this rule's waiting schedules** updates its existing waiting meals while preserving individual overrides. A per-meal edit marks an override. Disabling stops new generation; previously saved schedules continue unless the change is applied. Deleting offers a separate option to remove all of that rule's waiting schedules, including overrides. Removed waiting meals are kept out of every rule until restored. Active sales always continue through their existing sale manager.
+
+Registration-read and generation failures appear beside the rule and in the attention inbox, with a link back to that rule. The existing alert resolution/deduplication behavior applies. Browser notifications still require an open dashboard tab; recurring generation itself runs in the service with the browser closed.
+
+
 
 
 ## MCP tools

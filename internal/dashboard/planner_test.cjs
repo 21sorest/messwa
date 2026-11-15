@@ -22,7 +22,7 @@ function planner(send = async () => ({})) {
   const ctx = vm.createContext({
     D: { owner: true, today: '2026-11-16', list_at: -900, upcoming: [{ date: '2026-11-16', cells: [c] }, { date: '2026-11-17', cells: [{ ...c }] }] },
     $: (id) => { if (!nodes.has(id)) nodes.set(id, new Element()); return nodes.get(id); },
-    el: () => new Element(), document: { activeElement: null }, window: { addEventListener() {} },
+    el: (tag,cls,text) => { const e=new Element();e.tag=tag;e.textContent=text;return e; }, document: { activeElement: null }, window: { addEventListener() {} },
     sellDefaults: () => [40, 80], sellBounds: () => ({}), meals: () => ['lunch'],
     cap: (s) => s, messName: (s) => s, fmtDay: (s) => s, fmt: (s) => s, send,
     svgEl: () => new Element(), icon: () => '', messColor: () => '', messIcon: () => '',
@@ -105,4 +105,11 @@ test('range selection supports weekday lunches without selecting other meals',()
  const p=planner();p.run("D.upcoming.push({date:'2026-11-21',cells:[{...D.upcoming[0].cells[0]}]});D.upcoming[0].cells.push({...D.upcoming[0].cells[0],meal:'dinner'});renderPlanner()");
  p.ctx.$('planFrom').value='2026-11-16';p.ctx.$('planTo').value='2026-11-21';p.ctx.$('planMeal').value='lunch';p.ctx.$('planWeekdays').checked=true;
  p.run("$('planRangeSelect').onclick()");assert.equal(p.run('planActions().length'),2);assert.equal(p.run("planActions().every(a=>a.body.meal==='lunch')"),true);
+});
+
+test('reviewing a changed schedule retains draft settings and adopts the current revision',()=>{
+ const p=planner();p.c.schedule={id:12,revision:3,min:40,max:80,at:1794890700,autopilot:false};
+ p.run("planPicked='2026-11-16|lunch';planDraft('2026-11-16',D.upcoming[0].cells[0]).min=30");p.c.schedule.revision=4;p.run('renderPlanInspector()');
+ const review=p.ctx.$('planInspector').children.find(e=>e.textContent==='Use current schedule');assert.ok(review);review.onclick();
+ assert.equal(p.run('planActions()[0].body.revision'),4);assert.equal(p.run('planActions()[0].body.min'),30);
 });

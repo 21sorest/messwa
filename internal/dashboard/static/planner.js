@@ -56,6 +56,7 @@ let planPicked = '';
 function renderPlanner() {
   $('planner').hidden = !D.owner;
   if (!D.owner) return;
+  if (typeof refreshRecurringRulesView === 'function') refreshRecurringRulesView();
   for (const day of D.upcoming || []) for (const c of day.cells) {
     const key = planKey(day.date, c), draft = planDrafts.get(key);
     if (!draft) continue;
@@ -121,7 +122,7 @@ function renderPlanner() {
       } else if (c.state !== 'none') {
         const ghost = el('div', 'ghost'); ghost.append(svgEl(messIcon(c.mess))); label.append(ghost);
       }
-      const state = result?.error ? 'Review' : c.task ? 'Selling' : c.schedule ? c.schedule.retry_at ? 'Retrying' : 'Scheduled' : draft.selected ? 'To schedule' : c.schedule_state || ({ open: 'Available', none: 'Not registered', ate: 'Used', wasted: 'Ended' }[c.state] || cap(c.state));
+      const state = result?.error ? 'Review' : c.task ? 'Selling' : c.schedule ? c.schedule.retry_at ? 'Retrying' : 'Scheduled' : draft.selected ? 'To schedule' : c.kept ? 'Kept from rules' : c.schedule_state || ({ open: 'Available', none: 'Not registered', ate: 'Used', wasted: 'Ended' }[c.state] || cap(c.state));
       label.title = `${fmtDay(day.date)} ${cap(meal)} - ${state}${c.schedule_issue ? ': ' + c.schedule_issue : ''}`;
       wrap.append(label);
       const edit = el('button', 'plan-edit', '...'); edit.type = 'button'; edit.disabled = planBusy;
@@ -147,6 +148,21 @@ function renderPlanInspector() {
   panel.append(el('div', 'nm', `${messName(c.mess)} ${c.meal}`), el('div', 'plan-date', fmtDay(day.date)));
   const result = planResults.get(planPicked);
   if (result) panel.append(el('p', result.error ? 'sell-err' : 'sell-note', result.error || result.message));
+  if (c.kept) {
+    const allow = el('button', 'sell-btn', 'Allow recurring sale again'); allow.type = 'button'; allow.disabled = planBusy || c.end <= now();
+    allow.onclick = async () => {
+      planBusy = true; renderPlanner();
+      try { await send('POST', 'api/recurring-rules', { action: 'allow', date: day.date, meal: c.meal }); await load(); }
+      catch (e) { planResults.set(planPicked, { error: e.message }); }
+      finally { planBusy = false; renderPlanner(); }
+    };
+    panel.append(el('p', 'sell-note', 'This meal is kept out of all recurring rules. Restore it only if you want a matching rule to schedule it, possibly immediately.'), allow);
+  }
+  if (c.schedule?.rule_id) {
+    const name = typeof recurringRuleName === 'function' ? recurringRuleName(c.schedule.rule_id) : `Rule #${c.schedule.rule_id}`;
+    const link = el('a', 'nav-link', 'Edit rule'); link.href = '#recurring-rule=' + c.schedule.rule_id;
+    panel.append(el('p', 'sell-note', `From ${name}.${c.schedule.overridden ? ' Individual override: rule edits preserve these settings.' : ''}`), link);
+  }
   if (c.schedule_issue) panel.append(el('p', 'sell-err', `${cap(c.schedule_state)}: ${c.schedule_issue}`));
   if (c.task) {
     if (planDrafts.has(planPicked)) panel.append(el('p', 'sell-err', 'This meal started selling while you were editing. Your other drafts are kept. Use the sale manager for this meal.'));
@@ -155,6 +171,12 @@ function renderPlanInspector() {
   if (!planEligible(c)) { panel.append(el('p', 'sell-note', c.schedule?.detail || `This meal is ${c.state}.`)); return; }
   const draft = planDraft(day.date, c);
   if (c.schedule?.retry_at) panel.append(el('p', 'sell-err', `${c.schedule.detail}. Retrying at ${hm(c.schedule.retry_at)}.`));
+  if (c.schedule && (draft.base?.id !== c.schedule.id || draft.base?.revision !== c.schedule.revision)) {
+    panel.append(el('p', 'sell-err', `This schedule changed. Current saved settings: ${priceText(c.schedule)}, posting ${hm(c.schedule.at)}. Your draft settings are shown below.`));
+    const review = el('button', 'sell-btn', 'Use current schedule'); review.type = 'button'; review.disabled = planBusy;
+    review.onclick = () => { draft.base = { ...c.schedule }; planResults.delete(planPicked); renderPlanner(); };
+    panel.append(review);
+  }
   const slider = priceSlider({ ...c, planner: true, schedule: { min: draft.min, max: draft.max } });
   const fields = el('div', 'plan-fields'); fields.append(...slider.nodes);
   fields.addEventListener('input', () => { [draft.min, draft.max] = slider.get(); planStatus(); });
@@ -224,7 +246,7 @@ $('planSave').onclick = async () => {
       } catch (e) { failures++; planResults.set(key, { error: e.message }); }
     }
   } finally {
-    await load(); planBusy = false; renderPlanner();
+    await load(); if (typeof loadRecurringRules === 'function') await loadRecurringRules(); planBusy = false; renderPlanner();
     $('planError').textContent = failures ? `${failures} meal(s) could not be saved. Open the marked meals for details; Save changes retries only unfinished changes.` : D.sell_off || '';
   }
 };

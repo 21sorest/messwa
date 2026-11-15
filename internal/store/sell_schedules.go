@@ -42,15 +42,17 @@ const (
 )
 
 type SellSchedule struct {
-	ID                 int64
-	Revision, Attempts int64
-	RetryAt            time.Time
-	Date, Meal         string
-	MinPaise, MaxPaise int64
-	UserID             int64
-	Handoff            string
-	StartsAt, EndsAt   time.Time
-	State              string
+	RuleID, RuleRevision int64
+	Overridden           bool
+	ID                   int64
+	Revision, Attempts   int64
+	RetryAt              time.Time
+	Date, Meal           string
+	MinPaise, MaxPaise   int64
+	UserID               int64
+	Handoff              string
+	StartsAt, EndsAt     time.Time
+	State                string
 	// TaskID is the task it started, once started.
 	TaskID    int64
 	Detail    string
@@ -60,12 +62,12 @@ type SellSchedule struct {
 	Autopilot bool
 }
 
-const sellScheduleCols = `id,date,meal,min_paise,max_paise,user_id,handoff,starts_at,ends_at,state,task_id,detail,created_at,ended_at,autopilot,revision,attempts,retry_at`
+const sellScheduleCols = `id,date,meal,min_paise,max_paise,user_id,handoff,starts_at,ends_at,state,task_id,detail,created_at,ended_at,autopilot,revision,attempts,retry_at,rule_id,rule_revision,overridden`
 
 func scanSellSchedule(row interface{ Scan(...any) error }) (SellSchedule, error) {
 	var s SellSchedule
 	var starts, ends, created, ended, retry int64
-	err := row.Scan(&s.ID, &s.Date, &s.Meal, &s.MinPaise, &s.MaxPaise, &s.UserID, &s.Handoff, &starts, &ends, &s.State, &s.TaskID, &s.Detail, &created, &ended, &s.Autopilot, &s.Revision, &s.Attempts, &retry)
+	err := row.Scan(&s.ID, &s.Date, &s.Meal, &s.MinPaise, &s.MaxPaise, &s.UserID, &s.Handoff, &starts, &ends, &s.State, &s.TaskID, &s.Detail, &created, &ended, &s.Autopilot, &s.Revision, &s.Attempts, &retry, &s.RuleID, &s.RuleRevision, &s.Overridden)
 	s.StartsAt, s.EndsAt, s.CreatedAt = time.Unix(starts, 0), time.Unix(ends, 0), time.Unix(created, 0)
 	if retry != 0 {
 		s.RetryAt = time.Unix(retry, 0)
@@ -90,6 +92,16 @@ func (s *Store) CreateSellSchedule(ctx context.Context, sc SellSchedule) (int64,
 		return 0, err
 	}
 	defer tx.Rollback()
+	if sc.RuleID > 0 {
+		var valid bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM recurring_rules WHERE id=? AND user_id=? AND revision=? AND enabled=1 AND deleted=0) AND NOT EXISTS(SELECT 1 FROM planner_kept WHERE user_id=? AND date=? AND meal=?) AND NOT EXISTS(SELECT 1 FROM sell_schedules WHERE rule_id>0 AND date=? AND meal=? AND state!='cancelled')`, sc.RuleID, sc.UserID, sc.RuleRevision, sc.UserID, sc.Date, sc.Meal, sc.Date, sc.Meal).Scan(&valid); err != nil {
+			return 0, err
+		}
+		if !valid {
+			return 0, errors.New("rule changed, meal is kept, or this occurrence was already generated")
+		}
+	}
+
 	for _, c := range []struct{ q, msg string }{
 		{`SELECT EXISTS(SELECT 1 FROM qr_deliveries WHERE date=? AND meal=?)`, "meal already has a delivery record; check the sales page"},
 		{`SELECT EXISTS(SELECT 1 FROM sell_tasks WHERE date=? AND meal=? AND state='active')`, "a sell task for this meal is already running"},
@@ -103,14 +115,19 @@ func (s *Store) CreateSellSchedule(ctx context.Context, sc SellSchedule) (int64,
 			return 0, errors.New(c.msg)
 		}
 	}
-	r, err := tx.ExecContext(ctx, `INSERT INTO sell_schedules(date,meal,min_paise,max_paise,user_id,handoff,starts_at,ends_at,created_at,autopilot)
- VALUES(?,?,?,?,?,?,?,?,?,?)`, sc.Date, sc.Meal, sc.MinPaise, sc.MaxPaise, sc.UserID, sc.Handoff, sc.StartsAt.Unix(), sc.EndsAt.Unix(), sc.CreatedAt.Unix(), sc.Autopilot)
+	r, err := tx.ExecContext(ctx, `INSERT INTO sell_schedules(date,meal,min_paise,max_paise,user_id,handoff,starts_at,ends_at,created_at,autopilot,rule_id,rule_revision)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, sc.Date, sc.Meal, sc.MinPaise, sc.MaxPaise, sc.UserID, sc.Handoff, sc.StartsAt.Unix(), sc.EndsAt.Unix(), sc.CreatedAt.Unix(), sc.Autopilot, sc.RuleID, sc.RuleRevision)
 	if err != nil {
 		return 0, err
 	}
 	id, err := r.LastInsertId()
 	if err != nil {
 		return 0, err
+	}
+	if sc.RuleID == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM planner_kept WHERE user_id=? AND date=? AND meal=?`, sc.UserID, sc.Date, sc.Meal); err != nil {
+			return 0, err
+		}
 	}
 	return id, tx.Commit()
 }
@@ -183,7 +200,7 @@ func (s *Store) EndWaitingSellSchedule(ctx context.Context, date, meal, state st
 // SetSellScheduleAutopilot turns autopilot on or off for a waiting
 // schedule. It reports false when the schedule isn't waiting.
 func (s *Store) SetSellScheduleAutopilot(ctx context.Context, id int64, on bool) (bool, error) {
-	r, err := s.db.ExecContext(ctx, `UPDATE sell_schedules SET autopilot=?,revision=revision+1 WHERE id=? AND state='waiting'`, on, id)
+	r, err := s.db.ExecContext(ctx, `UPDATE sell_schedules SET autopilot=?,overridden=CASE WHEN rule_id>0 THEN 1 ELSE 0 END,revision=revision+1 WHERE id=? AND state='waiting'`, on, id)
 	if err != nil {
 		return false, err
 	}
@@ -194,7 +211,7 @@ func (s *Store) SetSellScheduleAutopilot(ctx context.Context, id int64, on bool)
 // UpdateSellSchedule edits a waiting schedule atomically; a stale browser cannot
 // overwrite newer prices or a timer that has already claimed the meal.
 func (s *Store) UpdateSellSchedule(ctx context.Context, sc SellSchedule) (bool, error) {
-	r, err := s.db.ExecContext(ctx, `UPDATE sell_schedules SET min_paise=?,max_paise=?,starts_at=?,autopilot=?,revision=revision+1,detail='',retry_at=0,attempts=0 WHERE id=? AND user_id=? AND state='waiting' AND revision=?`, sc.MinPaise, sc.MaxPaise, sc.StartsAt.Unix(), sc.Autopilot, sc.ID, sc.UserID, sc.Revision)
+	r, err := s.db.ExecContext(ctx, `UPDATE sell_schedules SET min_paise=?,max_paise=?,starts_at=?,autopilot=?,overridden=CASE WHEN rule_id>0 THEN 1 ELSE 0 END,revision=revision+1,detail='',retry_at=0,attempts=0 WHERE id=? AND user_id=? AND state='waiting' AND revision=?`, sc.MinPaise, sc.MaxPaise, sc.StartsAt.Unix(), sc.Autopilot, sc.ID, sc.UserID, sc.Revision)
 	if err != nil {
 		return false, err
 	}
@@ -218,12 +235,30 @@ func (s *Store) RecoverSellSchedule(ctx context.Context, id int64) error {
 }
 
 func (s *Store) CancelPlannedSchedule(ctx context.Context, id, revision int64) (bool, error) {
-	r, err := s.db.ExecContext(ctx, `UPDATE sell_schedules SET state='cancelled',detail='Kept this meal',ended_at=?,revision=revision+1 WHERE id=? AND state='waiting' AND revision=?`, time.Now().Unix(), id, revision)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	sc, err := scanSellSchedule(tx.QueryRowContext(ctx, `SELECT `+sellScheduleCols+` FROM sell_schedules WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	r, err := tx.ExecContext(ctx, `UPDATE sell_schedules SET state='cancelled',detail='Kept this meal',ended_at=?,revision=revision+1 WHERE id=? AND state='waiting' AND revision=?`, time.Now().Unix(), id, revision)
 	if err != nil {
 		return false, err
 	}
 	n, err := r.RowsAffected()
-	return n == 1, err
+	if err != nil || n != 1 {
+		return false, err
+	}
+	if err := keepSchedule(ctx, tx, sc); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 // ClaimSellSchedule checks the same revision and posting time that the timer

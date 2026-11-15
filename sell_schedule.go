@@ -109,17 +109,14 @@ func listTime(start, end time.Time, offset time.Duration) time.Time {
 
 // CancelSchedule drops a waiting schedule before its task starts.
 func (m *sellManager) CancelSchedule(ctx context.Context, id int64) error {
-	ok, err := m.st.EndSellSchedule(ctx, id, store.ScheduleCancelled, 0, "cancelled", time.Now())
+	sc, err := m.st.GetSellSchedule(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return fmt.Errorf("sell schedule %d is not waiting; it may have started already", id)
+	if sc == nil {
+		return fmt.Errorf("schedule %d not found", id)
 	}
-	m.disarm(id)
-	m.log.Info("sell schedule cancelled", "schedule", id)
-	m.changed()
-	return nil
+	return m.CancelPlannedSchedule(ctx, id, sc.Revision)
 }
 
 // StartNow starts a sell task straight away, even for a meal that hasn't

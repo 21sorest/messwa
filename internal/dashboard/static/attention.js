@@ -25,14 +25,14 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
  const items=await r.json();box.hidden=false;count.textContent=String(items.length);rows.replaceChildren();note.textContent='Browser alerts work while this dashboard is open. Mark resolved only after handling the issue.';
  if(!items.length)rows.append(el('p','attention-note','Nothing needs your attention.'));
  for(const item of items){const row=el('div','attention-row'),copy=el('div','attention-copy'),actions=el('div','attention-actions');copy.append(el('strong','',item.title),el('p','',[item.date,item.meal,item.detail].filter(Boolean).join(' - ')));
- const link=el('a','',item.account?'Reconnect WhatsApp':item.task?'Open sale':'View meal');link.href=item.account?'account.html':item.task?'./#attention-sale='+item.task:'sales.html#attention-meal='+encodeURIComponent(item.date+'|'+item.meal);
+ const link=el('a','',item.account?'Reconnect WhatsApp':item.task?'Open sale':item.rule?'Open rule':'View meal');link.href=item.account?'account.html':item.task?'./#attention-sale='+item.task:item.rule?'sales.html#recurring-rule='+item.rule:'sales.html#attention-meal='+encodeURIComponent(item.date+'|'+item.meal);
  if(item.task && typeof openMealSheet==='function')link.onclick=async e=>{e.preventDefault();try{await openSale(item.task);}catch(err){note.textContent=err.message;}};
  actions.append(link);
  if(item.resolvable){const done=el('button','','Mark resolved');done.type='button';done.onclick=async()=>{done.disabled=true;try{await send('POST','api/attention',{id:item.id});await refreshAfter();}catch(e){note.textContent=e.message;done.disabled=false;}};actions.append(done);}
  row.append(copy,actions);rows.append(row);}
  const current=new Set(items.map(x=>x.id));
  const seen=new Set(read('-seen').filter(id=>current.has(id)));const unseen=attentionUnseen(items,seen);
- if(typeof Notification!=='undefined'&&Notification.permission==='granted')for(const item of unseen){try{const n=new Notification(item.title,{body:'Open Messwa to review this issue.',tag:item.id});n.onclick=()=>{window.focus();location.href=item.account?'account.html':item.task?'./#attention-sale='+item.task:'sales.html#attention-meal='+encodeURIComponent(item.date+'|'+item.meal);n.close();};seen.add(item.id);}catch{}}
+ if(typeof Notification!=='undefined'&&Notification.permission==='granted')for(const item of unseen){try{const n=new Notification(item.title,{body:'Open Messwa to review this issue.',tag:item.id});n.onclick=()=>{window.focus();location.href=item.account?'account.html':item.task?'./#attention-sale='+item.task:item.rule?'sales.html#recurring-rule='+item.rule:'sales.html#attention-meal='+encodeURIComponent(item.date+'|'+item.meal);n.close();};seen.add(item.id);}catch{}}
  write('-seen',[...seen].slice(-2000));
  const match=/^#attention-sale=(\d+)$/.exec(location.hash);if(match&&typeof openMealSheet==='function'&&typeof D!=='undefined'&&D){history.replaceState(null,'',location.pathname+location.search);await openSale(Number(match[1]));}
  }catch(e){note.textContent=e.message+' Showing the last loaded items.';}finally{busy=false;}}

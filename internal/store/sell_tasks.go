@@ -190,6 +190,9 @@ func (s *Store) CreateSellTask(ctx context.Context, t SellTask) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE sell_schedules SET task_id=?,state='started' WHERE date=? AND meal=? AND state='starting'`, id, t.Date, t.Meal); err != nil {
 		return 0, err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM planner_kept WHERE user_id=? AND date=? AND meal=?`, t.UserID, t.Date, t.Meal); err != nil {
+		return 0, err
+	}
 	return id, tx.Commit()
 }
 

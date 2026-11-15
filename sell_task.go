@@ -80,10 +80,12 @@ func (e handedOffError) Error() string { return "handed off: " + e.detail }
 func (e handedOffError) Unwrap() error { return errHandedOff }
 
 type sellManager struct {
-	cfg  *config.Config
-	log  *slog.Logger
-	st   *store.Store
-	conn saleConn
+	rulesMu   sync.Mutex
+	rulesOnce sync.Once
+	cfg       *config.Config
+	log       *slog.Logger
+	st        *store.Store
+	conn      saleConn
 	// send is the raw WhatsApp send. Only taskGate calls it.
 	send      sendFunc
 	connected func(time.Duration) bool
@@ -440,6 +442,7 @@ func (m *sellManager) flagOffersAtFloor(ctx context.Context, id, floor int64) {
 // down reach the tasks. It returns once every resumed task is listening,
 // or after a few seconds. With sell tasks turned off, it cancels them.
 func (m *sellManager) Resume(ctx context.Context, enabled bool) error {
+	defer m.startRecurring()
 	tasks, err := m.st.SellTasks(ctx, time.Now())
 	if err != nil {
 		return err

@@ -1,9 +1,14 @@
-# Scheduler follow-up
+# Scheduler status
 
-The first scheduler release implements the weekly planner and resilient execution from the scheduler plan. Recurrence remains the next phase, as staged in that plan.
+Completed the scheduler plan, including its recurring-rule phase:
 
-- Add bounded recurring rules with start date, end date, weekdays and meal choices.
-- Generate ordinary schedules only for confirmed registrations, using saved rule prices and posting preferences.
-- Preserve per-meal exceptions such as keeping one Wednesday lunch; regeneration must not recreate an excepted schedule.
-- When deleting a rule, let the user remove its future waiting schedules. Active sales continue through the existing sale manager.
-- Test restart regeneration, duplicate prevention, exceptions, rule edits and account isolation before enabling recurring execution.
+- [x] Weekly planner, weekday/date-range selection, shared settings and individual overrides.
+- [x] Per-meal results, posting-time snapshots, stale-edit protection and bounded retries.
+- [x] Interrupted-start recovery and atomic schedule/task linking.
+- [x] Recurring rules with dates, weekdays, meals, prices, posting offset and autopilot.
+- [x] Rolling generation for confirmed registrations, duplicate protection and restart regeneration.
+- [x] Durable keep exceptions, explicit restoration and preserved per-meal overrides.
+- [x] Rule edits/deletion scoped to waiting schedules; active sales remain under their existing controls.
+- [x] Attention-inbox integration and focused backend/frontend tests.
+
+Live WhatsApp execution has not been tested. The service remains stopped unless explicitly started.
