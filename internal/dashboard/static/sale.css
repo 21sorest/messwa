@@ -4,6 +4,10 @@
 .ms-tag.sch { color: var(--gold); background: rgba(255, 197, 61, .12); }
 /* a sale waiting for its meal, dashed like its ledger cell */
 .mysale.sched { border-style: dashed; border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.mysale.tap { cursor: pointer; transition: border-color .15s, background .15s; }
+.mysale.tap:hover { border-color: var(--gold); }
+.mysale.tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mysale.tap .ms-acts { cursor: default; }
 .ms-price > b.sch { color: var(--gold); font-size: 18px; }
 .ms-time small { font: 700 8px Pixel; color: var(--muted); }
 .ms-btn.auto { color: var(--muted); }

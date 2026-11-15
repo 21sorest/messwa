@@ -202,8 +202,8 @@ function chest(v) {
 
 // scheduledCard is a sale waiting for its meal: nothing is posted yet. It
 // says when the offer goes up and at what price, and can start it now or
-// switch autopilot. ··· opens the sales page's sheet to change the price
-// or unschedule. The mess and diet come from the ledger the nudge reads
+// switch autopilot. Clicking the card opens the sales page's sheet to
+// change the price or unschedule. The mess and diet come from the ledger the nudge reads
 // (N in app.js), when it has loaded.
 function scheduledCard(s) {
   const cell = ledgerCell(s.date, s.meal);
@@ -264,12 +264,22 @@ function scheduledCard(s) {
   auto.setAttribute('role', 'switch');
   auto.setAttribute('aria-checked', String(!!s.autopilot));
   auto.title = 'Autopilot sells without waiting on you: it skips any buyer who would need you, even one offering more.';
-  const more = el('a', 'ms-btn ghost more', '···');
-  more.href = s.for_friend ? 'sales.html' : `sales.html#sell=${encodeURIComponent(`${s.date}|${s.meal}`)}`;
-  if (!s.for_friend) more.addEventListener('click', (e) => { if (openSellHere(s.date, s.meal)) e.preventDefault(); });
-  more.setAttribute('aria-label', 'Change the price or unschedule');
-  more.title = 'Change the price or unschedule';
-  a.append(more);
+  // The whole card opens the sales page's sheet, except clicks on its own
+  // buttons. A friend's sale has no sheet here, so it goes to the sales page.
+  const open = () => {
+    if (!s.for_friend && openSellHere(s.date, s.meal)) return;
+    location.href = s.for_friend ? 'sales.html' : `sales.html#sell=${encodeURIComponent(`${s.date}|${s.meal}`)}`;
+  };
+  c.classList.add('tap');
+  c.tabIndex = 0;
+  c.title = 'Change the price or unschedule';
+  c.addEventListener('click', (e) => {
+    if (e.target.closest('button, a') || String(getSelection())) return;
+    open();
+  });
+  c.addEventListener('keydown', (e) => {
+    if (e.target === c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); }
+  });
   c.append(a, err);
   return c;
 }
