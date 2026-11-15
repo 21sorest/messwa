@@ -124,7 +124,7 @@ func sellActionRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 			if in.Now {
 				var sc mcpserver.SellScheduler
 				if sc, err = srv.SellScheduler(); err == nil {
-					id, err = sc.StartNow(r.Context(), userID, in.Date, in.Meal, in.Min, in.Max, in.Autopilot)
+					id, at, err = sc.StartNow(r.Context(), userID, in.Date, in.Meal, in.Min, in.Max, in.Autopilot)
 				}
 			} else {
 				var sc mcpserver.SellScheduler
@@ -155,6 +155,14 @@ func sellActionRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 				err = sc.CancelSchedule(r.Context(), in.ID)
 			}
 			if err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, r, struct{}{})
+			return
+		case "delete-sale":
+			// Only the database changes, so it works with sell tasks off.
+			if _, err := srv.DeleteSale(r.Context(), in.Date, in.Meal); err != nil {
 				jsonError(w, err.Error(), http.StatusBadRequest)
 				return
 			}

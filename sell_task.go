@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -219,7 +218,7 @@ func (m *sellManager) answerLate(info types.MessageInfo) {
 			return
 		}
 		gate := &taskGate{m: m, id: t.ID}
-		if err := sendReply(ctx, gate.sendSold, to, saySold()); err != nil {
+		if err := sendReply(ctx, gate.sendSold, to, saleLines(m.cfg, t.Mess, t.Diet, t.Meal, t.Date, t.EndsAt, nil).sold()); err != nil {
 			m.log.Warn("could not tell a late buyer the meal sold", "task", t.ID, "err", err)
 			return
 		}
@@ -260,6 +259,9 @@ func (m *sellManager) start(ctx context.Context, userID int64, date, meal string
 	}
 	if !time.Now().Before(slot.End) {
 		return 0, errors.New("meal has already ended")
+	}
+	if err := tooEarly(m.cfg, slot, time.Now()); err != nil {
+		return 0, err
 	}
 	if settings, err := taskSellSettings(m.cfg); err != nil {
 		return 0, err
@@ -353,7 +355,8 @@ func (m *sellManager) Cancel(ctx context.Context, id int64, revoke bool) error {
 
 // SetPrices changes a running task's floor and opening price, in whole
 // rupees, without reposting or restarting it. Buyers mid-haggle get the new
-// range on their next turn. Prices the bot already quoted or agreed stand
+// range on their next turn, and one who was last asked more than the new
+// opening price hears it right away ("how about 100"). Prices the bot already quoted or agreed stand
 // even below a raised floor, and an ask is never raised. Whether the task
 // negotiates can't change: a negotiating task keeps max above min, and a
 // fixed-price one keeps them equal.
@@ -487,7 +490,7 @@ func (m *sellManager) Resume(ctx context.Context, enabled bool) error {
 func (m *sellManager) repostRules() repost.Rules { return repost.FromConfig(m.cfg.Live().Sell) }
 
 func (m *sellManager) newSale(date, meal string, end time.Time) *sale {
-	return &sale{log: m.log, loc: m.cfg.Location(), conn: m.conn, st: m.st, date: date, meal: meal, end: end}
+	return &sale{log: m.log, loc: m.cfg.Location(), conn: m.conn, st: m.st, date: date, meal: meal, end: end, cfg: m.cfg}
 }
 
 func (m *sellManager) launch(t store.SellTask, s *sale, ready chan struct{}) {
@@ -630,6 +633,13 @@ func (m *sellManager) runTask(ctx context.Context, t store.SellTask, s *sale, rt
 	// takes WhatsApp Pay alone.
 	s.acceptImages = settings.AcceptPaymentImages && !t.Autopilot
 	queue := newOfferQueue()
+	s.joined = queue
+	s.extras = sync.OnceValue(func() []string {
+		if ep, ok := s.portal.(extrasPortal); ok {
+			return readExtras(ctx, ep, m.log, t.Date, t.Meal, s.mess)
+		}
+		return nil
+	})
 	queue.join = func(peer, chat types.JID) bool {
 		if gate.turnsAway(ctx, peer, chat) {
 			logSavedSkip(m.log, peer, "task", t.ID)
@@ -1114,9 +1124,9 @@ func (g *taskGate) sendPaid(ctx context.Context, to types.JID, msg *waE2E.Messag
 
 // sendSold tells one of the task's buyers that the meal sold. Like
 // sendPaid it skips the active check, and only after the task sold the
-// meal; the message must be one of saySold's lines.
+// meal; the message must be a sold line (see isSold).
 func (g *taskGate) sendSold(ctx context.Context, to types.JID, msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (whatsmeow.SendResponse, error) {
-	if !slices.Contains(soldLines, msg.GetConversation()) {
+	if !isSold(g.m.cfg, msg.GetConversation()) {
 		return whatsmeow.SendResponse{}, errors.New("an ended task may only say the meal sold")
 	}
 	t, err := g.m.st.GetSellTask(ctx, g.id)

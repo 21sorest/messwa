@@ -238,10 +238,10 @@ type sellFixture struct {
 }
 
 // newSellFixture runs inside a synctest bubble. It moves the fake clock to
-// midnight UTC on 11 Nov 2026, 05:30 in Kolkata, so today's lunch is ahead
+// 04:30 UTC on 11 Nov 2026, 10:00 in Kolkata, after breakfast, so today's lunch is ahead, can be sold,
 // and payment timestamps look current.
 func newSellFixture(t *testing.T, path string) *sellFixture {
-	time.Sleep(time.Until(time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)))
+	time.Sleep(time.Until(time.Date(2026, 11, 11, 4, 30, 0, 0, time.UTC)))
 	cfg := config.Default()
 	group := types.NewJID("120363000000000001", types.GroupServer)
 	cfg.Groups = []string{group.String()}

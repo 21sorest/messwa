@@ -27,7 +27,7 @@ import (
 //
 // Each poster is recorded as a buyer first, so the task gate lets the bot
 // message them, then gets one private reply to their post naming the meal
-// (sayHave), then joins the queue as if they had replied to the offer: a
+// (lines.have), then joins the queue as if they had replied to the offer: a
 // negotiating task quotes them its price, a fixed-price one asks them to
 // pay. Being a buyer already is what stops a second message, across
 // restarts too. A task that hands off on the first reply skips this, since
@@ -156,7 +156,7 @@ func (m *sellManager) messageBuyPost(ctx context.Context, t store.SellTask, s *s
 	if !ok {
 		return false
 	}
-	text := sayHave(portalMealLabel(s.mess, s.diet, t.Meal), offerDay(m.cfg, t.Date))[0]
+	text := s.lines(types.EmptyJID).forBuyer(l.SellerName).have(int(t.MaxPaise / 100))[0]
 	sent := false
 	chat := peer
 	if !alt.IsEmpty() {

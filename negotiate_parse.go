@@ -2,6 +2,7 @@ package main
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -41,6 +42,10 @@ type intent struct {
 	// bought marks an intentPass from a buyer who got a meal elsewhere
 	// ("bought already", "got from other"): no lower price brings them back.
 	bought bool
+	// meals are the meals the buyer named, such as "breakfast" in "i
+	// texted for breakfast". Naming only other meals than the one on sale
+	// ends the chat (see decide).
+	meals []string
 }
 
 // name is how the dashboard shows what the bot read: the meaning only,
@@ -66,15 +71,27 @@ func (in intent) name() string {
 func combineIntents(texts []string) intent {
 	var out intent
 	bought := false
+	var named []string
 	for _, t := range texts {
 		in := parseBuyer(t)
 		bought = bought || in.bought
+		for _, m := range in.meals {
+			if !slices.Contains(named, m) {
+				named = append(named, m)
+			}
+		}
 		if intentRank[in.kind] >= intentRank[out.kind] {
 			out = in
 		}
 	}
 	out.bought = out.kind == intentPass && bought
+	out.meals = named
 	return out
+}
+
+// wantsOtherMeal reports whether in names meals and meal isn't one of them.
+func (in intent) wantsOtherMeal(meal string) bool {
+	return meal != "" && len(in.meals) > 0 && !slices.Contains(in.meals, meal)
 }
 
 // squeeze collapses repeated letters, so "okkk", "plsss" and "broooo" read
@@ -155,7 +172,8 @@ var (
 		"no sorry", "leave it", "lite", "chodo", "chhodo", "rehne do", "rehne de", "rehnedo", "rehen do", "i'll pass", "ill pass", "pass",
 		"cancel", "bought", "purchased", "got from", "got another", "got one", "got other", "got elsewhere", "got it from", "already got",
 		"mil gaya", "mil gya", "milgaya", "mil gayi", "not required", "dont want", "don't want", "do not want", "no need", "skip",
-		"sorry got it", "sry got it", "sorry i got it", "sry i got it")
+		"sorry got it", "sry got it", "sorry i got it", "sry i got it", "not req", "not reqd", "no req", "nt req", "not reqired",
+		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye")
 	// Within a pass, these mean the buyer has a meal already. "got it"
 	// counts only here: on its own it is "understood".
 	boughtWords = newVocab("bought", "buyed", "purchased", "got from", "got another", "got one", "got other", "got elsewhere",
@@ -182,6 +200,13 @@ var (
 	openerWords = newVocab("available", "availble", "avaliable", "availiable", "avail", "avl", "price", "how much", "much", "cost", "rate",
 		"buy", "want", "wnt", "need", "interested", "intrested", "still", "there", "selling", "sell", "for", "token", "qr", "sold",
 		"lunch", "dinner", "breakfast", "bf", "snacks", "nashta", "up", "have", "kitne", "kitna", "how", "cost?")
+	// mealWords name each meal the way buyers write it.
+	mealWords = map[string]vocab{
+		"breakfast": newVocab("breakfast", "brekfast", "breakfst", "bf", "bfast", "bkft", "brkfst", "nashta"),
+		"lunch":     newVocab("lunch", "lunxh", "lnch"),
+		"snacks":    newVocab("snacks", "snack", "snaks"),
+		"dinner":    newVocab("dinner", "dinr", "dinnr"),
+	}
 	firmWords  = newVocab("final", "max", "maximum", "last", "lowest", "at most", "atmost", "and done", "done", "only", "fix", "fixed")
 	rangeWords = newVocab("or", "to")
 )
@@ -231,6 +256,30 @@ func wordNumbers(words []string) []int {
 
 // parseBuyer reads one buyer message.
 func parseBuyer(text string) intent {
+	in := parseIntent(text)
+	m := words(text)
+	for _, meal := range []string{"breakfast", "lunch", "snacks", "dinner"} {
+		if mealWords[meal].in(m) {
+			in.meals = append(in.meals, meal)
+		}
+	}
+	return in
+}
+
+// words splits text into lowercase, squeezed words.
+func words(text string) msgWords {
+	m := msgWords{joined: " "}
+	for _, w := range wordRe.FindAllString(strings.ToLower(text), -1) {
+		if w = strings.Trim(w, "'"); w != "" {
+			m.words = append(m.words, squeeze(w))
+			m.joined += squeeze(w) + " "
+		}
+	}
+	return m
+}
+
+// parseIntent is parseBuyer without the meals.
+func parseIntent(text string) intent {
 	raw := strings.ToLower(strings.TrimSpace(text))
 	paidMark := strings.ContainsAny(raw, "💸✅")
 	raw = strings.NewReplacer("₹", " rs ", "’", "'", "@", " @ ", "\n", " ").Replace(raw)

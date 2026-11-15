@@ -2,7 +2,9 @@
 package meals
 
 import (
+	"maps"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"messwa/internal/config"
@@ -10,7 +12,48 @@ import (
 
 type Schedule struct {
 	loc   *time.Location
-	meals []meal // sorted by end time
+	meals []meal // from config.toml, sorted by end time
+}
+
+// portal holds the meal windows the mess portal last gave, which win over
+// config.toml's. They are the same for every account, so one copy serves
+// every Schedule.
+var portal atomic.Pointer[map[string]config.MealTime]
+
+// SetPortalTimes makes times, by meal name, the windows every Schedule
+// uses from now on. Meals it leaves out keep config.toml's window; nil
+// goes back to config.toml for all of them.
+func SetPortalTimes(times map[string]config.MealTime) {
+	if times == nil {
+		portal.Store(nil)
+		return
+	}
+	m := maps.Clone(times)
+	portal.Store(&m)
+}
+
+// PortalTimes returns the windows set by SetPortalTimes, or nil.
+func PortalTimes() map[string]config.MealTime {
+	if p := portal.Load(); p != nil {
+		return maps.Clone(*p)
+	}
+	return nil
+}
+
+// Times returns each of cfg's meals with the window in use: the portal's
+// when it has one, else config.toml's.
+func Times(cfg *config.Config) []config.Meal {
+	p := portal.Load()
+	out := make([]config.Meal, 0, len(cfg.Meals))
+	for _, m := range cfg.Meals {
+		if p != nil {
+			if t, ok := (*p)[m.Name]; ok {
+				m.Starts, m.Ends = t.Starts, t.Ends
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 type meal struct {
@@ -33,8 +76,33 @@ func New(cfg *config.Config) *Schedule {
 		en, _ := config.ParseClock(m.Ends)
 		s.meals = append(s.meals, meal{m.Name, st, en})
 	}
-	sort.Slice(s.meals, func(i, j int) bool { return s.meals[i].end < s.meals[j].end })
+	sortMeals(s.meals)
 	return s
+}
+
+func sortMeals(ms []meal) {
+	sort.Slice(ms, func(i, j int) bool { return ms[i].end < ms[j].end })
+}
+
+// current is s's meals with the portal's windows over config.toml's.
+func (s *Schedule) current() []meal {
+	p := portal.Load()
+	if p == nil {
+		return s.meals
+	}
+	out := make([]meal, len(s.meals))
+	for i, m := range s.meals {
+		if t, ok := (*p)[m.name]; ok {
+			st, err1 := config.ParseClock(t.Starts)
+			en, err2 := config.ParseClock(t.Ends)
+			if err1 == nil && err2 == nil && en > st {
+				m.start, m.end = st, en
+			}
+		}
+		out[i] = m
+	}
+	sortMeals(out)
+	return out
 }
 
 func (s *Schedule) Location() *time.Location { return s.loc }
@@ -47,7 +115,7 @@ func (s *Schedule) Next(t time.Time, name string) (Slot, bool) {
 	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, s.loc)
 	for d := 0; d < 2; d++ {
 		date := day.AddDate(0, 0, d)
-		for _, m := range s.meals {
+		for _, m := range s.current() {
 			if name != "" && m.name != name {
 				continue
 			}
@@ -79,7 +147,7 @@ func (s *Schedule) Windows(t time.Time) []Slot {
 	local := t.In(s.loc)
 	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, s.loc)
 	var out []Slot
-	for _, m := range s.meals {
+	for _, m := range s.current() {
 		out = append(out, Slot{
 			Meal:  m.name,
 			Date:  day.Format("2006-01-02"),
@@ -103,4 +171,29 @@ func (s *Schedule) Without(hide func(string) bool) *Schedule {
 		return s
 	}
 	return out
+}
+
+// Prev is the meal served before slot: the last one on its date to end by
+// its start, else the day before's last. An offer for slot may go up only
+// once Prev has ended; posted while another meal is still being served, it
+// gets read as one for that meal.
+func (s *Schedule) Prev(slot Slot) (Slot, bool) {
+	day, err := time.ParseInLocation("2006-01-02", slot.Date, s.loc)
+	if err != nil {
+		return Slot{}, false
+	}
+	var prev Slot
+	for _, w := range s.Windows(day) {
+		if w.Meal != slot.Meal && !w.End.After(slot.Start) && w.End.After(prev.End) {
+			prev = w
+		}
+	}
+	if prev.End.IsZero() {
+		ws := s.Windows(day.AddDate(0, 0, -1))
+		if len(ws) == 0 {
+			return Slot{}, false
+		}
+		prev = ws[len(ws)-1]
+	}
+	return prev, true
 }

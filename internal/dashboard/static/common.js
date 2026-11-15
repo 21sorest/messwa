@@ -384,6 +384,110 @@ function tip(node, fn) {
 // rupees prints whole amounts bare and paise with two decimals: ₹60, ₹2.37.
 const rupees = (v) => '₹' + (Number.isInteger(v) ? v.toLocaleString('en-IN') : v.toFixed(2));
 
+// priceRange is the price picker the sell sheet and the sale card's range
+// editor share: a −/+ box you can type into for each end, over a two-thumb
+// slider. The slider and the −/+ buttons move in ₹5 steps; typing takes any
+// whole rupee from 1 to 10000. o is
+//
+//   lo, hi     the starting floor and opening price
+//   bounds     {lo, hi}, the slider's scale (lo a multiple of 5)
+//   fixed      one price: a single box, and both ends move together
+//   gap        how far apart the two ends must stay (0 lets them meet)
+//   marks      [{at, cls}] ticks on the track, e.g. the median ask
+//   axis       the three labels under the track, or null for none
+//   onChange   called with (lo, hi) after every change
+//
+// It returns {nodes, get}, get giving [lo, hi].
+const PRICE_STEP = 5;
+function priceRange(o) {
+  const B = o.bounds, gap = o.fixed ? 0 : o.gap || 0;
+  const clamp = (x) => Math.min(10000, Math.max(1, Math.round(x)));
+  const pct = (p) => Math.min(100, Math.max(0, ((p - B.lo) / (B.hi - B.lo)) * 100));
+  let lo = clamp(o.lo), hi = o.fixed ? lo : Math.max(clamp(o.hi), lo + gap);
+
+  // The −/+ buttons land on the next multiple of ₹5, so ₹17 goes to ₹20 or ₹15.
+  const stepFrom = (x, d) => (d > 0 ? Math.floor(x / PRICE_STEP) + 1 : Math.ceil(x / PRICE_STEP) - 1) * PRICE_STEP;
+  const setLo = (x) => { x = clamp(x); if (o.fixed) lo = hi = x; else lo = Math.min(x, Math.max(1, hi - gap)); };
+  const setHi = (x) => { hi = Math.max(clamp(x), lo + gap); };
+
+  const box = (label, aria, get, set) => {
+    const w = el('div', 'pr-box');
+    const minus = el('button', '', '−'), plus = el('button', '', '+');
+    const inp = el('input');
+    Object.assign(inp, { type: 'text', inputMode: 'numeric', autocomplete: 'off', enterKeyHint: 'done' });
+    inp.setAttribute('aria-label', `${aria} in rupees`);
+    for (const [btn, d, word] of [[minus, -1, 'down'], [plus, 1, 'up']]) {
+      btn.type = 'button';
+      btn.setAttribute('aria-label', `${aria} ${word} ₹${PRICE_STEP}`);
+      btn.addEventListener('click', () => { set(stepFrom(get(), d)); draw(); });
+    }
+    // Typing redraws the slider as you go but leaves the box alone until
+    // you leave it, so clearing it to retype doesn't snap back to ₹1.
+    inp.addEventListener('input', () => {
+      const n = parseInt(inp.value.replace(/\D/g, ''), 10);
+      if (n > 0) { set(n); draw(inp); }
+    });
+    inp.addEventListener('change', () => draw());
+    inp.addEventListener('keydown', (k) => {
+      if (k.key === 'ArrowUp' || k.key === 'ArrowDown') { k.preventDefault(); set(stepFrom(get(), k.key === 'ArrowUp' ? 1 : -1)); draw(); }
+    });
+    const field = el('div', 'pr-in');
+    field.append(minus, el('span', 'cur', '₹'), inp, plus);
+    w.append(el('span', 'pr-k', label), field);
+    return [w, inp];
+  };
+  const vals = el('div', 'pr-vals');
+  const [bLo, iLo] = box(o.fixed ? 'PRICE' : 'LOWEST', o.fixed ? 'Price' : 'Lowest price', () => lo, setLo);
+  const [bHi, iHi] = box('OPENS AT', 'Opening price', () => hi, setHi);
+  vals.append(bLo);
+  if (!o.fixed) vals.append(bHi);
+
+  const dual = el('div', 'dual');
+  const track = el('div', 'track');
+  const fill = el('i', 'fill');
+  track.append(fill);
+  for (const m of o.marks || []) {
+    const t = el('i', m.cls);
+    t.style.setProperty('left', `${pct(m.at)}%`);
+    track.append(t);
+  }
+  const range = (label) => {
+    const r = el('input');
+    Object.assign(r, { type: 'range', min: B.lo, max: B.hi, step: PRICE_STEP });
+    r.setAttribute('aria-label', label);
+    return r;
+  };
+  const rLo = range(o.fixed ? 'Price' : 'Lowest price'), rHi = range('Opening price');
+  dual.append(track, rLo);
+  if (!o.fixed) dual.append(rHi);
+  // The thumb that last moved sits on top, so two thumbs at the same spot
+  // can still be pulled apart.
+  rLo.addEventListener('input', () => { setLo(+rLo.value); rLo.style.zIndex = 3; rHi.style.zIndex = 2; draw(); });
+  rHi.addEventListener('input', () => { setHi(+rHi.value); rHi.style.zIndex = 3; rLo.style.zIndex = 2; draw(); });
+
+  const nodes = [vals, dual];
+  if (o.axis) {
+    const axis = el('div', 'sell-axis');
+    axis.append(el('span', '', o.axis[0]), el('span', 'med-l', o.axis[1] || ''), el('span', '', o.axis[2]));
+    nodes.push(axis);
+  }
+
+  // draw syncs everything to lo/hi, skipping the box being typed in.
+  function draw(typing) {
+    if (iLo !== typing) iLo.value = lo;
+    if (iHi !== typing) iHi.value = hi;
+    rLo.value = lo;
+    rHi.value = hi;
+    rLo.setAttribute('aria-valuetext', rupees(lo));
+    rHi.setAttribute('aria-valuetext', rupees(hi));
+    fill.style.setProperty('left', `${pct(lo)}%`);
+    fill.style.setProperty('right', `${100 - pct(hi)}%`);
+    if (o.onChange) o.onChange(lo, hi);
+  }
+  draw();
+  return { nodes, get: () => [lo, hi], focus: rLo };
+}
+
 // ---------- session ----------
 
 // Pages need a signed-in account. A 401 from any API call sends the browser

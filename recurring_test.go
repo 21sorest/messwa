@@ -138,9 +138,15 @@ func TestRecurringRuleEditsPreserveOverridesAndActiveSales(t *testing.T) {
 			}
 		}
 		active := waitingRuleSchedules(t, f.st, r.ID)[1]
-		task, err := m.StartNow(ctx, 7, active.Date, active.Meal, 40, 80, false)
+		// An offer can't go up during the meal before, so wait for it to end.
+		slot, err := findSlot(m.cfg, active.Date, active.Meal)
 		if err != nil {
 			t.Fatal(err)
+		}
+		time.Sleep(time.Until(listOpens(m.cfg, slot)))
+		task, at, err := m.StartNow(ctx, 7, active.Date, active.Meal, 40, 80, false)
+		if err != nil || !at.IsZero() {
+			t.Fatal("start now:", at, err)
 		}
 		if err := m.DeleteRecurringRule(ctx, 7, r.ID, r.Revision, true); err != nil {
 			t.Fatal(err)

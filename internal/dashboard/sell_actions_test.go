@@ -91,12 +91,13 @@ func (o *dashboardOperator) StartOrSchedule(ctx context.Context, user int64, dat
 	o.tasks = append(o.tasks, fmt.Sprintf("schedule %d %s %s %d-%d", user, date, meal, min, max))
 	return 4, o.scheduleAt, nil
 }
-func (o *dashboardOperator) StartNow(ctx context.Context, user int64, date, meal string, min, max int, autopilot bool) (int64, error) {
+func (o *dashboardOperator) StartNow(ctx context.Context, user int64, date, meal string, min, max int, autopilot bool) (int64, time.Time, error) {
 	if autopilot {
 		o.tasks = append(o.tasks, fmt.Sprintf("autopilot start %d %s %s %d-%d", user, date, meal, min, max))
-		return 9, nil
+		return 9, time.Time{}, nil
 	}
-	return o.Start(ctx, user, date, meal, min, max, "")
+	id, err := o.Start(ctx, user, date, meal, min, max, "")
+	return id, time.Time{}, err
 }
 func (o *dashboardOperator) SetScheduleAutopilot(_ context.Context, id int64, on bool) error {
 	o.tasks = append(o.tasks, fmt.Sprintf("autopilot %d %v", id, on))

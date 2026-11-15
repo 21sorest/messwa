@@ -335,7 +335,7 @@ func TestPoolMarksPostsSoldWhenRemainingMealExpires(t *testing.T) {
 		f := newSellFixture(t, path)
 		// Lunch ends at 09:00 UTC. Start near the end so the last meal
 		// expires shortly after the cheaper one sells.
-		time.Sleep(8*time.Hour + 59*time.Minute)
+		time.Sleep(time.Until(time.Date(2026, 11, 11, 8, 59, 0, 0, time.UTC)))
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.negotiatingManager(ctx, 45)

@@ -189,7 +189,7 @@ func (s *Store) SetSellScheduleResult(ctx context.Context, id int64, state strin
 // and returns its id (0 for none).
 func (s *Store) EndWaitingSellSchedule(ctx context.Context, date, meal, state string, taskID int64, detail string, at time.Time) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `UPDATE sell_schedules SET state=?,task_id=?,detail=?,ended_at=? WHERE date=? AND meal=? AND state='waiting' RETURNING id`,
+	err := s.db.QueryRowContext(ctx, `UPDATE sell_schedules SET state=?,task_id=?,detail=?,ended_at=?,revision=revision+1 WHERE date=? AND meal=? AND state='waiting' RETURNING id`,
 		state, taskID, detail, at.Unix(), date, meal).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil

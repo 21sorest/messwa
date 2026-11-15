@@ -175,7 +175,6 @@ function chest(v) {
   if (v.negotiates && !won(v) && !v.held && v.target > v.lowest && v.target < v.max) words.append(' · aims for ', el('em', '', rup(v.target)));
   price.append(words);
   if (v.state === 'active') price.append(rangeButton(v));
-  price.addEventListener('click', () => openMealSheet(v));
   tip(price, () => heroTip(v));
   c.append(price);
   c.append(rangeEdit && rangeEdit.id === v.id ? rangeEditor(v) : priceBar(v, looks));
@@ -196,14 +195,16 @@ function chest(v) {
   c.append(postsRow(v));
   const mk = marketRow(v);
   if (mk) c.append(mk);
-  c.append(cardActions(v));
+  const acts = cardActions(v);
+  if (acts) c.append(acts);
+  tapCard(c, () => openMealSheet(v));
   return c;
 }
 
 // scheduledCard is a sale waiting for its meal: nothing is posted yet. It
 // says when the offer goes up and at what price, and can start it now or
-// switch autopilot. ··· opens the sales page's sheet to change the price
-// or unschedule. The mess and diet come from the ledger the nudge reads
+// switch autopilot. Clicking the card opens the sales page's sheet to
+// change the price or unschedule. The mess and diet come from the ledger the nudge reads
 // (N in app.js), when it has loaded.
 function scheduledCard(s) {
   const cell = ledgerCell(s.date, s.meal);
@@ -257,20 +258,43 @@ function scheduledCard(s) {
     a.append(x);
     return x;
   };
-  btn('grn', '▶ Start now', (x) => act(x, { action: 'start', date: s.date, meal: s.meal, min: s.min, max: s.max, now: true, autopilot: !!s.autopilot },
-    `Selling your ${mealOf(v)}${s.autopilot ? ' on autopilot' : ''}`));
+  // An offer posted while the meal before is still served reads as one for
+  // that meal, so till it ends Start now says it will wait, and the server
+  // schedules the offer for then.
+  const early = s.opens && now() < s.opens;
+  const go = btn(early ? 'grn after' : 'grn', early ? `⏰ Send after ${s.opens_after || 'meal'} ends` : '▶ Start now', (x) => act(x, { action: 'start', date: s.date, meal: s.meal, min: s.min, max: s.max, now: true, autopilot: !!s.autopilot },
+    early ? `Scheduled. Your ${mealOf(v)} goes up at ${hm(s.opens)}` : `Selling your ${mealOf(v)}${s.autopilot ? ' on autopilot' : ''}`));
+  if (early) {
+    const prev = s.opens_after;
+    go.title = `Posts at ${hm(s.opens)}, once ${prev || 'the meal before'} ends. An offer sent during ${prev || 'another meal'} gets read as one for ${prev || 'that meal'}.`;
+    setTimeout(() => { if (go.isConnected) { go.textContent = '▶ Start now'; go.title = ''; go.classList.remove('after'); } }, (s.opens - now()) * 1000 + 500);
+  }
   const auto = btn('auto' + (s.autopilot ? ' on' : ''), s.autopilot ? '✈ Autopilot on' : '✈ Autopilot off', (x) =>
     act(x, { action: 'autopilot', id: s.id, autopilot: !s.autopilot }));
   auto.setAttribute('role', 'switch');
   auto.setAttribute('aria-checked', String(!!s.autopilot));
   auto.title = 'Autopilot sells without waiting on you: it skips any buyer who would need you, even one offering more.';
-  const more = el('a', 'ms-btn ghost more', '···');
-  more.href = s.for_friend ? 'sales.html' : `sales.html#sell=${encodeURIComponent(`${s.date}|${s.meal}`)}`;
-  more.setAttribute('aria-label', 'Change the price or unschedule');
-  more.title = 'Change the price or unschedule';
-  a.append(more);
+  // A friend's sale has no sheet here, so it goes to the sales page.
+  tapCard(c, () => {
+    if (!s.for_friend && openSellHere(s.date, s.meal)) return;
+    location.href = s.for_friend ? 'sales.html' : `sales.html#sell=${encodeURIComponent(`${s.date}|${s.meal}`)}`;
+  });
   c.append(a, err);
   return c;
+}
+
+// tapCard makes a whole sale card open its sheet. Clicks on the card's own
+// controls (buttons, links, the range editor) and text selections don't.
+function tapCard(c, open) {
+  c.classList.add('tap');
+  c.tabIndex = 0;
+  c.addEventListener('click', (e) => {
+    if (e.target.closest('button, a, input, label, .ms-edit') || String(getSelection())) return;
+    open();
+  });
+  c.addEventListener('keydown', (e) => {
+    if (e.target === c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); }
+  });
 }
 
 // ledgerCell finds a meal in the sales ledger app.js loaded for the nudge.
@@ -378,57 +402,17 @@ function rangeHint(v, lo, hi) {
 
 // rangeEditor edits a running sale's floor and opening price in place. A
 // sale can't switch between haggling and a fixed price, so a fixed one
-// moves both ends together and a haggling one keeps them a rupee apart.
+// shows one price and a haggling one keeps its ends a rupee apart.
 function rangeEditor(v) {
   const e = rangeEdit;
-  const fixed = v.min === v.max, gap = fixed ? 0 : 1;
-  // The scale hugs the current range, so a few rupees still move a thumb a
-  // useful distance. The steppers go past it in rupee steps.
-  const B = { lo: Math.max(1, Math.floor((v.min * 0.6) / 5) * 5), hi: Math.max(20, Math.ceil((v.max * 1.5) / 5) * 5) };
-  const pct = (p) => Math.min(100, Math.max(0, ((p - B.lo) / (B.hi - B.lo)) * 100));
-  const clamp = (x) => Math.min(10000, Math.max(1, Math.round(x)));
+  const fixed = v.min === v.max;
+  // The scale hugs the current range, so a ₹5 step still moves a thumb a
+  // useful distance. Typing goes past it.
+  const B = { lo: Math.max(5, Math.floor((v.min * 0.6) / 5) * 5), hi: Math.max(20, Math.ceil((v.max * 1.5) / 5) * 5) };
 
   const box = el('div', 'ms-edit');
   const head = el('div', 'eh');
   head.append(el('b', '', fixed ? 'PRICE' : 'PRICE RANGE'), el('span', '', `was ${rangeText(v.min, v.max)}`));
-
-  const dual = el('div', 'dual');
-  const track = el('div', 'track');
-  const fill = el('i', 'fill');
-  track.append(fill);
-  for (const p of fixed ? [v.min] : [v.min, v.max]) {
-    const m = el('i', 'was');
-    m.style.setProperty('left', `${pct(p)}%`);
-    track.append(m);
-  }
-  const input = (val, label) => {
-    const r = el('input');
-    Object.assign(r, { type: 'range', min: B.lo, max: B.hi, step: 1, value: val });
-    r.setAttribute('aria-label', label);
-    return r;
-  };
-  const rMin = input(e.lo, fixed ? 'Price' : 'Floor'), rMax = input(e.hi, 'Opening price');
-  dual.append(track, rMin);
-  if (!fixed) dual.append(rMax);
-
-  const setLo = (x) => { x = clamp(x); if (fixed) e.lo = e.hi = x; else e.lo = Math.min(x, e.hi - gap); draw(); };
-  const setHi = (x) => { e.hi = Math.max(clamp(x), e.lo + gap); draw(); };
-  const stepper = (label, get, set) => {
-    const w = el('div', 'stp');
-    const minus = el('button', '', '−'), plus = el('button', '', '+'), val = el('b');
-    for (const [btn, d, word] of [[minus, -1, 'down'], [plus, 1, 'up']]) {
-      btn.type = 'button';
-      btn.setAttribute('aria-label', `${label} ${word} a rupee`);
-      btn.addEventListener('click', () => set(get() + d));
-    }
-    w.append(el('small', '', label), minus, val, plus);
-    return [w, val];
-  };
-  const nums = el('div', 'nums');
-  const [sLo, vLo] = stepper(fixed ? 'Price' : 'Floor', () => e.lo, setLo);
-  const [sHi, vHi] = stepper('Opens', () => e.hi, setHi);
-  nums.append(sLo);
-  if (!fixed) nums.append(sHi);
 
   const hint = el('p', 'hint');
   hint.setAttribute('aria-live', 'polite');
@@ -437,6 +421,19 @@ function rangeEditor(v) {
   const acts = el('div', 'eacts');
   const cancel = el('button', 'ms-btn ghost', 'Cancel'), save = el('button', 'ms-btn gold', 'Save range');
   cancel.type = save.type = 'button';
+
+  const pr = priceRange({
+    lo: e.lo, hi: e.hi, bounds: B, fixed, gap: 1,
+    marks: (fixed ? [v.min] : [v.min, v.max]).map((at) => ({ at, cls: 'was' })),
+    axis: [rup(B.lo), '', rup(B.hi)],
+    onChange: (lo, hi) => {
+      e.lo = lo;
+      e.hi = hi;
+      hint.textContent = rangeHint(v, lo, hi);
+      save.disabled = lo === v.min && hi === v.max;
+    },
+  });
+
   cancel.addEventListener('click', () => { rangeEdit = null; renderSales(); });
   save.addEventListener('click', async () => {
     save.disabled = true;
@@ -453,24 +450,7 @@ function rangeEditor(v) {
   });
   acts.append(cancel, save);
 
-  function draw() {
-    rMin.value = e.lo;
-    rMax.value = e.hi;
-    rMin.setAttribute('aria-valuetext', rup(e.lo));
-    rMax.setAttribute('aria-valuetext', rup(e.hi));
-    vLo.textContent = rup(e.lo);
-    vHi.textContent = rup(e.hi);
-    fill.style.setProperty('left', `${pct(e.lo)}%`);
-    fill.style.setProperty('right', `${100 - pct(e.hi)}%`);
-    hint.textContent = rangeHint(v, e.lo, e.hi);
-    save.disabled = e.lo === v.min && e.hi === v.max;
-  }
-  // The thumb that last moved sits on top, so two thumbs at the same spot
-  // can still be pulled apart.
-  rMin.addEventListener('input', () => { setLo(+rMin.value); rMin.style.zIndex = 3; rMax.style.zIndex = 2; });
-  rMax.addEventListener('input', () => { setHi(+rMax.value); rMax.style.zIndex = 3; rMin.style.zIndex = 2; });
-  draw();
-  box.append(head, dual, nums, hint, error, acts);
+  box.append(head, ...pr.nodes, hint, error, acts);
   box.addEventListener('keydown', (k) => { if (k.key === 'Escape') cancel.click(); });
   return box;
 }
@@ -600,7 +580,6 @@ function postsRow(v) {
   r.append(el('span', 'lbl', 'Posted'));
   for (const g of postGroups(v)) r.append(groupPill(g, v));
   if (!v.posts.length) r.append(el('span', 'ms-none', 'not yet'));
-  r.addEventListener('click', () => openMealSheet(v));
   return r;
 }
 
@@ -638,9 +617,9 @@ function cardActions(v) {
   if (v.state === 'active') {
     btn('grn', '✓ Mark sold', () => saleActionForm(v, 'sold'));
     btn('', '+ Add buyer', () => saleActionForm(v, 'add'));
+    btn('red', '✕ Stop', () => saleActionForm(v, 'stop'), 'Stop selling and delete the offer posts');
   }
-  btn('ghost more', '···', () => openMealSheet(v), 'Sale details: posts, tries and price over time');
-  return a;
+  return a.children.length ? a : null;
 }
 
 // endedRow is a finished sale, folded to one line. It opens the meal sheet.
@@ -1030,12 +1009,15 @@ function saleTaskActions(v) {
   const acts = el('div', 'sb-acts');
   acts.append(saleActionButton('✓', 'MARK SOLD', () => saleActionForm(v, 'sold')),
     saleActionButton('+', 'ADD BUYER', () => saleActionForm(v, 'add')));
+  const stop = saleActionButton('✕', 'STOP SELLING', () => saleActionForm(v, 'stop'));
+  stop.classList.add('red');
+  acts.append(stop);
   return acts;
 }
 function saleActionForm(v, action, buyer) {
   saleSheet = { id: v.id, editing: true };
   sheetFor(v, false);
-  const titles = { sold: 'MARK SOLD MANUALLY', add: 'ADD BUYER', mute: 'MUTE BUYER', unmute: 'UNMUTE BUYER' };
+  const titles = { sold: 'MARK SOLD MANUALLY', add: 'ADD BUYER', mute: 'MUTE BUYER', unmute: 'UNMUTE BUYER', stop: 'STOP SELLING' };
   sheet.append(el('div', 'sb-name', titles[action]));
   const form = el('form', 'sale-action-form');
   const fields = {};
@@ -1070,19 +1052,22 @@ function saleActionForm(v, action, buyer) {
     form.append(el('p', 'sb-note', 'Confirm only after you sold the meal. This stops negotiation and records it as paid and sent. The buyer receives no message. Other buyers get the usual sold notice.'));
   } else if (action === 'add') {
     form.append(el('p', 'sb-note', 'The bot will send this buyer its opening quote.'));
+  } else if (action === 'stop') {
+    form.append(el('p', 'sb-note', `Stop selling your ${mealLabel(v)}? The bot stops talking to buyers and deletes its offer posts from the groups. You can start a new sale after.`));
   } else {
     form.append(el('p', 'sb-note', `${buyer.name || buyer.phone || buyer.key}: ${action === 'mute' ? 'stop all bot messages for this task, including sold notices?' : 'allow bot messages for this task again?'}`));
   }
   const error = el('p', 'sb-note');
   error.setAttribute('role', 'alert');
   const acts = el('div', 'sb-acts');
-  const submit = saleActionButton('✓', action === 'sold' || action === 'mute' ? 'CONFIRM' : titles[action], () => {});
+  const submit = saleActionButton(action === 'stop' ? '✕' : '✓', action === 'sold' || action === 'mute' ? 'CONFIRM' : titles[action], () => {});
   submit.type = 'submit';
+  if (action === 'stop') submit.classList.add('red');
   acts.append(submit, saleActionButton('✕', 'CANCEL', () => buyer ? openBuyerSheet(v, buyer.key) : openMealSheet(v)));
   form.append(error, acts);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = { action, id: v.id };
+    const data = { action: action === 'stop' ? 'cancel' : action, id: v.id };
     for (const [k, input] of Object.entries(fields)) data[k] = input.value.trim();
     if (pick && pick.value) { data.buyer = pick.value; data.name = ''; }
     if (buyer && (action === 'mute' || action === 'unmute')) data.buyer = buyer.key;
@@ -1095,7 +1080,7 @@ function saleActionForm(v, action, buyer) {
     try {
       await send('POST', 'api/sell-action', data);
       closeModal();
-      toast('Action saved');
+      toast(action === 'stop' ? 'Stopped. The offer posts are being deleted.' : 'Action saved');
       await load();
     } catch (err) { error.textContent = err.message; submit.disabled = false; }
   });

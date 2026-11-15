@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"messwa/internal/config"
 	"messwa/internal/market"
+	"messwa/internal/meals"
 	"messwa/internal/portal"
 	"messwa/internal/store"
 )
@@ -168,6 +170,16 @@ func (m *sellManager) ruleRows(ctx context.Context, user int64) ([]portal.Regist
 	return reader.Registrations(ctx, now.Format("2006-01-02"), now.AddDate(0, 0, 27).Format("2006-01-02"))
 }
 
+// ruleAt is when rule r posts slot's offer: r.Before minutes before serving,
+// but not while the meal before is still served.
+func ruleAt(cfg *config.Config, r store.RecurringRule, slot meals.Slot) time.Time {
+	at := slot.Start.Add(-time.Duration(r.Before) * time.Minute)
+	if opens := listOpens(cfg, slot); at.Before(opens) {
+		return opens
+	}
+	return at
+}
+
 // ruleCandidates only returns confirmed, unused, unambiguous registrations.
 // Manual schedules, prior tasks, and completed/failed occurrences take priority.
 func (m *sellManager) ruleCandidates(ctx context.Context, r store.RecurringRule, rows []portal.Registration, price rulePrice) ([]store.SellSchedule, int, int, error) {
@@ -230,7 +242,7 @@ func (m *sellManager) ruleCandidates(ctx context.Context, r store.RecurringRule,
 			continue
 		}
 		lo, hi, _ := price(row.Date, row.Meal)
-		out = append(out, store.SellSchedule{RuleID: r.ID, RuleRevision: r.Revision, UserID: r.UserID, Date: row.Date, Meal: row.Meal, MinPaise: lo, MaxPaise: hi, StartsAt: slot.Start.Add(-time.Duration(r.Before) * time.Minute), EndsAt: slot.End, CreatedAt: now, Autopilot: r.Autopilot})
+		out = append(out, store.SellSchedule{RuleID: r.ID, RuleRevision: r.Revision, UserID: r.UserID, Date: row.Date, Meal: row.Meal, MinPaise: lo, MaxPaise: hi, StartsAt: ruleAt(m.cfg, r, slot), EndsAt: slot.End, CreatedAt: now, Autopilot: r.Autopilot})
 	}
 	slices.SortFunc(out, func(a, b store.SellSchedule) int { return a.StartsAt.Compare(b.StartsAt) })
 	return out, exceptions, existing, nil
@@ -262,7 +274,7 @@ func (m *sellManager) PreviewRecurringRule(ctx context.Context, user int64, r st
 		out.Waiting++
 		if apply && r.Enabled && ruleMatches(r, sc.Date, sc.Meal, m.cfg.Location()) {
 			slot, e := findSlot(m.cfg, sc.Date, sc.Meal)
-			if e == nil && !slot.Start.Add(-time.Duration(r.Before)*time.Minute).After(time.Now()) {
+			if e == nil && !ruleAt(m.cfg, r, slot).After(time.Now()) {
 				out.StartsNow++
 			}
 		}
@@ -350,7 +362,7 @@ func (m *sellManager) SaveRecurringRule(ctx context.Context, user int64, r store
 					return r, e
 				}
 				sc.MinPaise, sc.MaxPaise, _ = price(sc.Date, sc.Meal)
-				sc.Autopilot, sc.StartsAt = r.Autopilot, slot.Start.Add(-time.Duration(r.Before)*time.Minute)
+				sc.Autopilot, sc.StartsAt = r.Autopilot, ruleAt(m.cfg, r, slot)
 			}
 			ok, e := m.st.ApplyRecurringSchedule(ctx, sc, cancel)
 			if e != nil {

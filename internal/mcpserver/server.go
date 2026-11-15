@@ -622,6 +622,44 @@ func (s *Server) Get(ctx context.Context, id int64) (GetOut, error) {
 // except the ones their settings hide.
 func (s *Server) MealSchedule() *meals.Schedule { return s.sched.Without(s.cfg.Live().HiddenMeal) }
 
+// PrevMeal is the meal served before date's meal, counting meals the
+// settings hide, since the mess still serves them. An offer for the meal
+// may go up only once it ends.
+func (s *Server) PrevMeal(date, meal string) (meals.Slot, bool) {
+	day, err := time.ParseInLocation("2006-01-02", date, s.sched.Location())
+	if err != nil {
+		return meals.Slot{}, false
+	}
+	meal, _, _ = strings.Cut(meal, "#")
+	for _, w := range s.sched.Windows(day) {
+		if w.Meal == meal {
+			return s.sched.Prev(w)
+		}
+	}
+	return meals.Slot{}, false
+}
+
+// ListOpens is the earliest an offer for date's meal may go up: when
+// PrevMeal ends. Zero when there's no such meal.
+func (s *Server) ListOpens(date, meal string) time.Time {
+	prev, _ := s.PrevMeal(date, meal)
+	return prev.End
+}
+
+// listAt is t, or opens when that is later.
+func listAt(t, opens time.Time) time.Time {
+	if t.Before(opens) {
+		return opens
+	}
+	return t
+}
+
+// ScheduledAt is when a waiting schedule's offer will go up: its saved
+// time, or ListOpens when that is later.
+func (s *Server) ScheduledAt(sc store.SellSchedule) time.Time {
+	return listAt(sc.StartsAt, s.ListOpens(sc.Date, sc.Meal))
+}
+
 // Schedule is meal_schedule for local callers.
 func (s *Server) Schedule() ScheduleOut {
 	_, out, _ := s.mealSchedule(context.Background(), nil, ScheduleIn{})
@@ -643,6 +681,12 @@ func (s *Server) Deliveries(ctx context.Context) ([]store.DeliveryRecord, error)
 		}
 	}
 	return out, nil
+}
+
+// DeleteSale removes the meal's recorded sale so it can be sold again. It
+// sends nothing: the old buyer still holds the QR they were sent.
+func (s *Server) DeleteSale(ctx context.Context, date, meal string) (string, error) {
+	return s.st.DeleteSale(ctx, date, meal, s.now().In(s.sched.Location()))
 }
 
 // Prices is the asking prices per serving dated from..to, for the sales page.

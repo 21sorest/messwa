@@ -56,12 +56,20 @@ type Client struct {
 // New returns a client that reads the portal with one person's mess API
 // key. MESS_API_URL overrides the portal address.
 func New(key string) (*Client, error) {
+	if strings.TrimSpace(key) == "" {
+		return nil, ErrNoKey
+	}
+	return newClient(key)
+}
+
+// Public returns a client without an API key, for the endpoints anyone
+// may read, such as MealTimings.
+func Public() (*Client, error) { return newClient("") }
+
+func newClient(key string) (*Client, error) {
 	base := os.Getenv("MESS_API_URL")
 	if base == "" {
 		base = "https://mess.iiit.ac.in/api"
-	}
-	if strings.TrimSpace(key) == "" {
-		return nil, ErrNoKey
 	}
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -129,7 +137,9 @@ func (c *Client) getData(ctx context.Context, endpoint string, params url.Values
 		return nil, errors.New("could not construct portal read request")
 	}
 	// The existing MCP uses the API key directly, without a Bearer prefix.
-	req.Header.Set("Authorization", c.key)
+	if c.key != "" {
+		req.Header.Set("Authorization", c.key)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {

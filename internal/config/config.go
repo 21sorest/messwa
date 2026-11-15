@@ -193,11 +193,15 @@ func Default() *Config {
 			// 12 Nov dinner test 6 of 9 buyers timed out at 2m and the
 			// meal went to one who wrote just after.
 			NegotiationSilence: duration{10 * time.Minute},
+			OwnWording:         true,
 		},
 	}
 }
 
 func (c *Config) validate() error {
+	if err := c.Sell.Messages.Check(); err != nil {
+		return fmt.Errorf("[sell] messages: %w", err)
+	}
 	loc, err := time.LoadLocation(c.Timezone)
 	if err != nil {
 		return fmt.Errorf("timezone: %w", err)

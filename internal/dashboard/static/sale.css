@@ -4,6 +4,9 @@
 .ms-tag.sch { color: var(--gold); background: rgba(255, 197, 61, .12); }
 /* a sale waiting for its meal, dashed like its ledger cell */
 .mysale.sched { border-style: dashed; border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.mysale.tap { cursor: pointer; transition: filter .15s; }
+.mysale.tap:hover { filter: brightness(1.12); }
+.mysale.tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .ms-price > b.sch { color: var(--gold); font-size: 18px; }
 .ms-time small { font: 700 8px Pixel; color: var(--muted); }
 .ms-btn.auto { color: var(--muted); }
@@ -43,7 +46,7 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ms-time b.grn { color: var(--veg); } .ms-time b.dim { color: var(--dim); }
 
 /* price */
-.ms-price { display: flex; align-items: baseline; gap: 10px; cursor: pointer; min-width: 0; }
+.ms-price { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .ms-price > b { font: 700 22px/1 Pixel; color: var(--veg); flex: none; }
 .ms-price > b.held { color: var(--gold); }
 .ms-price .what { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -62,14 +65,10 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ms-edit .eh { display: flex; justify-content: space-between; align-items: baseline; }
 .ms-edit .eh b { font: 700 9px Pixel; color: var(--gold); letter-spacing: .5px; }
 .ms-edit .eh span { font-size: 11px; color: var(--muted); }
+.ms-edit .pr-vals { margin: 0; }
+.ms-edit .sell-axis { margin-top: -6px; }
 .ms-edit .dual .was { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--dim); }
-.ms-edit .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
-.stp { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.stp small { flex: 1; padding: 0 8px; font-size: 11px; color: var(--dim); }
-.stp button { width: 30px; height: 32px; border: none; background: var(--slot); color: var(--text); font-size: 15px; cursor: pointer; }
-.stp button:hover { background: var(--slot-hi); }
-.stp b { width: 48px; text-align: center; font: 700 12px Pixel; }
-.ms-edit .hint { margin: 0; font-size: 11.5px; line-height: 1.45; color: #ffd98a; }
+.ms-edit .hint { display: block; margin: 0; font-size: 11.5px; line-height: 1.45; color: #ffd98a; }
 .ms-edit .err { margin: 0; font-size: 12px; color: var(--red); }
 .ms-edit .err:empty { display: none; }
 .ms-edit .eacts { display: flex; justify-content: flex-end; gap: 6px; }
@@ -126,13 +125,19 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* actions */
 .ms-acts { display: flex; gap: 6px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.ms-acts { flex-wrap: wrap; }
+.ms-acts .ms-btn { white-space: nowrap; }
+/* "send after snacks ends" is too long to share a row in a 340px card */
+.ms-btn.after { flex: 1 0 100%; }
 .ms-btn { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--slot); color: var(--text); font: 700 9px Pixel; cursor: pointer; }
 .ms-btn:hover { background: var(--slot-hi); }
 .ms-btn.grn { border-color: rgba(52, 196, 99, .5); color: var(--veg); }
+.ms-btn.red { border-color: rgba(255, 107, 91, .5); color: #ff6b5b; }
 .ms-btn.gold { border-color: var(--gold); background: var(--gold); color: #121620; }
-.ms-btn.gold:disabled { opacity: .4; cursor: default; }
+.ms-btn:disabled { opacity: .4; cursor: default; }
+.ms-btn:disabled:hover { background: var(--slot); }
+.ms-btn.gold:disabled:hover { background: var(--gold); }
 .ms-btn.ghost { border-color: transparent; background: none; color: var(--muted); }
-.ms-btn.more { margin-left: auto; font-size: 12px; letter-spacing: 1px; }
 
 /* ended sales, one line each */
 .ms-sec { margin-top: 4px; font: 700 8px Pixel; letter-spacing: 1px; color: var(--dim); }
@@ -223,6 +228,7 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .sb-act.chat:hover { background: color-mix(in srgb, var(--veg) 85%, #fff); }
 .sb-act.grn { border-color: var(--veg); } .sb-act.grn b { color: var(--veg); }
 .sb-act.gold { border-color: color-mix(in srgb, var(--gold) 65%, transparent); } .sb-act.gold b { color: var(--gold); }
+.sb-act.red { border-color: rgba(255, 107, 91, .65); } .sb-act.red b { color: #ff6b5b; }
 .sb-act.off { opacity: .35; cursor: default; }
 .sb-act:disabled { opacity: .45; cursor: wait; }
 .sb-note { font-size: 12px; color: var(--muted); }

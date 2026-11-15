@@ -2,11 +2,14 @@ package dashboard
 
 import (
 	"encoding/json"
+	"slices"
+	"strings"
 	"testing"
 
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/wording"
 )
 
 func TestSettingsAPI(t *testing.T) {
@@ -87,5 +90,46 @@ func TestSettingsAPI(t *testing.T) {
 	// An empty save puts everything back to config.toml.
 	if code, got, _ = put(map[string]any{}); code != 200 || len(got.Saved) != 0 || !cfg.Live().Sell.ShowPrice {
 		t.Fatalf("reset: %d %+v", code, got)
+	}
+}
+
+// A member rewrites the bot's messages: the page gets every slot and
+// variable, a bad message is refused with why, and a good one goes live.
+func TestSettingsMessages(t *testing.T) {
+	st := newTestStore(t)
+	cfg := config.Default()
+	cfg.ApplySaved(nil)
+	d := startDashboard(t, cfg, st, mcpserver.New(cfg, st, nil), NewHub())
+	member := d.as(t, accounts.Member)
+
+	var got settingsState
+	if res := member.get(t, "/api/settings", &got); res.StatusCode != 200 {
+		t.Fatalf("GET = %d", res.StatusCode)
+	}
+	if len(got.Wording.Slots) != len(wording.Slots) || len(got.Wording.Vars) != len(wording.Vars) || got.Values["sell.own_wording"] != true {
+		t.Fatalf("wording = %+v, own_wording = %v", got.Wording, got.Values["sell.own_wording"])
+	}
+	for _, s := range got.Wording.Slots {
+		if !slices.Contains(s.Uses, "meal") {
+			t.Errorf("%s: uses %v, want every variable it can use", s.ID, s.Uses)
+		}
+	}
+
+	put := func(msgs string) (int, string) {
+		res := member.send(t, "PUT", "/api/settings", map[string]any{"values": map[string]any{"sell.messages": json.RawMessage(msgs)}})
+		defer res.Body.Close()
+		var e struct{ Error string }
+		json.NewDecoder(res.Body).Decode(&e)
+		return res.StatusCode, e.Error
+	}
+	if code, msg := put(`{"counter": [["take it for cheap"]]}`); code != 400 || !strings.Contains(msg, "needs {price}") {
+		t.Fatalf("counter without a price: %d %q", code, msg)
+	}
+	if code, msg := put(`{"counter": [["ok [{buyer} ]{price}", "last one"]], "nudge": [["yes or no?"], ["are you buying?"], ["interested?"]]}`); code != 200 {
+		t.Fatalf("save: %d %q", code, msg)
+	}
+	live := cfg.Live().Sell.Messages
+	if len(live) != 1 || live["counter"][0][1] != "last one" {
+		t.Fatalf("live messages = %v, want only the counter (the nudge matches the default)", live)
 	}
 }

@@ -20,7 +20,7 @@ func TestAutopilotSkipsUnreadableBuyer(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.negotiatingManager(ctx, 50)
-		id, err := m.StartNow(ctx, 0, f.date, "lunch", 30, 60, true)
+		id, _, err := m.StartNow(ctx, 0, f.date, "lunch", 30, 60, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +55,7 @@ func TestAutopilotDropsHolderWhoNeedsYou(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.negotiatingManager(ctx, 60)
-		id, err := m.StartNow(ctx, 0, f.date, "lunch", 30, 60, true)
+		id, _, err := m.StartNow(ctx, 0, f.date, "lunch", 30, 60, true)
 		if err != nil {
 			t.Fatal(err)
 		}
