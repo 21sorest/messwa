@@ -368,6 +368,20 @@ The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don'
 
 `/healthz` reports service availability. A disconnected user does not make the shared service unhealthy; the account page reports that user's connection status.
 
+### Behind a reverse proxy
+
+To put the dashboard on the internet, keep `dashboard.listen` on loopback and run a proxy such as Caddy on the same host:
+
+```
+mess.example.com {
+    reverse_proxy 127.0.0.1:8767
+}
+```
+
+For requests from loopback, messwa trusts two headers. It counts sign-in lockouts and sign-up limits against the last address in `X-Forwarded-For`, and it marks the session cookie `Secure` when `X-Forwarded-Proto` is `https`. A proxy on another machine isn't trusted, so run it on the same host. At most 4 password hashes run at once (64 MiB each); other sign-ins wait.
+
+Don't proxy `/mcp` while `mcp.listen` is loopback and `MESSWA_MCP_TOKEN` is unset. Every proxied request comes from loopback, so tokenless requests from anyone would act as the first admin. Set `MESSWA_MCP_TOKEN` to a long random value first, or leave `/mcp` out of the proxy.
+
 ### Log files
 
 Besides stderr (`docker compose logs`), messwa writes the same lines to
