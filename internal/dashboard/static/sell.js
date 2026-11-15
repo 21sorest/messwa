@@ -261,77 +261,31 @@ function sellSheet(ctx) {
     sheet.append(sum, note, tools, autoNote, error, acts);
   }
 
-  // priceSlider is the two-handle price range for a cell-like c (ask,
-  // task). It returns its nodes and a getter for [lowest, opening].
+  // priceSlider is the price picker for a cell-like c (ask, task). It
+  // returns its nodes and a getter for [lowest, opening]. A running task
+  // can't switch between haggling and a fixed price, so a fixed one shows
+  // one price and a haggling one keeps its ends a rupee apart.
   function priceSlider(c) {
     const t = c.task;
     const b = sellBounds(c);
-    let [lo, hi] = sellDefaults(c, b);
-    // Both handles move in ₹5 steps. A running task can't switch between
-    // haggling and a fixed price, so a fixed one moves both handles together
-    // and a haggling one keeps them a step apart.
-    const STEP = 5;
-    const snap = (v) => Math.max(b.lo, Math.min(b.hi, Math.round(v / STEP) * STEP));
-    const fixed = t && t.min === t.max;
-    const gap = t && !fixed ? STEP : 0;
-    lo = snap(lo);
-    hi = Math.max(snap(hi), Math.min(b.hi, lo + gap));
-
-    const vals = el('div', 'sell-vals');
-    const vMin = el('b'), vMax = el('b');
-    const lMin = el('div', 'sv'), lMax = el('div', 'sv');
-    lMin.append(el('span', '', fixed ? 'PRICE' : 'LOWEST'), vMin);
-    lMax.append(el('span', '', 'OPENS AT'), vMax);
-    vals.append(lMin);
-    if (!fixed) vals.append(lMax);
-
-    const dual = el('div', 'dual');
-    const fill = el('i', 'fill');
-    const track = el('div', 'track');
-    track.append(fill);
-    if (c.ask != null) {
-      const m = el('i', 'med');
-      m.style.setProperty('left', `${((c.ask - b.lo) / (b.hi - b.lo)) * 100}%`);
-      track.append(m);
-    }
-    const range = (v, label) => {
-      const r = el('input');
-      Object.assign(r, { type: 'range', min: b.lo, max: b.hi, step: STEP, value: v });
-      r.setAttribute('aria-label', label);
-      return r;
-    };
-    const rMin = range(lo, fixed ? 'Price' : 'Lowest price'), rMax = range(hi, 'Opening price');
-    rMin.dataset.focus = '1';
-    dual.append(track, rMin);
-    if (!fixed) dual.append(rMax);
-
-    const axis = el('div', 'sell-axis');
-    axis.append(el('span', '', rupees(b.lo)), c.ask != null ? el('span', 'med-l', `median ${rupees(Math.round(c.ask))}`) : el('span'), el('span', '', rupees(b.hi)));
-
+    const [lo, hi] = sellDefaults(c, b);
     const note = el('p', 'sell-note');
     note.setAttribute('aria-live', 'polite');
-    const draw = () => {
-      vMin.textContent = rupees(lo);
-      vMax.textContent = rupees(hi);
-      rMin.setAttribute('aria-valuetext', rupees(lo));
-      rMax.setAttribute('aria-valuetext', rupees(hi));
-      fill.style.setProperty('left', `${((lo - b.lo) / (b.hi - b.lo)) * 100}%`);
-      fill.style.setProperty('right', `${100 - ((hi - b.lo) / (b.hi - b.lo)) * 100}%`);
-      note.textContent = lo === hi
-        ? `Posts the meal at ${rupees(lo)} and sells to the first buyer who pays it.`
-        : `Opens at ${rupees(hi)} and haggles down toward the median, reaching ${rupees(lo)} only as the meal nears its end. Never goes below ${rupees(lo)}.`;
-      if (t) note.textContent += ' Prices already quoted or agreed stand.';
-    };
-    // The thumb that last moved sits on top, so two thumbs at the same spot
-    // can still be pulled apart.
-    rMin.addEventListener('input', () => {
-      if (fixed) hi = lo = +rMin.value;
-      else { lo = Math.min(+rMin.value, hi - gap); rMin.value = lo; }
-      rMin.style.zIndex = 3; rMax.style.zIndex = 2; draw();
+    const pr = priceRange({
+      lo, hi, bounds: b,
+      fixed: t && t.min === t.max,
+      gap: t ? 1 : 0,
+      marks: c.ask != null ? [{ at: c.ask, cls: 'med' }] : [],
+      axis: [rupees(b.lo), c.ask != null ? `median ${rupees(Math.round(c.ask))}` : '', rupees(b.hi)],
+      onChange: (lo, hi) => {
+        note.textContent = lo === hi
+          ? `Posts the meal at ${rupees(lo)} and sells to the first buyer who pays it.`
+          : `Opens at ${rupees(hi)} and haggles down toward the median, reaching ${rupees(lo)} only as the meal nears its end. Never goes below ${rupees(lo)}.`;
+        if (t) note.textContent += ' Prices already quoted or agreed stand.';
+      },
     });
-    rMax.addEventListener('input', () => { hi = Math.max(+rMax.value, lo + gap); rMax.value = hi; rMax.style.zIndex = 3; rMin.style.zIndex = 2; draw(); });
-    draw();
-    return { nodes: [vals, dual, axis, note], get: () => [lo, hi] };
+    pr.focus.dataset.focus = '1';
+    return { nodes: [...pr.nodes, note], get: pr.get };
   }
 
   function priceView(date, c) {

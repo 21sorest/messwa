@@ -379,57 +379,17 @@ function rangeHint(v, lo, hi) {
 
 // rangeEditor edits a running sale's floor and opening price in place. A
 // sale can't switch between haggling and a fixed price, so a fixed one
-// moves both ends together and a haggling one keeps them a rupee apart.
+// shows one price and a haggling one keeps its ends a rupee apart.
 function rangeEditor(v) {
   const e = rangeEdit;
-  const fixed = v.min === v.max, gap = fixed ? 0 : 1;
-  // The scale hugs the current range, so a few rupees still move a thumb a
-  // useful distance. The steppers go past it in rupee steps.
-  const B = { lo: Math.max(1, Math.floor((v.min * 0.6) / 5) * 5), hi: Math.max(20, Math.ceil((v.max * 1.5) / 5) * 5) };
-  const pct = (p) => Math.min(100, Math.max(0, ((p - B.lo) / (B.hi - B.lo)) * 100));
-  const clamp = (x) => Math.min(10000, Math.max(1, Math.round(x)));
+  const fixed = v.min === v.max;
+  // The scale hugs the current range, so a ₹5 step still moves a thumb a
+  // useful distance. Typing goes past it.
+  const B = { lo: Math.max(5, Math.floor((v.min * 0.6) / 5) * 5), hi: Math.max(20, Math.ceil((v.max * 1.5) / 5) * 5) };
 
   const box = el('div', 'ms-edit');
   const head = el('div', 'eh');
   head.append(el('b', '', fixed ? 'PRICE' : 'PRICE RANGE'), el('span', '', `was ${rangeText(v.min, v.max)}`));
-
-  const dual = el('div', 'dual');
-  const track = el('div', 'track');
-  const fill = el('i', 'fill');
-  track.append(fill);
-  for (const p of fixed ? [v.min] : [v.min, v.max]) {
-    const m = el('i', 'was');
-    m.style.setProperty('left', `${pct(p)}%`);
-    track.append(m);
-  }
-  const input = (val, label) => {
-    const r = el('input');
-    Object.assign(r, { type: 'range', min: B.lo, max: B.hi, step: 1, value: val });
-    r.setAttribute('aria-label', label);
-    return r;
-  };
-  const rMin = input(e.lo, fixed ? 'Price' : 'Floor'), rMax = input(e.hi, 'Opening price');
-  dual.append(track, rMin);
-  if (!fixed) dual.append(rMax);
-
-  const setLo = (x) => { x = clamp(x); if (fixed) e.lo = e.hi = x; else e.lo = Math.min(x, e.hi - gap); draw(); };
-  const setHi = (x) => { e.hi = Math.max(clamp(x), e.lo + gap); draw(); };
-  const stepper = (label, get, set) => {
-    const w = el('div', 'stp');
-    const minus = el('button', '', '−'), plus = el('button', '', '+'), val = el('b');
-    for (const [btn, d, word] of [[minus, -1, 'down'], [plus, 1, 'up']]) {
-      btn.type = 'button';
-      btn.setAttribute('aria-label', `${label} ${word} a rupee`);
-      btn.addEventListener('click', () => set(get() + d));
-    }
-    w.append(el('small', '', label), minus, val, plus);
-    return [w, val];
-  };
-  const nums = el('div', 'nums');
-  const [sLo, vLo] = stepper(fixed ? 'Price' : 'Floor', () => e.lo, setLo);
-  const [sHi, vHi] = stepper('Opens', () => e.hi, setHi);
-  nums.append(sLo);
-  if (!fixed) nums.append(sHi);
 
   const hint = el('p', 'hint');
   hint.setAttribute('aria-live', 'polite');
@@ -438,6 +398,19 @@ function rangeEditor(v) {
   const acts = el('div', 'eacts');
   const cancel = el('button', 'ms-btn ghost', 'Cancel'), save = el('button', 'ms-btn gold', 'Save range');
   cancel.type = save.type = 'button';
+
+  const pr = priceRange({
+    lo: e.lo, hi: e.hi, bounds: B, fixed, gap: 1,
+    marks: (fixed ? [v.min] : [v.min, v.max]).map((at) => ({ at, cls: 'was' })),
+    axis: [rup(B.lo), '', rup(B.hi)],
+    onChange: (lo, hi) => {
+      e.lo = lo;
+      e.hi = hi;
+      hint.textContent = rangeHint(v, lo, hi);
+      save.disabled = lo === v.min && hi === v.max;
+    },
+  });
+
   cancel.addEventListener('click', () => { rangeEdit = null; renderSales(); });
   save.addEventListener('click', async () => {
     save.disabled = true;
@@ -454,24 +427,7 @@ function rangeEditor(v) {
   });
   acts.append(cancel, save);
 
-  function draw() {
-    rMin.value = e.lo;
-    rMax.value = e.hi;
-    rMin.setAttribute('aria-valuetext', rup(e.lo));
-    rMax.setAttribute('aria-valuetext', rup(e.hi));
-    vLo.textContent = rup(e.lo);
-    vHi.textContent = rup(e.hi);
-    fill.style.setProperty('left', `${pct(e.lo)}%`);
-    fill.style.setProperty('right', `${100 - pct(e.hi)}%`);
-    hint.textContent = rangeHint(v, e.lo, e.hi);
-    save.disabled = e.lo === v.min && e.hi === v.max;
-  }
-  // The thumb that last moved sits on top, so two thumbs at the same spot
-  // can still be pulled apart.
-  rMin.addEventListener('input', () => { setLo(+rMin.value); rMin.style.zIndex = 3; rMax.style.zIndex = 2; });
-  rMax.addEventListener('input', () => { setHi(+rMax.value); rMax.style.zIndex = 3; rMin.style.zIndex = 2; });
-  draw();
-  box.append(head, dual, nums, hint, error, acts);
+  box.append(head, ...pr.nodes, hint, error, acts);
   box.addEventListener('keydown', (k) => { if (k.key === 'Escape') cancel.click(); });
   return box;
 }
