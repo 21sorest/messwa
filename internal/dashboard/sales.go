@@ -80,6 +80,9 @@ type friendMeal struct {
 	Ask    *float64  `json:"ask,omitempty"`
 	// Schedule is set while the sale waits to start; State is scheduled.
 	Schedule *cellSchedule `json:"schedule,omitempty"`
+	// Opens and OpensAfter are as in cell.
+	Opens      int64  `json:"opens,omitempty"`
+	OpensAfter string `json:"opens_after,omitempty"`
 }
 
 type salesDay struct {
@@ -117,6 +120,10 @@ type cell struct {
 	// Sellable is set on the open meal being served now and the next one,
 	// the meals the ledger offers to sell.
 	Sellable bool `json:"sellable,omitempty"`
+	// Opens is the earliest its offer may go up, when the meal before it,
+	// OpensAfter, ends. Start now waits for it.
+	Opens      int64  `json:"opens,omitempty"`
+	OpensAfter string `json:"opens_after,omitempty"`
 }
 
 // cellTask is a running sell task: its price range in rupees and who has
@@ -391,7 +398,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 		}
 		for _, sc := range scs {
 			if sc.State == store.ScheduleWaiting {
-				waiting[sc.Date+"|"+sc.Meal] = &cellSchedule{ID: sc.ID, At: sc.StartsAt.Unix(), Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
+				waiting[sc.Date+"|"+sc.Meal] = &cellSchedule{ID: sc.ID, At: srv.ScheduledAt(sc).Unix(), Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
 			}
 		}
 		if _, err := srv.SellControl(); err != nil {
@@ -482,6 +489,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	cellFor := func(date string, w meals.Slot) cell {
 		key := date + "|" + w.Meal
 		c := cell{Meal: w.Meal, Start: w.Start.Unix(), End: w.End.Unix(), State: "none"}
+		c.Opens, c.OpensAfter = opensAt(srv, date, w.Meal)
 		rs := regs[key]
 		if len(rs) > 0 {
 			c.Mess, c.Diet = rs[0].MessDiet()
@@ -601,6 +609,7 @@ func friendMeals(ctx context.Context, srv *mcpserver.Server, sched *meals.Schedu
 		k := m.Date + "|" + m.Slot
 		base, _, _ := strings.Cut(m.Slot, "#")
 		f := friendMeal{Date: m.Date, Meal: base, Slot: m.Slot, Friend: m.Friend, Extras: m.Extras, State: "ended", Task: running[k]}
+		f.Opens, f.OpensAfter = opensAt(srv, m.Date, base)
 		f.Mess, f.Diet = (portal.Registration{Mess: m.Mess}).MessDiet()
 		f.Ask = asks.estimate(m.Date, base, f.Mess, f.Diet)
 		if day, err := time.ParseInLocation("2006-01-02", m.Date, loc); err == nil {
@@ -642,6 +651,16 @@ func availed(rs []portal.Registration) bool {
 		}
 	}
 	return false
+}
+
+// opensAt is when an offer for date's meal may go up, in unix seconds, and
+// the meal it waits for. Zero and empty when there's none.
+func opensAt(srv *mcpserver.Server, date, meal string) (int64, string) {
+	prev, ok := srv.PrevMeal(date, meal)
+	if !ok {
+		return 0, ""
+	}
+	return prev.End.Unix(), prev.Meal
 }
 
 func unix(t time.Time) int64 {

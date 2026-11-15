@@ -106,10 +106,6 @@ func TestSoldAndExpiredTasksKeepTheirPosts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expires, err := m.Start(ctx, 0, f.date, "dinner", 1, 1, "")
-		if err != nil {
-			t.Fatal(err)
-		}
 		synctest.Wait()
 		f.conn.emit(replyTo(buyerA, f.group, f.offers(sold)[0].ID, "interested"))
 		synctest.Wait()
@@ -119,6 +115,17 @@ func TestSoldAndExpiredTasksKeepTheirPosts(t *testing.T) {
 		if task := f.task(sold); task.State != store.TaskSold {
 			t.Fatalf("task is %s (%s)", task.State, task.Detail)
 		}
+		// Dinner can go up once snacks ends.
+		dinner, err := findSlot(f.cfg, f.date, "dinner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Until(listOpens(f.cfg, dinner)))
+		expires, err := m.Start(ctx, 0, f.date, "dinner", 1, 1, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
 		time.Sleep(time.Until(f.task(expires).EndsAt) + time.Second)
 		synctest.Wait()
 		if task := f.task(expires); task.State != store.TaskExpired {

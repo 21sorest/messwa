@@ -257,8 +257,17 @@ function scheduledCard(s) {
     a.append(x);
     return x;
   };
-  btn('grn', '▶ Start now', (x) => act(x, { action: 'start', date: s.date, meal: s.meal, min: s.min, max: s.max, now: true, autopilot: !!s.autopilot },
-    `Selling your ${mealOf(v)}${s.autopilot ? ' on autopilot' : ''}`));
+  // An offer posted while the meal before is still served reads as one for
+  // that meal, so till it ends Start now says it will wait, and the server
+  // schedules the offer for then.
+  const early = s.opens && now() < s.opens;
+  const go = btn(early ? 'grn after' : 'grn', early ? `⏰ Send after ${s.opens_after || 'meal'} ends` : '▶ Start now', (x) => act(x, { action: 'start', date: s.date, meal: s.meal, min: s.min, max: s.max, now: true, autopilot: !!s.autopilot },
+    early ? `Scheduled. Your ${mealOf(v)} goes up at ${hm(s.opens)}` : `Selling your ${mealOf(v)}${s.autopilot ? ' on autopilot' : ''}`));
+  if (early) {
+    const prev = s.opens_after;
+    go.title = `Posts at ${hm(s.opens)}, once ${prev || 'the meal before'} ends. An offer sent during ${prev || 'another meal'} gets read as one for ${prev || 'that meal'}.`;
+    setTimeout(() => { if (go.isConnected) { go.textContent = '▶ Start now'; go.title = ''; go.classList.remove('after'); } }, (s.opens - now()) * 1000 + 500);
+  }
   const auto = btn('auto' + (s.autopilot ? ' on' : ''), s.autopilot ? '✈ Autopilot on' : '✈ Autopilot off', (x) =>
     act(x, { action: 'autopilot', id: s.id, autopilot: !s.autopilot }));
   auto.setAttribute('role', 'switch');

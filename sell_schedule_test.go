@@ -220,10 +220,114 @@ func TestListTime(t *testing.T) {
 		// Past the end it lists at the start.
 		{2 * time.Hour, start},
 	} {
-		if got := listTime(start, end, c.offset); !got.Equal(c.want) {
+		if got := listTime(start, end, c.offset, time.Time{}); !got.Equal(c.want) {
 			t.Errorf("listTime(%s) = %s, want %s", c.offset, got, c.want)
 		}
 	}
+	// Never before the meal before it ends.
+	opens := start.Add(-5 * time.Minute)
+	if got := listTime(start, end, -15*time.Minute, opens); !got.Equal(opens) {
+		t.Errorf("listTime with the meal before ending at %s = %s", opens, got)
+	}
+	if got := listTime(start, end, 30*time.Minute, opens); !got.Equal(start.Add(30 * time.Minute)) {
+		t.Errorf("listTime(30m) moved for a meal before that had ended: %s", got)
+	}
+}
+
+// TestSellWaitsForTheMealBefore covers the rule that no offer goes up while
+// the meal before it is still served: a schedule waits for that meal to
+// end even when list_at says earlier, and Start now schedules the task for
+// then, replacing the waiting schedule.
+func TestSellWaitsForTheMealBefore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.MCP.SellTasks = true
+		// Snacks runs till 19:20, ten minutes before dinner, so list_at's
+		// 19:15 would land inside it.
+		for i := range f.cfg.Meals {
+			if f.cfg.Meals[i].Name == "snacks" {
+				f.cfg.Meals[i].Ends = "19:20"
+			}
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.manager(ctx)
+		snacks, err := findSlot(f.cfg, f.date, "snacks")
+		if err != nil {
+			t.Fatal(err)
+		}
+		old, at, err := m.StartOrSchedule(ctx, 0, f.date, "dinner", 40, 60, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !at.Equal(snacks.End) {
+			t.Fatalf("scheduled for %s, want %s when snacks ends", at, snacks.End)
+		}
+		id, at, err := m.StartNow(ctx, 0, f.date, "dinner", 45, 70, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id == old || !at.Equal(snacks.End) {
+			t.Fatalf("StartNow during snacks = schedule %d at %s, want a new one at %s", id, at, snacks.End)
+		}
+		if sc := f.schedule(old); sc.State != store.ScheduleCancelled {
+			t.Fatalf("replaced schedule %+v, want cancelled", sc)
+		}
+		if f.activeTask("dinner") != nil {
+			t.Fatal("StartNow posted dinner during snacks")
+		}
+		time.Sleep(time.Until(at) - time.Minute)
+		synctest.Wait()
+		if f.activeTask("dinner") != nil {
+			t.Fatal("the dinner task started during snacks")
+		}
+		time.Sleep(2 * time.Minute)
+		synctest.Wait()
+		task := f.activeTask("dinner")
+		if task == nil {
+			t.Fatalf("no dinner task once snacks ended: %+v", f.schedule(id))
+		}
+		if task.MinPaise != 4500 || task.MaxPaise != 7000 || !task.Autopilot {
+			t.Fatalf("task %+v, want StartNow's prices on autopilot", task)
+		}
+	})
+}
+
+// TestOldScheduleWaitsForTheMealBefore covers a schedule saved for a time
+// inside the meal before, as ones from before the rule can be: its timer
+// waits for that meal to end.
+func TestOldScheduleWaitsForTheMealBefore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.MCP.SellTasks = true
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		dinner, err := findSlot(f.cfg, f.date, "dinner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		opens := listOpens(f.cfg, dinner)
+		sc := store.SellSchedule{Date: f.date, Meal: "dinner", MinPaise: 4000, MaxPaise: 6000,
+			StartsAt: opens.Add(-time.Hour), EndsAt: dinner.End, CreatedAt: time.Now()}
+		if sc.ID, err = f.st.CreateSellSchedule(ctx, sc); err != nil {
+			t.Fatal(err)
+		}
+		sc.State = store.ScheduleWaiting
+		m := f.manager(ctx)
+		m.arm(sc)
+		time.Sleep(time.Until(opens) - time.Minute)
+		synctest.Wait()
+		if f.activeTask("dinner") != nil {
+			t.Fatal("an old schedule started during snacks")
+		}
+		time.Sleep(2 * time.Minute)
+		synctest.Wait()
+		if f.activeTask("dinner") == nil {
+			t.Fatalf("no dinner task once snacks ended: %+v", f.schedule(sc.ID))
+		}
+	})
 }
 
 func TestSellScheduleStartsOnAutopilot(t *testing.T) {

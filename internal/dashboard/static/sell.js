@@ -35,16 +35,33 @@ function sellSheet(ctx) {
 
   // listAt is when selling c now would put the offer up: 0 when it would go
   // up straight away (the meal is being served, or list_at around its start
-  // has passed), else that time. It matches StartOrSchedule on the server.
+  // has passed), else that time. Never before c.opens, when the meal before
+  // it ends. It matches StartOrSchedule on the server.
   function listAt(c) {
     let at = c.start + (D().list_at || 0);
     if (at >= c.end) at = c.start;
+    if (c.opens && at < c.opens) at = c.opens;
     return now() >= c.start || now() >= at ? 0 : at;
   }
+  // tooEarly is true while the meal before c is still being served: an
+  // offer posted then reads as one for that meal, so Start now becomes
+  // "send after snacks ends" and the server schedules it for c.opens.
+  const tooEarly = (c) => !!c.opens && now() < c.opens;
+  // before is the meal c waits for: "snacks".
+  const before = (c) => c.opens_after || 'the meal before';
+  const afterLabel = (c) => `SEND AFTER ${(c.opens_after || 'meal').toUpperCase()} ENDS`;
+  const afterTitle = (c) => `Posts at ${hm(c.opens)}, once ${before(c)} ends. An offer sent during ${c.opens_after || 'another meal'} gets read as one for ${c.opens_after || 'that meal'}.`;
   // listWord says where list_at puts the offer: "15 min before lunch starts".
   function listWord(meal) {
     const s = D().list_at || 0;
     return s === 0 ? `when ${meal} starts` : `${dur(Math.abs(s))} ${s < 0 ? 'before' : 'after'} ${meal} starts`;
+  }
+  // listWhen is listWord for c's offer going up at at, or says it waits
+  // for the meal before when that pushed it later.
+  function listWhen(c, at) {
+    let want = c.start + (D().list_at || 0);
+    if (want >= c.end) want = c.start;
+    return c.opens && at === c.opens && want < c.opens ? `once ${before(c)} ends` : listWord(c.meal);
   }
   const startedToast = (meal, res) => (res && res.at ? `Scheduled. Your ${meal} goes up at ${hm(res.at)}` : `Selling your ${meal}`);
 
@@ -225,8 +242,13 @@ function sellSheet(ctx) {
       x.append(el('b', '', glyph), el('span', '', label), el('small', '', hint));
       return x;
     };
-    const go = tool('▶', 'START NOW', sc.autopilot ? 'On autopilot' : 'Post the offer now', 'grn', () =>
-      run({ action: 'start', date, meal: c.meal, min: sc.min, max: sc.max, now: true, autopilot: !!sc.autopilot }, `Selling your ${c.meal}${sc.autopilot ? ' on autopilot' : ''}`));
+    const early = tooEarly(c);
+    const go = early
+      ? tool('⏰', afterLabel(c), `At ${hm(c.opens)}`, 'grn', () =>
+        run({ action: 'start', date, meal: c.meal, min: sc.min, max: sc.max, now: true, autopilot: !!sc.autopilot }, (res) => startedToast(c.meal, res)))
+      : tool('▶', 'START NOW', sc.autopilot ? 'On autopilot' : 'Post the offer now', 'grn', () =>
+        run({ action: 'start', date, meal: c.meal, min: sc.min, max: sc.max, now: true, autopilot: !!sc.autopilot }, (res) => res && res.at ? startedToast(c.meal, res) : `Selling your ${c.meal}${sc.autopilot ? ' on autopilot' : ''}`));
+    if (early) go.title = afterTitle(c);
     go.dataset.focus = '1';
     // Autopilot is a switch: it saves at once and keeps the sheet open.
     const auto = tool('✈', 'AUTOPILOT', sc.autopilot ? 'On · never waits on you' : 'Off', 'auto' + (sc.autopilot ? ' on' : ''), async () => {
@@ -353,11 +375,19 @@ function sellSheet(ctx) {
     } else if (listAt(c)) {
       const at = listAt(c);
       const when = el('p', 'sell-when');
-      when.append('Goes up at ', el('b', '', hm(at)), `, ${listWord(c.meal)}, and sells till ${hm(c.end)}. Nothing is posted before then.`);
+      when.append('Goes up at ', el('b', '', hm(at)), `, ${listWhen(c, at)}, and sells till ${hm(c.end)}. Nothing is posted before then.`);
       slider.nodes.push(when);
-      acts.append(btn('CANCEL', '', closeModal),
-        btn('START NOW', '', () => { const [min, max] = slider.get(); run({ action: 'start', date, meal: c.meal, min, max, now: true }, `Selling your ${c.meal}`); }),
-        btn(`SCHEDULE ${hm(at)}`, 'gold', () => { const [min, max] = slider.get(); run({ action: 'start', date, meal: c.meal, min, max }, (res) => startedToast(c.meal, res)); }));
+      const startNow = () => { const [min, max] = slider.get(); run({ action: 'start', date, meal: c.meal, min, max, now: true }, (res) => (res && res.at ? startedToast(c.meal, res) : `Selling your ${c.meal}`)); };
+      const schedule = btn(`SCHEDULE ${hm(at)}`, 'gold', () => { const [min, max] = slider.get(); run({ action: 'start', date, meal: c.meal, min, max }, (res) => startedToast(c.meal, res)); });
+      if (!tooEarly(c)) acts.append(btn('CANCEL', '', closeModal), btn('START NOW', '', startNow), schedule);
+      else {
+        // Before the meal before ends, Start now waits for it. When list_at
+        // lands there too, both buttons would do the same, so only one shows.
+        const after = btn('⏰ ' + afterLabel(c), at === c.opens ? 'gold' : '', startNow);
+        after.title = afterTitle(c);
+        acts.append(btn('CANCEL', '', closeModal), after);
+        if (at !== c.opens) acts.append(schedule);
+      }
     } else {
       acts.append(btn('CANCEL', '', closeModal),
         btn('CONFIRM SALE', 'gold', () => { const [min, max] = slider.get(); run({ action: 'start', date, meal: c.meal, min, max }, (res) => startedToast(c.meal, res)); }));
@@ -416,5 +446,5 @@ function sellSheet(ctx) {
   }
 
 
-  return { open: openSell, isSold, priceSlider, priceText, listAt, listWord };
+  return { open: openSell, isSold, priceSlider, priceText, listAt, listWord, listWhen };
 }

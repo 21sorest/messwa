@@ -172,3 +172,28 @@ func (s *Schedule) Without(hide func(string) bool) *Schedule {
 	}
 	return out
 }
+
+// Prev is the meal served before slot: the last one on its date to end by
+// its start, else the day before's last. An offer for slot may go up only
+// once Prev has ended; posted while another meal is still being served, it
+// gets read as one for that meal.
+func (s *Schedule) Prev(slot Slot) (Slot, bool) {
+	day, err := time.ParseInLocation("2006-01-02", slot.Date, s.loc)
+	if err != nil {
+		return Slot{}, false
+	}
+	var prev Slot
+	for _, w := range s.Windows(day) {
+		if w.Meal != slot.Meal && !w.End.After(slot.Start) && w.End.After(prev.End) {
+			prev = w
+		}
+	}
+	if prev.End.IsZero() {
+		ws := s.Windows(day.AddDate(0, 0, -1))
+		if len(ws) == 0 {
+			return Slot{}, false
+		}
+		prev = ws[len(ws)-1]
+	}
+	return prev, true
+}

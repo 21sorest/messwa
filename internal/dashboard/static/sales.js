@@ -396,7 +396,7 @@ function cellLines(date, c) {
   } else if (c.state === 'open') {
     lines.push([{ t: now() >= c.start ? 'Being served now. Still yours to sell.' : 'Registered. Not sold yet.', c: 'c7' }]);
     const at = canSell(c) && listAt(c);
-    if (at) lines.push([{ t: 'Sell it and it goes up at ', c: 'c7' }, { t: hm(at), c: 'ce' }, { t: `, ${listWord(c.meal)}.`, c: 'c8' }]);
+    if (at) lines.push([{ t: 'Sell it and it goes up at ', c: 'c7' }, { t: hm(at), c: 'ce' }, { t: `, ${listWhen(c, at)}.`, c: 'c8' }]);
     const a = askLine('Median ask ');
     if (a) lines.push(a);
     if (canSell(c)) lines.push(null, [{ t: 'Click to put it up for sale.', c: 'lore' }]);
@@ -471,7 +471,7 @@ modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); }
 
 // The sell sheet lives in sell.js; the board opens the same one.
 const SELL = sellSheet({ data: () => D, now, close: closeModal, toast, reload: load });
-const { priceSlider, priceText, listAt, listWord } = SELL;
+const { priceSlider, priceText, listAt, listWhen } = SELL;
 const openSell = (date, c, view) => SELL.open(date, c, view);
 
 // ---------- friends' meals ----------
