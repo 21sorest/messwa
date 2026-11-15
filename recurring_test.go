@@ -295,3 +295,109 @@ func TestRecurringRejectsInvalidAndUsedRegistrations(t *testing.T) {
 		synctest.Wait()
 	})
 }
+
+func TestRecurringMedianPricingFollowsTheMarket(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f, m, p, cancel := recurringFixture(t, path)
+		defer cancel()
+		ctx := t.Context()
+		ask := []int{40, 40, 40}
+		m.prices = func(context.Context, string, string) ([]store.ServingPrices, error) {
+			var out []store.ServingPrices
+			for i := 0; i < 7; i++ {
+				date := time.Now().In(f.cfg.Location()).AddDate(0, 0, -i).Format("2006-01-02")
+				out = append(out, store.ServingPrices{Date: date, Meal: "lunch", Mess: "palash", Prices: ask})
+			}
+			return out, nil
+		}
+		r := testRule(p)
+		r.Pricing = "median"
+		r.Relative = map[string]store.RelativePrice{"lunch": {Low: -25, High: 50}}
+
+		preview, err := m.PreviewRecurringRule(ctx, 7, r, false)
+		if err != nil || preview.New != 5 || preview.Lowest != 30 || preview.Highest != 60 || preview.Fallback != 0 {
+			t.Fatalf("preview %+v %v", preview, err)
+		}
+		r, err = m.SaveRecurringRule(ctx, 7, r, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := waitingRuleSchedules(t, f.st, r.ID)
+		if len(got) != 5 || got[0].MinPaise != 3000 || got[0].MaxPaise != 6000 {
+			t.Fatalf("median prices not applied: %+v", got)
+		}
+
+		edited := got[0]
+		edited.MinPaise, edited.MaxPaise = 5500, 7000
+		if ok, err := f.st.UpdateSellSchedule(ctx, edited); err != nil || !ok {
+			t.Fatalf("override %v %v", ok, err)
+		}
+
+		ask = []int{60, 60, 60}
+		m.refreshRules(ctx)
+		for _, sc := range waitingRuleSchedules(t, f.st, r.ID) {
+			want := [2]int64{4500, 9000}
+			if sc.ID == edited.ID {
+				want = [2]int64{5500, 7000}
+			}
+			if sc.MinPaise != want[0] || sc.MaxPaise != want[1] {
+				t.Fatalf("schedule %d priced %d-%d, want %v", sc.ID, sc.MinPaise, sc.MaxPaise, want)
+			}
+		}
+
+		cancel()
+		synctest.Wait()
+	})
+}
+
+func TestRecurringMedianFallsBackToFixedRange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f, m, p, cancel := recurringFixture(t, path)
+		defer cancel()
+		ctx := t.Context()
+		m.prices = func(context.Context, string, string) ([]store.ServingPrices, error) { return nil, nil }
+		r := testRule(p)
+		r.Pricing = "median"
+		r.Relative = map[string]store.RelativePrice{"lunch": {Low: -10, High: 20}}
+		preview, err := m.PreviewRecurringRule(ctx, 7, r, false)
+		if err != nil || preview.Fallback != 5 || preview.Lowest != 30 || preview.Highest != 60 {
+			t.Fatalf("preview %+v %v", preview, err)
+		}
+		r, err = m.SaveRecurringRule(ctx, 7, r, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := waitingRuleSchedules(t, f.st, r.ID); len(got) != 5 || got[0].MinPaise != 3000 || got[0].MaxPaise != 6000 {
+			t.Fatalf("fallback prices %+v", got)
+		}
+		bad := testRule(p)
+		bad.Pricing = "median"
+		if _, err := m.PreviewRecurringRule(ctx, 7, bad, false); err == nil {
+			t.Fatal("accepted median pricing without a meal's percentages")
+		}
+		bad.Relative = map[string]store.RelativePrice{"lunch": {Low: 20, High: 10}}
+		if _, err := m.PreviewRecurringRule(ctx, 7, bad, false); err == nil {
+			t.Fatal("accepted opening below lowest")
+		}
+		cancel()
+		synctest.Wait()
+	})
+}
+
+func TestRelativeRangeRoundsToFiveRupees(t *testing.T) {
+	for _, c := range []struct {
+		median    float64
+		rel       store.RelativePrice
+		low, high int
+	}{
+		{40, store.RelativePrice{Low: -15, High: 25}, 35, 50},
+		{47, store.RelativePrice{Low: 0, High: 0}, 45, 45},
+		{2, store.RelativePrice{Low: -90, High: 0}, 1, 1},
+	} {
+		if lo, hi := relativeRange(c.median, c.rel); lo != c.low || hi != c.high {
+			t.Errorf("relativeRange(%v, %+v) = %d-%d, want %d-%d", c.median, c.rel, lo, hi, c.low, c.high)
+		}
+	}
+}

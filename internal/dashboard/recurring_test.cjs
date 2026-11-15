@@ -50,3 +50,16 @@ test('deleting targets the selected rule revision and explicit waiting-removal c
  const f=await fixture();f.$('ruleID').value='7';f.$('ruleRevision').value='2';f.$('ruleRemoveWaiting').checked=true;
  await f.$('ruleDelete').onclick();const deleted=f.calls.find(c=>c.action==='delete');assert.equal(deleted.rule.id,7);assert.equal(deleted.rule.revision,2);assert.equal(deleted.cancel_waiting,true);
 });
+
+test('median pricing sends percentages for each selected meal',async()=>{
+ const f=await fixture();f.$('ruleName').value='Lunches';
+ const radios=f.$('rulePricing').children.filter(c=>c.tag==='label').map(l=>l.children[0]);
+ radios.forEach(r=>{r.checked=r.value==='median';});
+ const dinner=f.$('ruleMeals').children.filter(c=>c.tag==='label').map(l=>l.children[0]).find(i=>i.value==='dinner');dinner.checked=true;
+ f.run("recurringRelative.dinner={low:-10,high:40}");
+ await f.$('rulePreview').onclick();await f.$('ruleForm').listeners.submit({preventDefault(){}});
+ const saved=f.calls.find(c=>c.action==='save');
+ assert.equal(saved.rule.pricing,'median');
+ assert.deepEqual(JSON.parse(JSON.stringify(saved.rule.relative)),{lunch:{low:-15,high:25},dinner:{low:-10,high:40}});
+ assert.equal(saved.rule.min,40);
+});

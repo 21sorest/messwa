@@ -31,9 +31,14 @@ type RecurringRule struct {
 	Max       int      `json:"max"`
 	Before    int      `json:"before"` // minutes before serving; negative means after
 	Autopilot bool     `json:"autopilot"`
-	Enabled   bool     `json:"enabled"`
-	LastError string   `json:"last_error,omitempty"`
-	Waiting   int      `json:"waiting"`
+	// Pricing is "median" to price each meal from its market median with
+	// Relative's percentages; Min and Max then apply only to meals with no
+	// median yet. Empty means Min and Max for every meal.
+	Pricing   string                   `json:"pricing,omitempty"`
+	Relative  map[string]RelativePrice `json:"relative,omitempty"`
+	Enabled   bool                     `json:"enabled"`
+	LastError string                   `json:"last_error,omitempty"`
+	Waiting   int                      `json:"waiting"`
 }
 
 func (s *Store) RecurringRules(ctx context.Context) ([]RecurringRule, error) {
@@ -207,6 +212,13 @@ func keepSchedule(ctx context.Context, tx *sql.Tx, sc SellSchedule) error {
 	return err
 }
 
+// RelativePrice is a meal's price range as percentages of its market
+// median: Low -15 and High 25 post at 125% and never go below 85%.
+type RelativePrice struct {
+	Low  int `json:"low"`
+	High int `json:"high"`
+}
+
 type RecurringPreview struct {
 	New                int `json:"new"`
 	StartsNow          int `json:"starts_now"`
@@ -214,4 +226,10 @@ type RecurringPreview struct {
 	PreservedOverrides int `json:"preserved_overrides"`
 	Kept               int `json:"kept"`
 	Existing           int `json:"existing"`
+	// Lowest and Highest span the new schedules' prices in rupees.
+	// Fallback counts median-priced meals that had no median and use the
+	// fixed range instead.
+	Lowest   int `json:"lowest"`
+	Highest  int `json:"highest"`
+	Fallback int `json:"fallback"`
 }

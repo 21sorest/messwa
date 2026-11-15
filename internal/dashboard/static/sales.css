@@ -364,6 +364,22 @@ button.friend { cursor: pointer; }
 .rule-meals .chip input:not(:checked) + span svg { opacity: .55; filter: grayscale(.6); }
 .rule-fields .fr-price .sell-vals { margin-top: 6px; }
 .rule-fields .fr-price .sell-note { margin-top: 8px; font-size: 12px; }
+.rule-rel { display: grid; gap: 8px; }
+.rule-rel[hidden] { display: none; }
+.rule-rel .sell-note { margin: 2px 0 0; font-size: 12px; }
+.rule-rel-row {
+  display: grid; grid-template-columns: 96px 1fr 1fr 112px; gap: 10px; align-items: end;
+  padding: 10px 12px; border-radius: 10px; background: var(--slot); border: 1px solid var(--line);
+}
+.rr-meal { display: flex; align-items: center; gap: 7px; align-self: center; font-size: 13px; }
+.rr-meal svg { width: 16px; height: 16px; image-rendering: pixelated; }
+.sell-form label.rr-field { gap: 4px; font: 700 7px Pixel; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+.rr-in { display: flex; align-items: center; gap: 6px; }
+.sell-form .rr-in input { width: 100%; min-width: 0; padding: 7px 8px; font: 500 13px var(--sans); letter-spacing: 0; text-align: right; }
+.rr-in i { font-style: normal; color: var(--muted); font-size: 12px; }
+.rr-est { display: grid; justify-items: end; gap: 2px; align-self: center; }
+.rr-est b { font: 700 11px Pixel; color: var(--gold); white-space: nowrap; }
+.rr-est small { color: var(--dim); font-size: 11px; }
 .rule-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sell-form label.rule-toggle {
   position: relative; display: grid; gap: 5px; justify-items: center; padding: 13px 8px 11px; text-align: center;
@@ -395,4 +411,6 @@ button.friend { cursor: pointer; }
 @media (max-width: 560px) {
   .rule-fields .rule-row, .rule-toggles { grid-template-columns: 1fr; }
   .rule-days .chip span { min-width: 0; }
+  .rule-rel-row { grid-template-columns: 1fr 1fr; }
+  .rr-est { justify-items: start; }
 }
