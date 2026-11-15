@@ -344,10 +344,55 @@ button.friend { cursor: pointer; }
   .plan-form-row { grid-template-columns: minmax(0, 1fr); }
 }
 
-.rule-list { display: grid; gap: 8px; margin: 12px 0; }
-.rule-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.rule-list .friend { grid-template-columns: 26px minmax(0, 1fr) auto; }
-.rule-list .fr-what span { white-space: normal; }
+/* ---------- recurring rules ---------- */
 
-.rule-editor { margin-top: 12px; }
-.rule-editor > summary { color: var(--muted); }
+/* Rows reuse the friends' list; the editor is a sell sheet. */
+.rule-row.off { opacity: .62; }
+.rule-row.off:hover, .rule-row.off:focus-visible { opacity: 1; }
+.rule-row .fr-ic svg { image-rendering: pixelated; }
+.rule-row .fr-what span { white-space: normal; }
+.rule-row .fr-what .rule-err { color: #ff6b5b; }
+.rule-row .fr-buyer { font: 700 7px Pixel; letter-spacing: .4px; text-transform: uppercase; }
+#ruleListError { margin: 10px 2px 0; }
+.rule-sheet .sell-head h2 { overflow-wrap: anywhere; }
+.rule-fields { display: grid; gap: 14px; }
+.rule-fields .rule-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rule-fields .chips { gap: 6px; }
+.rule-days .chip span { min-width: 44px; text-align: center; }
+.rule-meals .chip span { display: inline-flex; align-items: center; gap: 7px; }
+.rule-meals .chip svg { width: 14px; height: 14px; image-rendering: pixelated; }
+.rule-meals .chip input:not(:checked) + span svg { opacity: .55; filter: grayscale(.6); }
+.rule-fields .fr-price .sell-vals { margin-top: 6px; }
+.rule-fields .fr-price .sell-note { margin-top: 8px; font-size: 12px; }
+.rule-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sell-form label.rule-toggle {
+  position: relative; display: grid; gap: 5px; justify-items: center; padding: 13px 8px 11px; text-align: center;
+  border-radius: 10px; background: var(--slot); border: 1px solid var(--line); cursor: pointer; color: var(--text);
+}
+.rule-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.rule-toggle b { font: 700 11px/1 Pixel; letter-spacing: .4px; color: var(--dim); }
+.rule-toggle small { font-size: 11px; color: var(--dim); }
+.rule-toggle b::after { content: " OFF"; }
+.rule-toggle:has(input:checked) b::after { content: " ON"; }
+.rule-toggle:hover { background: var(--slot-hi); }
+.rule-toggle:has(input:focus-visible) { outline: 2px solid var(--gold); outline-offset: 2px; }
+.rule-toggle.auto:has(input:checked) { border-color: color-mix(in srgb, #5aa9ff 70%, transparent); background: color-mix(in srgb, #5aa9ff 10%, var(--slot)); }
+.rule-toggle.auto:has(input:checked) b { color: #5aa9ff; }
+.rule-toggle.on:has(input:checked) { border-color: color-mix(in srgb, var(--veg) 60%, transparent); background: color-mix(in srgb, var(--veg) 8%, var(--slot)); }
+.rule-toggle.on:has(input:checked) b { color: var(--veg); }
+.sell-form label.rule-apply { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--muted); }
+.sell-form .rule-apply input, .sell-form .rule-delete input[type=checkbox] { width: 14px; flex: none; padding: 0; margin: 2px 0 0; accent-color: var(--gold); }
+.rule-apply b { color: var(--text); }
+.rule-preview { padding: 10px 12px; border-radius: 10px; border: 1px dashed color-mix(in srgb, var(--gold) 45%, transparent); background: color-mix(in srgb, var(--gold) 5%, transparent); }
+.rule-preview .sell-note { margin: 0; }
+.rule-preview .sell-sum { margin-top: 10px; }
+.rule-preview[hidden], .rule-delete[hidden], #ruleActs[hidden] { display: none; }
+.rule-delete { padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, #ff6b5b 45%, transparent); background: color-mix(in srgb, #ff6b5b 6%, transparent); }
+.rule-delete .sell-note { margin: 0 0 10px; }
+.sell-form .rule-delete label.plan-auto { display: flex; margin: 0; }
+.rule-delete .sell-acts { margin-top: 12px; }
+#ruleActs .rule-del { margin-right: auto; }
+@media (max-width: 560px) {
+  .rule-fields .rule-row, .rule-toggles { grid-template-columns: 1fr; }
+  .rule-days .chip span { min-width: 0; }
+}

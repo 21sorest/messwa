@@ -76,42 +76,6 @@
           <button class="sell-btn" type="button" id="planApply">Apply to selected meals</button>
         </fieldset>
       </details>
-      <details class="plan-bulk" id="recurringSection">
-        <summary>Recurring rules</summary>
-        <p class="sell-note">Rules generate the next four weeks of confirmed registrations, refresh every five minutes while the service runs, and check registrations again before selling. Unchecking a scheduled meal keeps it out of recurring rules until you explicitly restore it.</p>
-        <div id="ruleList" class="rule-list"></div>
-        <button class="sell-btn" id="ruleNew" type="button">New rule</button>
-        <details class="rule-editor" id="ruleEditor">
-          <summary>Rule settings</summary>
-        <form id="ruleForm">
-          <fieldset class="plan-fieldset sell-form" id="ruleFields">
-            <input id="ruleID" type="hidden"><input id="ruleRevision" type="hidden">
-            <label>Rule name<input id="ruleName" maxlength="80" required placeholder="Weekday lunches"></label>
-            <div class="plan-form-row">
-              <label>Start date<input type="date" id="ruleFrom" required></label>
-              <label>End date<input type="date" id="ruleThrough" required></label>
-            </div>
-            <fieldset class="chips" aria-label="Rule weekdays"><legend>Weekdays</legend><div id="ruleDays" class="rule-chips"></div></fieldset>
-            <fieldset class="chips" aria-label="Rule meals"><legend>Meals</legend><div id="ruleMeals" class="rule-chips"></div></fieldset>
-            <div class="plan-form-row">
-              <label>Minimum (&#8377;)<input id="ruleMin" type="number" min="1" max="10000" step="1" required></label>
-              <label>Opening (&#8377;)<input id="ruleMax" type="number" min="1" max="10000" step="1" required></label>
-              <label>Minutes before serving<input id="ruleBefore" type="number" min="-90" max="30" step="1" required></label>
-            </div>
-            <p class="sell-note">Equal prices sell at a fixed price. Negative minutes post after serving starts.</p>
-            <label class="plan-auto"><input id="ruleAuto" type="checkbox">Autopilot: skip buyers who need your help</label>
-            <label class="plan-auto"><input id="ruleEnabled" type="checkbox">Generate schedules</label>
-            <label class="plan-auto"><input id="ruleApply" type="checkbox">Apply changes to this rule's waiting schedules, preserving individual overrides</label>
-            <p class="sell-note">Disabling stops new generation. Existing schedules stay saved unless you apply the change. Individual overrides are preserved; deleting with removal below also removes those waiting overrides. Removed waiting meals stay out of all rules until restored in the planner. Active sales are always managed separately.</p>
-            <p class="sell-note" id="rulePreviewText" role="status"></p>
-            <div class="plan-tools"><button type="button" class="sell-btn" id="rulePreview">Preview</button><button type="submit" class="sell-btn gold" id="ruleSave" disabled>Save rule</button></div>
-            <label class="plan-auto"><input id="ruleRemoveWaiting" type="checkbox">Also remove this rule's waiting schedules when deleting</label>
-            <button type="button" class="sell-btn red" id="ruleDelete" hidden>Delete rule</button>
-          </fieldset>
-        </form>
-        </details>
-        <p class="sell-err" id="ruleError" role="alert"></p>
-      </details>
       <div class="ledger plan-ledger">
         <div class="lgrid plan-grid" id="planGrid" role="group" aria-label="Meal sale schedule"></div>
         <div class="lside" id="planSide"><div class="side-k">Meal settings</div><div class="panel" id="planInspector"></div></div>
@@ -124,6 +88,17 @@
       </div>
       <p class="sell-err" id="planError" role="alert"></p>
     </div>
+  </section>
+
+  <section class="chest own" id="ruleSec" hidden aria-label="Recurring rules">
+    <div class="chest-head">
+      <span class="head-icon" id="ruleIcon"></span>
+      <span class="head-name">Recurring rules</span>
+      <span class="head-meta" id="ruleMeta"></span>
+      <button class="sell-btn gold fr-add" id="ruleNew" type="button">+ New rule</button>
+    </div>
+    <div class="friends rule-list" id="ruleList"></div>
+    <p class="sell-err" id="ruleListError" role="alert"></p>
   </section>
 
   <section class="chest" aria-label="Sales ledger">
@@ -199,6 +174,50 @@
 
 <div class="modal" id="modal" hidden>
   <div class="sheet sell-sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Sell this meal"></div>
+</div>
+<div class="modal" id="ruleModal" hidden>
+  <div class="sheet sell-sheet rule-sheet" role="dialog" aria-modal="true" aria-labelledby="ruleTitle">
+    <div class="sell-head">
+      <h2 id="ruleTitle">New rule</h2>
+      <div class="sub" id="ruleSub">Schedules matching registered meals up to four weeks ahead, checking every five minutes.</div>
+    </div>
+    <form id="ruleForm" class="sell-form" novalidate>
+      <fieldset class="plan-fieldset rule-fields" id="ruleFields">
+        <input id="ruleID" type="hidden"><input id="ruleRevision" type="hidden">
+        <input id="ruleMin" type="hidden"><input id="ruleMax" type="hidden">
+        <label>Name<input id="ruleName" maxlength="80" autocomplete="off" placeholder="e.g. Weekday lunches"></label>
+        <fieldset class="chips rule-days" id="ruleDays"><legend>Days</legend></fieldset>
+        <fieldset class="chips rule-meals" id="ruleMeals"><legend>Meals</legend></fieldset>
+        <div class="rule-row">
+          <label>From<input type="date" id="ruleFrom"></label>
+          <label>Until<input type="date" id="ruleThrough"></label>
+        </div>
+        <div class="fr-price" id="rulePrice"></div>
+        <label>Goes up<select id="ruleBefore"></select></label>
+        <div class="rule-toggles">
+          <label class="rule-toggle auto"><input id="ruleAuto" type="checkbox"><b>AUTOPILOT</b><small>Skip buyers who need you</small></label>
+          <label class="rule-toggle on"><input id="ruleEnabled" type="checkbox"><b>ACTIVE</b><small>Keep scheduling new meals</small></label>
+        </div>
+        <label class="plan-auto rule-apply" id="ruleApplyRow" hidden><input id="ruleApply" type="checkbox"><span>Also update its <b id="ruleWaitingCount">0</b> waiting meals. Meals you edited by hand keep their own settings.</span></label>
+      </fieldset>
+      <div class="rule-preview" id="rulePreviewBox">
+        <p class="sell-note" id="rulePreviewText" role="status"></p>
+        <div class="sell-sum" id="rulePreviewSum" hidden></div>
+      </div>
+      <div class="rule-delete" id="ruleDeleteBox" hidden>
+        <p class="sell-note">Deleting stops this rule. Meals already selling carry on. Its waiting meals stay scheduled unless you remove them, and removed meals stay out of every rule until you allow them again from the planner.</p>
+        <label class="plan-auto"><input id="ruleRemoveWaiting" type="checkbox">Remove its waiting meals too</label>
+        <div class="sell-acts"><button type="button" class="sell-btn" id="ruleDeleteBack">BACK</button><button type="button" class="sell-btn red" id="ruleDelete">DELETE RULE</button></div>
+      </div>
+      <p class="sell-err" id="ruleError" role="alert"></p>
+      <div class="sell-acts" id="ruleActs">
+        <button type="button" class="sell-btn red rule-del" id="ruleDeleteAsk" hidden>DELETE</button>
+        <button type="button" class="sell-btn" id="ruleCancel">CANCEL</button>
+        <button type="button" class="sell-btn" id="rulePreview">PREVIEW</button>
+        <button type="submit" class="sell-btn gold" id="ruleSave" disabled>SAVE RULE</button>
+      </div>
+    </form>
+  </div>
 </div>
 <div class="tip" id="tip" hidden></div>
 </body>
