@@ -41,7 +41,7 @@ func TestBuyerTextStyle(t *testing.T) {
 		l, tmrw := testLines("nonveg", ""), testLines("nonveg", "tmrw")
 		for _, r := range []reply{
 			l.opening(60), tmrw.opening(60), l.counter(50, 60, 1), l.counter(45, 50, 2), l.lowest(40, 45),
-			l.which(60), l.restate(60), l.queued(50), l.queuedHandoff(50), l.outbid(false), l.outbid(true),
+			l.which(60), l.otherMeal(60, false), l.otherMeal(60, true), l.restate(60), l.queued(50), l.queuedHandoff(50), l.outbid(false), l.outbid(true),
 			l.dropped(), l.nudge(60), l.quietDrop(50, 60), l.have(60), l.payOther(), l.noScreenshots(),
 			l.sold(), l.payPrompt("30.00", false), l.payPrompt("1.00", true),
 		} {

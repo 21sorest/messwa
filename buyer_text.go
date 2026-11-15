@@ -181,6 +181,15 @@ func (l lines) lowest(price, was int) reply {
 // which answers "nv?" or "kadamba?".
 func (l lines) which(price int) reply { return l.say("which", "price", fmt.Sprint(price)) }
 
+// otherMeal answers a buyer who asked for another meal, such as "lunch?"
+// to a dinner seller. Before any price it quotes one too.
+func (l lines) otherMeal(price int, priced bool) reply {
+	if priced {
+		return l.say("other_meal")
+	}
+	return l.say("other_meal_price", "price", fmt.Sprint(price))
+}
+
 // restate answers the first message the bot couldn't read.
 func (l lines) restate(price int) reply { return l.say("restate", "price", fmt.Sprint(price)) }
 
