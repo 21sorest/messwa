@@ -176,3 +176,15 @@ func (s *Server) StartFriendSale(ctx context.Context, userID int64, m store.Frie
 func (s *Server) FriendMeals(ctx context.Context, from string) ([]store.FriendMeal, error) {
 	return s.st.FriendMeals(ctx, from)
 }
+
+func (s *Server) SchedulePlanner() (SchedulePlanner, error) {
+	control, err := s.SellControl()
+	if err != nil {
+		return nil, err
+	}
+	p, ok := control.(SchedulePlanner)
+	if !ok {
+		return nil, errors.New("this server does not support the meal planner")
+	}
+	return p, nil
+}

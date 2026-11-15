@@ -45,6 +45,12 @@ type SellScheduler interface {
 	StartNow(ctx context.Context, userID int64, date, meal string, minRupees, maxRupees int, autopilot bool) (int64, time.Time, error)
 }
 
+// SchedulePlanner adds optimistic edits and explicit posting times to the planner.
+type SchedulePlanner interface {
+	PlanSchedule(ctx context.Context, userID, id, revision int64, date, meal string, min, max int, at time.Time, autopilot bool) (int64, time.Time, error)
+	CancelPlannedSchedule(ctx context.Context, id, revision int64) error
+}
+
 // SetSellTasks adds the sell task tools while the sell_tasks setting is on.
 func (s *Server) SetSellTasks(t SellTasks) { s.sell = t }
 

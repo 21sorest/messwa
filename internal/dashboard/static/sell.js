@@ -69,8 +69,8 @@ function sellSheet(ctx) {
   // sellBounds is the slider's scale: wide enough for the median ask with
   // room to haggle above it.
   function sellBounds(c) {
-    const top = Math.max(150, c.ask ? Math.ceil((c.ask * 2.5) / 50) * 50 : 0, c.task ? Math.ceil(c.task.max / 50) * 50 : 0);
-    return { lo: 10, hi: top };
+    const top = Math.max(150, c.ask ? Math.ceil((c.ask * 2.5) / 50) * 50 : 0, c.task ? Math.ceil(c.task.max / 50) * 50 : 0, c.schedule ? Math.ceil(c.schedule.max / 50) * 50 : 0);
+    return { lo: c.planner ? 1 : 10, hi: top };
   }
 
   // sellDefaults opens a new sale a little under the median ask and asks a
@@ -318,12 +318,12 @@ function sellSheet(ctx) {
       acts.append(btn('BACK', '', () => openSell(date, c)),
         btn('SAVE PRICES', 'gold', () => { const [min, max] = slider.get(); run({ action: 'prices', id: t.id, min, max }, 'Prices updated'); }));
     } else if (c.schedule) {
-      // A schedule's prices change by scheduling it again.
+      // Edit the waiting schedule in place, keeping its saved posting time.
+      // Unscheduling it would also keep the meal out of recurring rules.
       acts.append(btn('BACK', '', () => openSell(date, c)),
         btn('SAVE', 'gold', () => {
           const [min, max] = slider.get();
-          // The new schedule keeps autopilot.
-          run([{ action: 'unschedule', id: c.schedule.id }, { action: 'start', date, meal: c.meal, min, max, autopilot: !!c.schedule.autopilot }],
+          run({ action: 'plan', id: c.schedule.id, revision: c.schedule.revision, at: c.schedule.at, date, meal: c.meal, min, max, autopilot: !!c.schedule.autopilot },
             (res) => startedToast(c.meal, res));
         }));
     } else if (listAt(c)) {
@@ -400,5 +400,5 @@ function sellSheet(ctx) {
   }
 
 
-  return { open: openSell, isSold, priceSlider, priceText, listAt, listWord, listWhen };
+  return { open: openSell, isSold, priceSlider, priceText, listAt, listWord, listWhen, sellBounds, sellDefaults };
 }

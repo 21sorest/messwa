@@ -90,9 +90,15 @@ function openFromHash() {
       page = Math.floor(age / 7); renderLedger(); pickCell(date + '|' + meal);
       $('insp').scrollIntoView({ block: 'center' });
     } else {
-      // A meal still to come: the tomorrow box, when it's that meal.
-      const a = $('ahead');
-      (!a.hidden && D.ahead && D.ahead.date === date ? a : $('insp')).scrollIntoView({ block: 'center' });
+      // A meal still to come: its slot in the planner, else the tomorrow box.
+      const index = (D.upcoming || []).findIndex((d) => d.date === date);
+      if (D.owner && index >= 0) {
+        planPage = Math.floor(index / 7); planPicked = date + '|' + meal; renderPlanner();
+        $('planner').scrollIntoView({ block: 'start' });
+      } else {
+        const a = $('ahead');
+        (!a.hidden && D.ahead && D.ahead.date === date ? a : $('insp')).scrollIntoView({ block: 'center' });
+      }
     }
     return;
   }
@@ -141,6 +147,7 @@ function render() {
   renderSaved();
   renderAhead();
   renderLedger();
+  renderPlanner();
   if (D.owner) {
     renderFriends();
     renderRegulars();
@@ -486,7 +493,8 @@ modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); }
 
 // The sell sheet lives in sell.js; the board opens the same one.
 const SELL = sellSheet({ data: () => D, now, close: closeModal, toast, reload: load });
-const { priceSlider, priceText, listAt, listWhen } = SELL;
+// planner.js prices meals with the same slider and defaults.
+const { priceSlider, priceText, listAt, listWhen, sellBounds, sellDefaults } = SELL;
 const openSell = (date, c, view) => SELL.open(date, c, view);
 
 // ---------- friends' meals ----------
@@ -963,6 +971,7 @@ me().then((m) => {
   $('useLink').hidden = m.role !== 'admin';
 }).catch(() => {});
 $('ledIcon').append(svgEl(icon('coin')));
+$('planIcon').append(svgEl(icon('coin')));
 $('frIcon').append(svgEl(icon('coin')));
 $('frAdd').addEventListener('click', () => { if (D) openFriendForm(); });
 $('regIcon').append(svgEl(icon('paper')));
@@ -982,6 +991,7 @@ $('pgNext').addEventListener('click', () => { if (D) { page = Math.max(0, page -
 addEventListener('keydown', (e) => {
   if (!modal.hidden) { if (e.key === 'Escape') closeModal(); return; }
   if (!D || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.matches('input, select, textarea, [contenteditable="true"]') || e.target.closest('#planner')) return;
   if (e.key === 'ArrowLeft') $('pgPrev').click();
   if (e.key === 'ArrowRight') $('pgNext').click();
 });

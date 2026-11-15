@@ -53,13 +53,15 @@ func sellActionRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 
 	mux.Handle("POST /api/sell-action", requireRole(accounts.Member, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Action string `json:"action"`
-			ID     int64  `json:"id"`
-			Buyer  string `json:"buyer"`
-			Name   string `json:"name"`
-			Price  int    `json:"price"`
-			Note   string `json:"note"`
-			Group  string `json:"group"` // resend: the group's JID
+			Action   string `json:"action"`
+			Revision int64  `json:"revision"`
+			At       int64  `json:"at"`
+			ID       int64  `json:"id"`
+			Buyer    string `json:"buyer"`
+			Name     string `json:"name"`
+			Price    int    `json:"price"`
+			Note     string `json:"note"`
+			Group    string `json:"group"` // resend: the group's JID
 			// start, prices: the meal and the price range in rupees.
 			Date string `json:"date"`
 			Meal string `json:"meal"`
@@ -80,6 +82,36 @@ func sellActionRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 			return
 		}
 		switch in.Action {
+		case "plan", "unplan":
+			planner, err := srv.SchedulePlanner()
+			if err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if in.Action == "unplan" {
+				err = planner.CancelPlannedSchedule(r.Context(), in.ID, in.Revision)
+				if err != nil {
+					jsonError(w, err.Error(), http.StatusConflict)
+					return
+				}
+				writeJSON(w, r, struct{}{})
+				return
+			}
+			if !picksGroups(cfg.Live()) {
+				jsonError(w, "pick the groups to post in first, under Settings, Offer", http.StatusBadRequest)
+				return
+			}
+			var at time.Time
+			if in.At != 0 {
+				at = time.Unix(in.At, 0)
+			}
+			id, at, err := planner.PlanSchedule(r.Context(), accounts.UserFrom(r.Context()).ID, in.ID, in.Revision, in.Date, in.Meal, in.Min, in.Max, at, in.Autopilot)
+			if err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, r, startedResp{ID: id, At: unix(at)})
+			return
 		case "start":
 			if !picksGroups(cfg.Live()) {
 				jsonError(w, "pick the groups to post in first, under Settings, Offer", http.StatusBadRequest)

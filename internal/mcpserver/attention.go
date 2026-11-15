@@ -9,7 +9,7 @@ import (
 )
 
 // AttentionItem is one problem the seller has to act on. Kind is one of
-// delivery, refund, blocked, schedule, post or whatsapp, so the dashboard
+// delivery, refund, blocked, schedule, post, rule or whatsapp, so the dashboard
 // can tag and colour it without matching on Title.
 type AttentionItem struct {
 	ID         string `json:"id"`
@@ -21,6 +21,8 @@ type AttentionItem struct {
 	Task       int64  `json:"task,omitempty"`
 	Account    bool   `json:"account,omitempty"`
 	Resolvable bool   `json:"resolvable"`
+	// Rule is the recurring rule a rule item is about.
+	Rule int64 `json:"rule,omitempty"`
 }
 
 func (s *Server) Attention(ctx context.Context, user int64) ([]AttentionItem, error) {
@@ -32,7 +34,7 @@ func (s *Server) Attention(ctx context.Context, user int64) ([]AttentionItem, er
 	add := func(kind, key, title, detail, date, meal string, task int64, account, resolvable bool) {
 		id := fmt.Sprintf("%x", sha256.Sum256([]byte(key+"|"+detail)))
 		if !resolved[id] {
-			out = append(out, AttentionItem{id, kind, title, detail, date, meal, task, account, resolvable})
+			out = append(out, AttentionItem{ID: id, Kind: kind, Title: title, Detail: detail, Date: date, Meal: meal, Task: task, Account: account, Resolvable: resolvable})
 		}
 	}
 	ds, err := s.Deliveries(ctx)
@@ -93,6 +95,20 @@ func (s *Server) Attention(ctx context.Context, user int64) ([]AttentionItem, er
 		}
 		if sc.State == store.ScheduleFailed {
 			add("schedule", fmt.Sprintf("schedule:%d", sc.ID), "Schedule failed", sc.Detail, sc.Date, sc.Meal, 0, false, true)
+		}
+	}
+	rules, err := s.RecurringRules(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rules {
+		if !r.Enabled || r.LastError == "" {
+			continue
+		}
+		key := fmt.Sprintf("rule:%d:%d|%s", r.ID, r.Revision, r.LastError)
+		id := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
+		if !resolved[id] {
+			out = append(out, AttentionItem{ID: id, Kind: "rule", Rule: r.ID, Title: "Recurring rule needs a look", Detail: r.Name + ": " + r.LastError, Resolvable: true})
 		}
 	}
 	if active && s.Device != nil {

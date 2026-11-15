@@ -15,6 +15,7 @@ const ATTN_KIND = {
   whatsapp: ['OFFLINE', 'red'],
   delivery: ['CHECK QR', 'egg'],
   post: ['NOT POSTED', 'egg'],
+  rule: ['RULE', 'egg'],
 };
 const ATTN_SHOWN = 3; // rows before the rest fold away
 
@@ -71,6 +72,7 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
 
   const target = (item) => item.account ? 'account.html'
     : item.task ? './#attention-sale=' + item.task
+    : item.rule ? 'sales.html#recurring-rule=' + item.rule
     : 'sales.html#attention-meal=' + encodeURIComponent(item.date + '|' + item.meal);
 
   async function openSale(id) {
@@ -100,7 +102,7 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
     if (w) title.append(el('small', '', ' · ' + w));
     copy.append(title, el('p', '', item.detail));
     const acts = el('div', 'attn-acts');
-    const go = el('a', 'attn-btn go', item.account ? 'RECONNECT' : item.task ? 'OPEN SALE' : 'VIEW MEAL');
+    const go = el('a', 'attn-btn go', item.account ? 'RECONNECT' : item.task ? 'OPEN SALE' : item.rule ? 'OPEN RULE' : 'VIEW MEAL');
     go.href = target(item);
     if (item.task && typeof openMealSheet === 'function') {
       go.onclick = async (e) => {

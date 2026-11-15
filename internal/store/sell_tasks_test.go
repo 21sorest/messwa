@@ -170,6 +170,7 @@ func TestSellOffersMigrate(t *testing.T) {
 	if s, err = Open(path); err != nil {
 		t.Fatalf("reopening a migrated file: %v", err)
 	}
+	defer s.Close()
 }
 
 func TestAfterPost(t *testing.T) {

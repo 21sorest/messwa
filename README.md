@@ -217,6 +217,38 @@ Sold means what it means on the board, the seller's tick or "sold". Deleted list
 
 To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` serves the board as it stood at that time on `127.0.0.1:8768`. Sold status reflects reactions up to now, not up to that time.
 
+
+### Meal planner
+
+In My Sales, the sale planner sits under the sales ledger and covers the next four weeks of your registrations. It uses the ledger's layout: days across, meals down, the same slots and the same settings panel on the right. Phones get the same grid with smaller slots. Future registrations do not count toward the historical sales totals.
+
+Click a meal to sell it and open its settings. Click the open meal again to keep it. Click a day or a meal icon to select or clear that whole row, or use Select and Clear above the grid for the week or all four weeks. With no meal open, the panel shows how many meals are selected. From there you can set the lowest and opening prices, posting time and autopilot for all of them at once. This replaces their individual settings. Pick by dates selects a date range, optionally weekdays only and one meal. Equal prices mean a fixed-price sale. Autopilot is off by default and skips buyers who need your help. A gold pip marks an unsaved new or edited sale and a red pip marks a saved one you're removing.
+
+Posting time is expressed in minutes before serving: 15 means 15 minutes before, and -15 means 15 minutes after. The allowed range is 30 minutes before to 90 minutes after serving starts, always before the meal ends. Each saved schedule keeps its actual prices, autopilot setting and posting timestamp when defaults change. The save bar counts new schedules, edits, removals and meals that will start selling as soon as you save. It sticks to the bottom of the screen while you have unsaved changes. Selecting meals sends nothing until you save.
+
+Save changes reports success or failure for each meal, continues saving the others, and retains failed drafts for retry. Open a meal marked in red to read the reason. Waiting schedules can be edited in place, removed or started now. Clearing a week removes waiting schedules and draft selections; it never cancels an active sale. Running meals open the existing sale manager. Stale edits and cancellations are rejected rather than overwriting another tab's changes; other drafts stay intact.
+
+At posting time the runtime rechecks the registration, delivery/task records, selling settings, posting groups, connection and serving window. Connection outages, network timeouts, portal HTTP 429 and server errors get up to five retries, at 15, 30, 60, 120 and 240 seconds, while the meal is still open. Invalid registrations and other permanent failures stop with a visible reason. Retry timing survives restart. Task creation and its schedule link commit together; restart also reconciles schedules interrupted before task creation and legacy starts with a missing task link. The existing task send claims still govern external message delivery.
+
+The live `run` service is required to save and execute schedules; the standalone `dashboard` command only previews data. Planner checks: `node --test internal/dashboard/planner_test.cjs`; Go checks cover schedule edits, timer races, retry limits, invalid registrations, authorization, task linking and restart recovery. Recurring rules are available in the planner, as described below.
+
+### Recurring meal rules
+
+The **Recurring rules** section sits below the planner on the sales page. **+ New rule** opens a sheet for the rule's name, days, meals, start and end dates, price range, posting time and autopilot; click a rule to edit it. Price is either a fixed ₹ range or **% of median**: each meal gets its own lowest and opening percentages, applied to the median ask for that meal's mess and diet on its latest same-weekday serving, rounded to ₹5. A meal with no median yet uses the fixed range. The service reprices waiting meals when the median moves; meals edited by hand, meals waiting on a retry and meals from an earlier version of the rule keep their prices. Date ranges may span up to one year. Preview shows new schedules, immediate starts, affected waiting schedules, preserved overrides and kept meals before Save is enabled. Changing the form invalidates its preview.
+
+The account runtime generates ordinary schedules for confirmed, unused regular registrations over the coming four weeks, checks again on startup and refreshes every five minutes. As more registrations become available, they join the planner without editing the rule. The existing scheduler then owns posting, registration rechecks, bounded retries and restart recovery. The rule does not create another WhatsApp connection. Enabling a rule requires selling to be enabled and the account to be linked.
+
+Manual schedules and previously handled meals take priority. Overlapping rules do not create duplicate sales or silently restart terminally failed occurrences. An explicit manual sale can still retry a meal after its failure has been reviewed. Every generated schedule retains its source rule and revision.
+
+Unchecking a saved meal stores a durable, account-specific keep exception. It cannot be recreated by another rule or after a restart. **Allow recurring sale again** in that meal's settings explicitly clears the exception and regenerates matching schedules, potentially starting immediately. Explicitly scheduling a kept meal manually also clears its exception.
+
+Rule edits normally affect only newly generated schedules. **Also update its waiting meals** (shown when the rule has some) updates its existing waiting meals while preserving individual overrides. A per-meal edit marks an override. Turning **Active** off stops new generation; previously saved schedules continue unless the change is applied. **Delete** asks before removing the rule and offers a separate option to remove all of that rule's waiting schedules, including overrides. Removed waiting meals are kept out of every rule until restored. Active sales always continue through their existing sale manager.
+
+Registration-read and generation failures appear beside the rule and in the attention inbox, with a link back to that rule. The existing alert resolution/deduplication behavior applies. Browser notifications still require an open dashboard tab; recurring generation itself runs in the service with the browser closed.
+
+
+
+
 ## MCP tools
 
 | Tool | Returns |
@@ -997,7 +1029,7 @@ The server checks every save and refuses a message that leaves out a variable th
 In `config.toml` the same thing is `[sell] messages`, a table of message IDs to lists of variants, e.g. `messages = { counter = [["how about {price}"], ["{price}", "last one going"]] }`. The IDs are in `internal/wording/wording.go`.
 ### Attention inbox and alerts
 
-When something needs you, Auction House and My Sales show a "needs you" banner under the header. It lists QR deliveries that may not have arrived, refunds due, blocked sales, failed schedules, offers that didn't post, and a WhatsApp disconnect while a sale is running or scheduled. The banner turns red when anything costs money or stops a sale, and stays hidden when the list is empty. Each row links to the sale, the meal in the ledger or planner, or the account page, and older sales still open after their board cards are gone.
+When something needs you, Auction House and My Sales show a "needs you" banner under the header. It lists QR deliveries that may not have arrived, refunds due, blocked sales, failed schedules, offers that didn't post, recurring rules that hit an error, and a WhatsApp disconnect while a sale is running or scheduled. The banner turns red when anything costs money or stops a sale, and stays hidden when the list is empty. Each row links to the sale, the meal in the ledger or planner, or the account page, and older sales still open after their board cards are gone.
 
 Done hides an issue for you until it changes. It doesn't send a refund or retry a delivery. Resolutions are saved per user in the account database. Disconnects and failed posts have no Done button; they clear once WhatsApp reconnects or the post goes through.
 
