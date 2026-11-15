@@ -248,7 +248,7 @@ func TestSetPricesValidates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fixed, err := m.Start(ctx, 0, f.date, "dinner", 50, 50, "")
+		fixed, err := m.Start(ctx, 0, f.date, "lunch#2", 50, 50, "")
 		if err != nil {
 			t.Fatal(err)
 		}

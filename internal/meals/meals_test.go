@@ -86,3 +86,24 @@ func TestWithoutSnacks(t *testing.T) {
 		t.Error("Without should return the same schedule when nothing is hidden")
 	}
 }
+
+func TestPrev(t *testing.T) {
+	cfg := config.Default()
+	s := New(cfg)
+	day, _ := time.ParseInLocation("2006-01-02", "2026-11-02", cfg.Location())
+	byMeal := map[string]Slot{}
+	for _, w := range s.Windows(day) {
+		byMeal[w.Meal] = w
+	}
+	for meal, want := range map[string]string{"lunch": "breakfast", "snacks": "lunch", "dinner": "snacks"} {
+		prev, ok := s.Prev(byMeal[meal])
+		if !ok || prev.Meal != want || !prev.End.Equal(byMeal[want].End) {
+			t.Errorf("Prev(%s) = %+v, %v; want today's %s", meal, prev, ok, want)
+		}
+	}
+	// Breakfast follows the day before's dinner.
+	prev, ok := s.Prev(byMeal["breakfast"])
+	if !ok || prev.Meal != "dinner" || prev.Date != "2026-11-01" {
+		t.Errorf("Prev(breakfast) = %+v, %v; want dinner on 2026-11-01", prev, ok)
+	}
+}

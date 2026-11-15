@@ -258,6 +258,9 @@ func (m *sellManager) start(ctx context.Context, userID int64, date, meal string
 	if !time.Now().Before(slot.End) {
 		return 0, errors.New("meal has already ended")
 	}
+	if err := tooEarly(m.cfg, slot, time.Now()); err != nil {
+		return 0, err
+	}
 	if settings, err := taskSellSettings(m.cfg); err != nil {
 		return 0, err
 	} else if len(settings.Groups) == 0 {

@@ -125,12 +125,18 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* actions */
 .ms-acts { display: flex; gap: 6px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.ms-acts { flex-wrap: wrap; }
+.ms-acts .ms-btn { white-space: nowrap; }
+/* "send after snacks ends" is too long to share a row in a 340px card */
+.ms-btn.after { flex: 1 0 100%; }
 .ms-btn { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--slot); color: var(--text); font: 700 9px Pixel; cursor: pointer; }
 .ms-btn:hover { background: var(--slot-hi); }
 .ms-btn.grn { border-color: rgba(52, 196, 99, .5); color: var(--veg); }
 .ms-btn.red { border-color: rgba(255, 107, 91, .5); color: #ff6b5b; }
 .ms-btn.gold { border-color: var(--gold); background: var(--gold); color: #121620; }
-.ms-btn.gold:disabled { opacity: .4; cursor: default; }
+.ms-btn:disabled { opacity: .4; cursor: default; }
+.ms-btn:disabled:hover { background: var(--slot); }
+.ms-btn.gold:disabled:hover { background: var(--gold); }
 .ms-btn.ghost { border-color: transparent; background: none; color: var(--muted); }
 
 /* ended sales, one line each */
