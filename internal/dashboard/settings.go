@@ -7,6 +7,7 @@ import (
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/meals"
 )
 
 type settingsGroup struct {
@@ -26,6 +27,9 @@ type settingsState struct {
 	Groups   []settingsGroup `json:"groups"`
 	Meals    []string        `json:"meals"`
 	Messes   []string        `json:"messes"`
+	// PortalMeals are the meal windows the mess portal gave, which the bot
+	// uses instead of meals.times. Empty until the portal has answered.
+	PortalMeals map[string]config.MealTime `json:"portal_meals,omitempty"`
 }
 
 // settingsRoutes adds the settings API. srv and cfg are the signed-in
@@ -81,6 +85,7 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 		for _, m := range cfg.Messes {
 			out.Messes = append(out.Messes, m.Name)
 		}
+		out.PortalMeals = meals.PortalTimes()
 		writeJSON(w, r, out)
 	}
 

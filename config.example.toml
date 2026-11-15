@@ -180,7 +180,8 @@ negotiation_silence = "10m"
 # ends = "12-31"
 
 # Meal windows and mess names have built-in defaults (internal/config/config.go):
-# breakfast 07:30-09:30, lunch 12:30-14:30, snacks 16:45-18:15, dinner 19:30-21:30,
+# breakfast 07:30-09:30, lunch 12:30-14:30, snacks 16:45-18:15, dinner 19:30-21:30.
+# Once the mess portal answers, its meal times replace these (see README).
 # messes kadamba, yuktahar, palash, bakul. Names match with typo tolerance.
 # Palash and Yuktahar are veg_only, so their listings count as veg.
 # Defining any [[meals]] or [[messes]] here replaces that whole default list:

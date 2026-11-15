@@ -8,6 +8,7 @@ import (
 
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/meals"
 )
 
 // insightsCols names the fields of each row in /api/insights, in order.
@@ -101,7 +102,7 @@ func insightsHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc
 		for _, m := range cfg.Messes {
 			st.Messes = append(st.Messes, mess{m.Name, m.VegOnly})
 		}
-		for _, m := range cfg.Meals {
+		for _, m := range meals.Times(cfg) {
 			st.Windows = append(st.Windows, window{m.Name, m.Starts, m.Ends})
 		}
 		for _, sp := range spans {
