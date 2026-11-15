@@ -7,12 +7,14 @@ const path = require('node:path');
 
 function planner(send = async () => ({})) {
   class Element {
-    constructor() { this.children = []; this.dataset = {}; this.classList = { toggle() {} }; this.style = { setProperty() {} }; }
+    constructor() { this.children = []; this.dataset = {}; this.classList = { toggle() {}, add() {}, remove() {} }; this.style = { setProperty() {} }; }
     append(...items) { this.children.push(...items); }
     after() {}
     prepend(item) { this.children.unshift(item); }
     replaceChildren(...items) { this.children = items; }
     setAttribute() {}
+    removeAttribute() {}
+    focus() {}
     addEventListener() {}
     contains() { return false; }
     querySelectorAll() { return []; }
@@ -28,6 +30,7 @@ function planner(send = async () => ({})) {
     svgEl: () => new Element(), icon: () => '', messColor: () => '', messIcon: () => '',
     priceSlider: () => ({ nodes: [], get: () => [40, 80] }),
     now: () => 1794800000, dayOf: (d) => new Date(d + 'T12:00:00Z'), load: async () => {}, openSell() {}, priceText: () => '', hm: () => '',
+    cellNode: () => new Element(), rupees: (v) => `₹${v}`, DIET_LABEL: { veg: 'Veg' }, confirm: () => true,
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'static/planner.js'), 'utf8'), ctx);
   return { run: (code) => vm.runInContext(code, ctx), nodes, c, ctx };
@@ -110,6 +113,43 @@ test('range selection supports weekday lunches without selecting other meals',()
 test('reviewing a changed schedule retains draft settings and adopts the current revision',()=>{
  const p=planner();p.c.schedule={id:12,revision:3,min:40,max:80,at:1794890700,autopilot:false};
  p.run("planPicked='2026-11-16|lunch';planDraft('2026-11-16',D.upcoming[0].cells[0]).min=30");p.c.schedule.revision=4;p.run('renderPlanInspector()');
- const review=p.ctx.$('planInspector').children.find(e=>e.textContent==='Use current schedule');assert.ok(review);review.onclick();
+ const review=p.ctx.$('planInspector').children.flatMap(e=>[e,...(e.children||[])]).find(e=>e.textContent==='USE CURRENT SCHEDULE');assert.ok(review);review.onclick();
  assert.equal(p.run('planActions()[0].body.revision'),4);assert.equal(p.run('planActions()[0].body.min'),30);
+});
+
+test('clicking a meal selects it and opens it; clicking the open meal again keeps it', () => {
+  const p = planner();
+  const key = "planKey(D.upcoming[1].date, D.upcoming[1].cells[0])";
+  p.run(`planClick(${key})`);
+  assert.equal(p.run('planPicked'), '2026-11-17|lunch');
+  assert.equal(p.run('planActions().length'), 1);
+  p.run(`planClick(${key})`);
+  assert.equal(p.run('planActions().length'), 0);
+  p.run("D.upcoming[0].cells.push({ meal: 'dinner', state: 'selling', task: { id: 8, min: 30, max: 30 } })");
+  p.run("planClick('2026-11-16|dinner')");
+  assert.equal(p.run('planPicked'), '2026-11-16|dinner');
+  assert.equal(p.run('planActions().length'), 0);
+});
+
+test('kept meals get a stamp and can be handed back to recurring rules', async () => {
+  const sent = [];
+  const p = planner(async (_m, url, body) => { sent.push([url, body]); return {}; });
+  p.c.kept = true;
+  const cell = p.run("planCellNode('2026-11-16', D.upcoming[0].cells[0])");
+  assert.ok(cell.children.some((e) => e.textContent === 'KEPT'));
+  p.run("planPicked='2026-11-16|lunch';renderPlanInspector()");
+  const all = p.ctx.$('planInspector').children.flatMap((e) => [e, ...(e.children || [])]);
+  const allow = all.find((e) => e.textContent === 'ALLOW RULES AGAIN');
+  assert.ok(allow);
+  await allow.onclick();
+  assert.equal(JSON.stringify(sent), JSON.stringify([['api/recurring-rules', { action: 'allow', date: '2026-11-16', meal: 'lunch' }]]));
+});
+
+test('removing a saved schedule warns that recurring rules will skip the meal', () => {
+  const p = planner();
+  p.run("var recurringRules = [{ id: 2, name: 'Weekday lunch', enabled: true }]");
+  p.c.schedule = { id: 12, revision: 3, min: 40, max: 80, at: 1794890700, rule_id: 2 };
+  p.run("planPicked='2026-11-16|lunch';planDraft('2026-11-16',D.upcoming[0].cells[0]).selected=false;renderPlanInspector()");
+  const text = p.ctx.$('planInspector').children.map((e) => e.textContent || '').join(' ');
+  assert.match(text, /Recurring rules will skip it too/);
 });

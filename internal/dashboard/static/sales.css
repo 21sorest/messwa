@@ -291,57 +291,91 @@ button.friend { cursor: pointer; }
 .qr-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .qr-drop img { width: 64px; height: 64px; object-fit: contain; border-radius: 6px; background: #fff; flex: none; }
 @media (max-width: 560px) { .fr-add { margin-left: 0; } }
-/* The planner uses the ledger's slots, palette and inspector. */
-.plan-body > p { margin: 0 2px 14px; color: var(--muted); font-size: 12.5px; }
-.plan-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0; }
-.plan-tools .sell-btn { padding: 8px 10px; font-size: 8px; }
-.plan-tools [role="status"] { margin-left: auto; color: var(--muted); font-size: 12px; }
-.plan-grid { display: flex; flex-direction: column; gap: 10px; width: 460px; max-width: 100%; }
-.plan-head-row, .plan-day { display: grid; grid-template-columns: 80px repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
-.plan-meal-head { display: grid; justify-items: center; gap: 4px; background: none; border: 0; padding: 0; color: var(--muted); font: 700 7px Pixel; cursor: pointer; }
-.plan-meal-head svg { width: 16px; height: 16px; }
-.plan-day-head { align-self: center; background: none; border: 0; padding: 8px 0; text-align: left; color: var(--muted); font: 700 8px Pixel; cursor: pointer; }
-.plan-cell { position: relative; min-width: 0; }
-.plan-pick { display: block; width: 100%; height: auto; aspect-ratio: 1; cursor: pointer; }
-.plan-caption { display: grid; gap: 2px; margin-top: 5px; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
-.plan-caption b { display: none; }
-.plan-caption .red { color: var(--nonveg); }
-.plan-pick.plan-failed { border-color: var(--nonveg); }
-.plan-bulk { margin: 14px 0 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-.plan-bulk summary { color: var(--gold); font: 700 9px Pixel; cursor: pointer; }
-.plan-form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.plan-bulk .sell-form .plan-auto { display: flex; margin: 0; }
-.plan-bulk .sell-form .plan-auto input { width: 14px; }
-.plan-timing { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: 10px; }
-.plan-timing input { width: 60px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--slot); color: var(--text); padding: 7px; font: inherit; }
-.plan-pick:has(input:disabled) { cursor: default; }
-.plan-pick:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
-.plan-check { position: absolute; top: 3px; left: 3px; z-index: 2; width: 12px; height: 12px; margin: 0; accent-color: var(--gold); cursor: inherit; }
-.plan-check:disabled { opacity: .25; }
-.plan-pick .ghost { pointer-events: none; }
-.plan-pick .price.range { font-size: 8px; padding-bottom: 4px; }
-.plan-pick .price.range .r { font-size: 9px; }
-.plan-edit { position: absolute; top: 1px; right: 1px; width: 22px; height: 20px; padding: 0 0 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 700 13px var(--sans); cursor: pointer; }
-.plan-edit:hover, .plan-edit[aria-expanded="true"] { color: var(--gold); background: var(--slot-hi); }
-.plan-edit:focus-visible { outline: 2px solid var(--gold); }
-.plan-date { color: var(--muted); font-size: 12px; margin-top: 3px; }
-.plan-fields .sell-vals { margin-top: 14px; }
-.plan-fields .sell-vals b { font-size: 16px; }
-.plan-fields .sell-note { margin-top: 8px; font-size: 12px; }
-.plan-auto { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--text); font-size: 12px; }
-.plan-auto input { margin: 0; accent-color: var(--gold); }
+/* ---------- sale planner: the ledger's grid, four weeks ahead ---------- */
+
+.plan-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 2px 14px; }
+.plan-tools .side-k { margin-right: 2px; }
+.plan-tools .side-k:not(:first-child) { margin-left: 10px; }
+.plan-tools .sell-btn, .plan-panel .sell-btn, .plan-bar .sell-btn { padding: 7px 10px; font-size: 8px; }
+
+/* Day and meal headers select their row, so they're buttons that look like the ledger's labels. */
+.plan-grid button.dh, .plan-grid button.mh { background: none; border: 0; padding: 0 0 2px; font-family: Pixel; cursor: pointer; border-radius: 4px; }
+.plan-grid button.mh { color: var(--muted); }
+.plan-grid button.dh:hover:not(:disabled), .plan-grid button.mh:hover:not(:disabled) { color: var(--gold); }
+.plan-grid button.mh:hover:not(:disabled) svg { opacity: 1; }
+.plan-grid button.dh:disabled, .plan-grid button.mh:disabled { cursor: default; }
+.plan-grid button.dh:focus-visible, .plan-grid button.mh:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.plan-grid .cell { cursor: pointer; }
+.plan-grid .cell.is-open:hover, .plan-grid .cell.is-open:focus-visible { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.plan-grid .cell.is-open:hover .ghost { opacity: .55; }
+.plan-grid .cell.is-open:hover .sell-tag, .plan-grid .cell.is-open:focus-visible .sell-tag { opacity: 1; }
+.plan-grid .cell:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.plan-grid .empty-note { padding: 24px 4px; }
+.plan-grid .dh i { font-style: normal; }
+
+/* Unsaved changes: a gold pip for a new or edited sale, red for one being removed. */
+.cell.plan-new::before, .cell.plan-edit::before, .cell.plan-drop::before, .sw.dot::before {
+  content: ""; position: absolute; top: 5px; left: 50%; z-index: 2; width: 6px; height: 6px; margin-left: -3px; border-radius: 1px;
+  background: var(--gold); box-shadow: 0 0 6px rgba(255, 197, 61, .7);
+}
+.sw.dot::before { top: 3px; width: 4px; height: 4px; margin-left: -2px; }
+.cell.plan-drop::before, .sw.dot.red::before { background: #ff6b5b; box-shadow: 0 0 6px rgba(255, 107, 91, .7); }
+.cell.plan-new.is-scheduled, .cell.plan-edit.is-scheduled { border-style: solid; background: color-mix(in srgb, var(--gold) 9%, var(--slot)); }
+.cell.plan-new .price.range, .cell.plan-edit .price.range { opacity: 1; }
+.cell.plan-drop .ghost { opacity: .5; }
+.cell.plan-failed { border: 1px solid #ff6b5b; box-shadow: 0 0 8px rgba(255, 107, 91, .35); }
+.cell.plan-retry { animation: ring 2.4s ease-out infinite; }
+.cell.plan-kept .stamp { color: var(--muted); }
+.cell.plan-kept .ghost { opacity: .18; }
+.plan-rule .nav-link { white-space: nowrap; }
+
+.plan-panel .nm { font-weight: 700; font-size: 14px; }
+.plan-panel .lore { margin: 4px 0 0; font-size: 12.5px; }
+.plan-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.plan-head .pg { flex: none; margin: -2px -4px 0 0; }
+.plan-panel .rar { margin-top: 10px; }
+.plan-panel .sell-err, .plan-panel .sell-note { font-size: 12px; }
+.plan-panel .sell-note { margin-top: 8px; }
+.plan-fields .sell-vals { margin: 12px 2px 8px; }
+.plan-fields .sell-vals b { font-size: 18px; }
+.plan-fields .sell-axis { font-size: 10.5px; }
+.plan-timing { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 12px; }
+.plan-timing input { width: 58px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--slot); color: var(--text); font: inherit; }
+.plan-timing input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.plan-when b { color: var(--gold); font-weight: 600; }
+.sell-btn.plan-autopilot { margin-top: 12px; color: var(--dim); }
+.sell-btn.plan-autopilot.on { color: #5aa9ff; border-color: color-mix(in srgb, #5aa9ff 70%, transparent); background: color-mix(in srgb, #5aa9ff 10%, var(--slot)); }
+.plan-acts { justify-content: flex-start; margin-top: 12px; }
 .plan-fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .plan-fieldset:disabled { opacity: .5; }
+.plan-panel .sell-form { gap: 10px; margin-top: 12px; }
+.plan-panel .sell-form label { font-size: 11px; gap: 4px; }
+.plan-panel .sell-form input:not([type=checkbox]), .plan-panel .sell-form select { padding: 7px 8px; }
+.plan-form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.plan-panel .sell-form .plan-check-row { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 12px; }
+.plan-panel .sell-form .plan-check-row input { width: 14px; height: 14px; margin: 0; padding: 0; accent-color: var(--gold); }
+.plan-panel .sell-form > .sell-btn { justify-self: start; }
+.plan-range { margin-top: 2px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.plan-range[open] { display: grid; gap: 10px; }
+.plan-range summary { font: 700 8px Pixel; letter-spacing: .5px; color: var(--muted); text-transform: uppercase; cursor: pointer; }
+.plan-range summary:hover { color: var(--gold); }
+.plan-range > .sell-btn { justify-self: start; }
+
+/* Save bar: quiet until something's unsaved, then it sticks to the bottom of the screen. */
+.plan-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--line); }
+.plan-bar [role="status"] { margin-right: auto; color: var(--muted); font-size: 12.5px; }
+.plan-bar.dirty {
+  position: sticky; bottom: 12px; z-index: 5; border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
+  background: color-mix(in srgb, var(--gold) 6%, var(--panel)); box-shadow: 0 12px 30px rgba(0, 0, 0, .5);
+}
+.plan-bar.dirty [role="status"] { color: var(--text); }
+#planError { margin: 8px 2px 0; }
+
 @media (max-width: 760px) {
-  .plan-grid { width: 100%; gap: 12px; }
-  .plan-head-row { display: none; }
-  .plan-day { grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
-  .plan-day-head { grid-column: 1 / -1; font-size: 9px; padding: 0 0 3px; }
-  .plan-caption b { display: block; font-size: 9px; font-weight: 500; }
-  .plan-caption { font-size: 9px; }
-  .plan-ledger .lside { width: 100%; }
-  .plan-tools [role="status"] { width: 100%; margin: 4px 0 0; }
-  .plan-form-row { grid-template-columns: minmax(0, 1fr); }
+  .plan-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .plan-grid .dh i { display: none; }
+  .plan-bar { flex-wrap: wrap; }
+  .plan-bar [role="status"] { width: 100%; }
 }
 
 /* ---------- recurring rules ---------- */

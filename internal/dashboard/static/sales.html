@@ -38,69 +38,6 @@
 
   <p class="notice" id="notice" hidden></p>
 
-  <section class="chest own" id="planner" hidden aria-label="Schedule meals to sell">
-    <div class="chest-head">
-      <span class="head-icon" id="planIcon"></span>
-      <span class="head-name">Schedule sales</span>
-      <span class="head-meta" id="planRange"></span>
-      <span class="pager">
-        <button class="pg" id="planPrev" type="button" aria-label="Previous planning week">&lsaquo;</button>
-        <button class="pg" id="planNext" type="button" aria-label="Next planning week">&rsaquo;</button>
-      </span>
-    </div>
-    <div class="plan-body">
-      <p>Tick meals to sell. Open a slot's settings for prices and autopilot. Meals due now start selling when saved.</p>
-      <div class="plan-tools">
-        <button class="sell-btn" id="planWeek" type="button">Select this week</button>
-        <button class="sell-btn" id="planClearWeek" type="button">Deselect this week</button>
-        <button class="sell-btn" id="planAll" type="button">Select all 4 weeks</button>
-        <button class="sell-btn" id="planClear" type="button">Deselect all</button>
-      </div>
-      <details class="plan-bulk">
-        <summary>Select a range &amp; set prices together</summary>
-        <fieldset class="plan-fieldset sell-form" id="planSharedFields">
-          <div class="plan-form-row">
-            <label>From<input type="date" id="planFrom"></label>
-            <label>Through<input type="date" id="planTo"></label>
-            <label>Meal<select id="planMeal"><option value="">All meals</option><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="snacks">Snacks</option><option value="dinner">Dinner</option></select></label>
-          </div>
-          <label class="plan-auto"><input type="checkbox" id="planWeekdays">Weekdays only</label>
-          <button class="sell-btn" type="button" id="planRangeSelect">Select this range</button>
-          <div class="plan-form-row">
-            <label>Minimum price (&#8377;)<input type="number" id="planMin" min="1" max="10000" step="1" value="40"></label>
-            <label>Opening price (&#8377;)<input type="number" id="planMax" min="1" max="10000" step="1" value="80"></label>
-            <label>Minutes before serving<input type="number" id="planBefore" min="-90" max="30" step="1"></label>
-          </div>
-          <label class="plan-auto"><input type="checkbox" id="planAuto">Autopilot: skip buyers who need your help</label>
-          <p class="sell-note">Equal prices sell at a fixed price. Negative minutes post after serving starts. Applying these settings replaces overrides on selected meals across all four weeks.</p>
-          <button class="sell-btn" type="button" id="planApply">Apply to selected meals</button>
-        </fieldset>
-      </details>
-      <div class="ledger plan-ledger">
-        <div class="lgrid plan-grid" id="planGrid" role="group" aria-label="Meal sale schedule"></div>
-        <div class="lside" id="planSide"><div class="side-k">Meal settings</div><div class="panel" id="planInspector"></div></div>
-      </div>
-      <div class="slegend"><span><i class="sw q"></i>Selected to sell</span><span><i class="sw u"></i>Keep meal</span><span>Empty slot: not registered</span></div>
-      <div class="plan-tools">
-        <button class="sell-btn gold" id="planSave" type="button">Save changes</button>
-        <button class="sell-btn" id="planReset" type="button">Discard changes</button>
-        <span id="planStatus" role="status" aria-live="polite"></span>
-      </div>
-      <p class="sell-err" id="planError" role="alert"></p>
-    </div>
-  </section>
-
-  <section class="chest own" id="ruleSec" hidden aria-label="Recurring rules">
-    <div class="chest-head">
-      <span class="head-icon" id="ruleIcon"></span>
-      <span class="head-name">Recurring rules</span>
-      <span class="head-meta" id="ruleMeta"></span>
-      <button class="sell-btn gold fr-add" id="ruleNew" type="button">+ New rule</button>
-    </div>
-    <div class="friends rule-list" id="ruleList"></div>
-    <p class="sell-err" id="ruleListError" role="alert"></p>
-  </section>
-
   <section class="chest" aria-label="Sales ledger">
     <div class="chest-head">
       <span class="head-icon" id="ledIcon"></span>
@@ -130,6 +67,82 @@
       <span><i class="sw w"></i>Wasted</span>
       <span><i class="sw u"></i>Registered</span>
     </div>
+  </section>
+
+  <section class="chest own" id="planner" hidden aria-label="Sale planner">
+    <div class="chest-head">
+      <span class="head-icon" id="planIcon"></span>
+      <span class="head-name">Sale planner</span>
+      <span class="head-meta" id="planRange"></span>
+      <span class="pager">
+        <button class="pg" id="planPrev" type="button" aria-label="Earlier planning week">&lsaquo;</button>
+        <button class="pg" id="planNext" type="button" aria-label="Later planning week">&rsaquo;</button>
+      </span>
+    </div>
+    <div class="plan-tools">
+      <span class="side-k">Select</span>
+      <button class="sell-btn" id="planWeek" type="button">This week</button>
+      <button class="sell-btn" id="planAll" type="button">All 4 weeks</button>
+      <span class="side-k">Clear</span>
+      <button class="sell-btn" id="planClearWeek" type="button">This week</button>
+      <button class="sell-btn" id="planClear" type="button">All</button>
+    </div>
+    <div class="ledger plan-ledger">
+      <div class="lgrid plan-grid" id="planGrid" role="group" aria-label="Upcoming meals by day"></div>
+      <div class="lside">
+        <div class="side-k" id="planSideK">Selected meals</div>
+        <div class="panel plan-panel" id="planInspector" hidden></div>
+        <div class="panel plan-panel" id="planBulk">
+          <div class="nm" id="planBulkCount"></div>
+          <p class="lore">Click a meal to sell it and open its price. Click a day or meal icon for the whole row.</p>
+          <fieldset class="plan-fieldset sell-form" id="planSharedFields">
+            <div class="plan-form-row">
+              <label>Lowest &#8377;<input type="number" id="planMin" min="1" max="10000" step="1" value="40"></label>
+              <label>Opens at &#8377;<input type="number" id="planMax" min="1" max="10000" step="1" value="80"></label>
+              <label>Min before<input type="number" id="planBefore" min="-90" max="30" step="1"></label>
+            </div>
+            <label class="plan-check-row"><input type="checkbox" id="planAuto">Autopilot</label>
+            <button class="sell-btn" type="button" id="planApply">APPLY TO SELECTED</button>
+            <p class="sell-note">Overwrites prices, posting time and autopilot on every selected meal. Negative minutes post after serving starts.</p>
+            <details class="plan-range">
+              <summary>Pick by dates</summary>
+              <div class="plan-form-row">
+                <label>From<input type="date" id="planFrom"></label>
+                <label>Through<input type="date" id="planTo"></label>
+                <label>Meal<select id="planMeal"><option value="">All</option><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="snacks">Snacks</option><option value="dinner">Dinner</option></select></label>
+              </div>
+              <label class="plan-check-row"><input type="checkbox" id="planWeekdays">Weekdays only</label>
+              <button class="sell-btn" type="button" id="planRangeSelect">SELECT THESE</button>
+            </details>
+          </fieldset>
+        </div>
+      </div>
+    </div>
+    <div class="slegend">
+      <span><i class="sw u"></i>Registered</span>
+      <span><i class="sw q dot"></i>To sell, unsaved</span>
+      <span><i class="sw q"></i>Scheduled</span>
+      <span><i class="sw l"></i>Selling</span>
+      <span><i class="sw u dot red"></i>Removing</span>
+      <span><i class="sw w"></i>Needs a look</span>
+    </div>
+    <div class="plan-bar" id="planBar">
+      <span id="planStatus" role="status" aria-live="polite"></span>
+      <button class="sell-btn" id="planReset" type="button">DISCARD</button>
+      <button class="sell-btn gold" id="planSave" type="button">SAVE CHANGES</button>
+    </div>
+    <p class="sell-err" id="planError" role="alert"></p>
+  </section>
+
+  <section class="chest own" id="ruleSec" hidden aria-label="Recurring rules">
+    <div class="chest-head">
+      <span class="head-icon" id="ruleIcon"></span>
+      <span class="head-name">Recurring rules</span>
+      <span class="head-meta" id="ruleMeta"></span>
+      <button class="sell-btn gold fr-add" id="ruleNew" type="button">+ New rule</button>
+    </div>
+    <div class="friends rule-list" id="ruleList"></div>
+    <p class="sell-err" id="ruleListError" role="alert"></p>
   </section>
 
   <section class="chest own" id="friendSec" hidden aria-label="Friends' meals">
