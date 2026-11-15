@@ -979,3 +979,11 @@ Every DM the bot sends is in `buyer_text.go`. It writes like the sellers in the 
 | Sold to someone else | `sold sorry` |
 
 The payment prompt names WhatsApp Pay and rules out GPay and UPI because a payment to the number never reaches the bot. It doesn't give a deadline; the two minutes still apply.
+
+### Attention inbox and alerts
+
+Auction House and My Sales include an Attention needed box for uncertain QR deliveries, refunds due, failed sales or schedules, failed offer posts, and WhatsApp disconnections while sales are active or scheduled. Items link to sale details, the meal ledger, or account connection controls. Older affected sale details remain accessible after their board cards disappear.
+
+Mark resolved records that you handled an issue. It does not send a refund or retry delivery. Resolutions are saved per user in the account database. A changed issue appears again. Connection and posting issues clear when their underlying state recovers.
+
+Browser alerts are optional and require permission. They run while a dashboard tab is open, refresh every 15 seconds, and suppress unchanged issues in that browser. They are not push notifications while the app is closed. The inbox remains available when browser permission is denied.
