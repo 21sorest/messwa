@@ -219,7 +219,7 @@ button.friend { cursor: pointer; }
 .chip input:checked + span { border-color: var(--m, var(--gold)); color: var(--m, var(--gold)); background: var(--slot-hi); }
 .chip input:focus-visible + span { outline: 2px solid var(--gold); outline-offset: 2px; }
 .chip input:disabled + span { opacity: .35; cursor: default; }
-.fr-price .sell-vals { margin-top: 4px; }
+.fr-price .pr-vals { margin-top: 4px; }
 .fr-k { color: var(--muted); font-size: 12px; }
 .sell-form .qr-drop {
   position: relative; display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 10px;

@@ -65,14 +65,10 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ms-edit .eh { display: flex; justify-content: space-between; align-items: baseline; }
 .ms-edit .eh b { font: 700 9px Pixel; color: var(--gold); letter-spacing: .5px; }
 .ms-edit .eh span { font-size: 11px; color: var(--muted); }
+.ms-edit .pr-vals { margin: 0; }
+.ms-edit .sell-axis { margin-top: -6px; }
 .ms-edit .dual .was { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--dim); }
-.ms-edit .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
-.stp { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.stp small { flex: 1; padding: 0 8px; font-size: 11px; color: var(--dim); }
-.stp button { width: 30px; height: 32px; border: none; background: var(--slot); color: var(--text); font-size: 15px; cursor: pointer; }
-.stp button:hover { background: var(--slot-hi); }
-.stp b { width: 48px; text-align: center; font: 700 12px Pixel; }
-.ms-edit .hint { margin: 0; font-size: 11.5px; line-height: 1.45; color: #ffd98a; }
+.ms-edit .hint { display: block; margin: 0; font-size: 11.5px; line-height: 1.45; color: #ffd98a; }
 .ms-edit .err { margin: 0; font-size: 12px; color: var(--red); }
 .ms-edit .err:empty { display: none; }
 .ms-edit .eacts { display: flex; justify-content: flex-end; gap: 6px; }
