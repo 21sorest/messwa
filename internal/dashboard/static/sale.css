@@ -4,10 +4,9 @@
 .ms-tag.sch { color: var(--gold); background: rgba(255, 197, 61, .12); }
 /* a sale waiting for its meal, dashed like its ledger cell */
 .mysale.sched { border-style: dashed; border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
-.mysale.tap { cursor: pointer; transition: border-color .15s, background .15s; }
-.mysale.tap:hover { border-color: var(--gold); }
+.mysale.tap { cursor: pointer; transition: filter .15s; }
+.mysale.tap:hover { filter: brightness(1.12); }
 .mysale.tap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.mysale.tap .ms-acts { cursor: default; }
 .ms-price > b.sch { color: var(--gold); font-size: 18px; }
 .ms-time small { font: 700 8px Pixel; color: var(--muted); }
 .ms-btn.auto { color: var(--muted); }
@@ -47,7 +46,7 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ms-time b.grn { color: var(--veg); } .ms-time b.dim { color: var(--dim); }
 
 /* price */
-.ms-price { display: flex; align-items: baseline; gap: 10px; cursor: pointer; min-width: 0; }
+.ms-price { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .ms-price > b { font: 700 22px/1 Pixel; color: var(--veg); flex: none; }
 .ms-price > b.held { color: var(--gold); }
 .ms-price .what { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -137,7 +136,6 @@ a.ms-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ms-btn.gold { border-color: var(--gold); background: var(--gold); color: #121620; }
 .ms-btn.gold:disabled { opacity: .4; cursor: default; }
 .ms-btn.ghost { border-color: transparent; background: none; color: var(--muted); }
-.ms-btn.more { margin-left: auto; font-size: 12px; letter-spacing: 1px; }
 
 /* ended sales, one line each */
 .ms-sec { margin-top: 4px; font: 700 8px Pixel; letter-spacing: 1px; color: var(--dim); }

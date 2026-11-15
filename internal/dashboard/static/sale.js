@@ -175,7 +175,6 @@ function chest(v) {
   if (v.negotiates && !won(v) && !v.held && v.target > v.lowest && v.target < v.max) words.append(' · aims for ', el('em', '', rup(v.target)));
   price.append(words);
   if (v.state === 'active') price.append(rangeButton(v));
-  price.addEventListener('click', () => openMealSheet(v));
   tip(price, () => heroTip(v));
   c.append(price);
   c.append(rangeEdit && rangeEdit.id === v.id ? rangeEditor(v) : priceBar(v, looks));
@@ -196,7 +195,9 @@ function chest(v) {
   c.append(postsRow(v));
   const mk = marketRow(v);
   if (mk) c.append(mk);
-  c.append(cardActions(v));
+  const acts = cardActions(v);
+  if (acts) c.append(acts);
+  tapCard(c, () => openMealSheet(v));
   return c;
 }
 
@@ -264,24 +265,27 @@ function scheduledCard(s) {
   auto.setAttribute('role', 'switch');
   auto.setAttribute('aria-checked', String(!!s.autopilot));
   auto.title = 'Autopilot sells without waiting on you: it skips any buyer who would need you, even one offering more.';
-  // The whole card opens the sales page's sheet, except clicks on its own
-  // buttons. A friend's sale has no sheet here, so it goes to the sales page.
-  const open = () => {
+  // A friend's sale has no sheet here, so it goes to the sales page.
+  tapCard(c, () => {
     if (!s.for_friend && openSellHere(s.date, s.meal)) return;
     location.href = s.for_friend ? 'sales.html' : `sales.html#sell=${encodeURIComponent(`${s.date}|${s.meal}`)}`;
-  };
+  });
+  c.append(a, err);
+  return c;
+}
+
+// tapCard makes a whole sale card open its sheet. Clicks on the card's own
+// controls (buttons, links, the range editor) and text selections don't.
+function tapCard(c, open) {
   c.classList.add('tap');
   c.tabIndex = 0;
-  c.title = 'Change the price or unschedule';
   c.addEventListener('click', (e) => {
-    if (e.target.closest('button, a') || String(getSelection())) return;
+    if (e.target.closest('button, a, input, label, .ms-edit') || String(getSelection())) return;
     open();
   });
   c.addEventListener('keydown', (e) => {
     if (e.target === c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); }
   });
-  c.append(a, err);
-  return c;
 }
 
 // ledgerCell finds a meal in the sales ledger app.js loaded for the nudge.
@@ -611,7 +615,6 @@ function postsRow(v) {
   r.append(el('span', 'lbl', 'Posted'));
   for (const g of postGroups(v)) r.append(groupPill(g, v));
   if (!v.posts.length) r.append(el('span', 'ms-none', 'not yet'));
-  r.addEventListener('click', () => openMealSheet(v));
   return r;
 }
 
@@ -651,8 +654,7 @@ function cardActions(v) {
     btn('', '+ Add buyer', () => saleActionForm(v, 'add'));
     btn('red', '✕ Stop', () => saleActionForm(v, 'stop'), 'Stop selling and delete the offer posts');
   }
-  btn('ghost more', '···', () => openMealSheet(v), 'Sale details: posts, tries and price over time');
-  return a;
+  return a.children.length ? a : null;
 }
 
 // endedRow is a finished sale, folded to one line. It opens the meal sheet.
