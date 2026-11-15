@@ -1317,7 +1317,7 @@ func (ss *session) reprice() handled {
 	if !slices.Contains(next.quoted, k) {
 		next.quoted = append(next.quoted, k)
 	}
-	if !ss.say(next, sayCounter(k, 1)) {
+	if !ss.say(next, n.lines(ss.buyer).counter(k, hs.ask, 1)) {
 		return handledEnded
 	}
 	n.log.Info("price lowered; offered the buyer the new price", "buyer", ss.buyer, "from", hs.ask, "ask", k)
