@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -65,19 +66,28 @@ func TestPlannerScheduleTemporaryPortalFailureRetries(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.manager(ctx)
+		// The timer reads portalFor on its own goroutine, so the fake is
+		// set once and switched with a flag.
+		var down atomic.Bool
+		original := m.portalFor
+		m.portalFor = func(ctx context.Context, user int64) (mealPortal, error) {
+			if down.Load() {
+				return nil, portal.HTTPError{Status: 503}
+			}
+			return original(ctx, user)
+		}
 		id, at, err := m.StartOrSchedule(ctx, 0, f.date, "lunch", 40, 60, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		original := m.portalFor
-		m.portalFor = func(context.Context, int64) (mealPortal, error) { return nil, portal.HTTPError{Status: 503} }
+		down.Store(true)
 		time.Sleep(time.Until(at) + time.Second)
 		synctest.Wait()
 		sc := f.schedule(id)
 		if sc.State != store.ScheduleWaiting || sc.Attempts != 1 || sc.RetryAt.IsZero() || sc.Detail == "" {
 			t.Fatalf("retry %+v", sc)
 		}
-		m.portalFor = original
+		down.Store(false)
 		time.Sleep(time.Until(sc.RetryAt) + time.Second)
 		synctest.Wait()
 		if sc = f.schedule(id); sc.State != store.ScheduleStarted || sc.TaskID == 0 {
@@ -96,11 +106,19 @@ func TestPlannerScheduleInvalidRegistrationDoesNotRetry(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.manager(ctx)
+		var used atomic.Bool
+		original := m.portalFor
+		m.portalFor = func(ctx context.Context, user int64) (mealPortal, error) {
+			if used.Load() {
+				return nil, errors.New("meal is cancelled or used")
+			}
+			return original(ctx, user)
+		}
 		id, at, err := m.StartOrSchedule(ctx, 0, f.date, "lunch", 40, 60, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		m.portalFor = func(context.Context, int64) (mealPortal, error) { return nil, errors.New("meal is cancelled or used") }
+		used.Store(true)
 		time.Sleep(time.Until(at) + time.Minute)
 		synctest.Wait()
 		if sc := f.schedule(id); sc.State != store.ScheduleFailed || sc.Attempts != 0 || sc.Detail != "meal is cancelled or used" {
@@ -122,11 +140,13 @@ func TestPlannerScheduleDisconnectedRetriesAreBounded(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.manager(ctx)
+		var offline atomic.Bool
+		m.connected = func(time.Duration) bool { return !offline.Load() }
 		id, at, err := m.StartOrSchedule(ctx, 0, f.date, "lunch", 40, 60, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		m.connected = func(time.Duration) bool { return false }
+		offline.Store(true)
 		time.Sleep(time.Until(at) + 9*time.Minute)
 		synctest.Wait()
 		if sc := f.schedule(id); sc.State != store.ScheduleFailed || sc.Attempts != 5 {
