@@ -691,3 +691,13 @@ a.copy.linked:hover .copy-go { color: var(--gold); }
   .nudge-x { grid-column: 3; grid-row: 1; align-self: start; }
   .nudge-go { grid-column: 1 / -1; grid-row: 2; text-align: center; padding: 10px 12px; }
 }
+
+.site-credit {
+  padding: 12px 20px 28px;
+  color: var(--muted);
+  font: 10px/1.8 Pixel, monospace;
+  text-align: center;
+}
+.site-credit-heart { display: inline-block; vertical-align: -3px; margin: 0 3px; }
+.site-credit-heart svg { width: 14px; height: 12px; }
+.site-credit-names { color: var(--gold); }
