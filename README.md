@@ -169,7 +169,9 @@ Everyone edits their own selling settings on the OFFER, REPOST and BUYERS tabs: 
 
 Edits wait for SAVE. messwa stores what you save in a `settings` table in the user's private `messwa.db`, on top of `config.toml`: a value equal to the file's isn't stored, so it keeps following the file. Every command reads the saved values when it starts, and `deliver-qr` flags still override them for one run.
 
-Saves made in `run`'s own dashboard apply at once: the next sell task, `sell_task_status` and running tasks' reposts, the sold rule, dedupe, pruning, the sales page target and the insights seasons. Turning sell tasks on or off adds or removes their MCP tools for connected agents. A save made from `messwa dashboard` reaches a running `run` within 30 seconds. Meal times and `veg_only` show APPLIES ON RESTART: `run` builds its listing classifier and meal schedule once, when it starts.
+Saves made in `run`'s own dashboard apply at once: the next sell task, `sell_task_status` and running tasks' reposts, the sold rule, dedupe, pruning, the sales page target and the insights seasons. Turning sell tasks on or off adds or removes their MCP tools for connected agents. A save made from `messwa dashboard` reaches a running `run` within 30 seconds. `veg_only` shows APPLIES ON RESTART: `run` builds its listing classifier once, when it starts.
+
+**Meal times come from the mess portal.** `run` and `messwa dashboard` read `/config/meal-timings` when they start and every 3 hours after. The endpoint needs no API key. The portal lists each mess and diet separately, and a meal's window runs from the earliest start to the latest end among them: breakfast 06:30 to 10:30, lunch 11:30 to 15:30 as of 15 Nov 2026. The new windows apply at once, with no restart, to classifying posts that name no meal, sell task deadlines and the price slide toward a meal's end. The last answer is saved in `state/meal-times.json`, so a start without network still uses it. The settings page then shows the portal's times as FROM THE MESS PORTAL and locks them. Until the portal first answers, the windows in `config.toml` or the settings page apply. A portal answer with overlapping or unreadable windows is ignored.
 
 Some things stay in `config.toml`: the listen addresses, `state_dir`, `timezone`, `token_env`, `beeper_db`, the top-level `groups`, and meal keywords and mess names and aliases. If a saved value stops fitting the file, for example a `group_count` above the groups it now lists, messwa logs a warning, skips that value and starts anyway.
 
@@ -924,8 +926,9 @@ Buyers message several sellers at once and leave within a minute, so the bot ans
 | `ok`, `fine`, `done` (after a price), `same number?`, `gpay?`, `paying` | Agrees to its current price |
 | `nv?`, `kadamba?` | `bakul non-veg, 50` |
 | `upi id?`, `send qr`, `cash?`, `can i pay in other ways` | `only whatsapp pay sorry`, once. Asking again hands them to you |
-| `nvm`, `no thanks`, `not interested` | Counters once with a lower price. A second pass, or a pass after its lowest or at `min_price`, stops talking to them |
+| `nvm`, `no thanks`, `not interested`, `not req` | Counters once with a lower price. A second pass, or a pass after its lowest or at `min_price`, stops talking to them |
 | `bought already`, `sorry bought`, `got from other`, `mil gaya` | Stops talking to them, with no counter |
+| `i texted for breakfast`, `bf 60?` (to a lunch seller) | Names only other meals: stops talking to them, with no counter |
 
 After two counters the next one is its lowest. A buyer still below that after the bot says so is handed to you.
 
