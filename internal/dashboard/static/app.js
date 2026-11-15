@@ -390,19 +390,6 @@ function slotNode(l) {
   if (l.quantity > 1) b.append(el('span', 'qty', String(l.quantity)));
   if (l.other_ticks && l.status === 'available') b.append(el('span', 'ticked'));
 
-  const bar = el('span', 'bar');
-  const fill = el('i');
-  // Full until serving starts, empty when it ends, so every listing for the
-  // same meal shows the same amount. Meals on other days have the same
-  // window length, so today's schedule gives the start.
-  const w = window_(l.meal);
-  const total = w ? w.end - w.start : Math.max(1, l.meal_ends_at - l.first_seen_at);
-  const frac = Math.max(0, Math.min(1, (l.meal_ends_at - now()) / total));
-  fill.style.setProperty('transform', `scaleX(${frac})`);
-  fill.style.setProperty('background', `hsl(${Math.round(frac * 120)} 75% 52%)`);
-  bar.append(fill);
-  b.append(bar);
-
   if (l.status === 'sold') b.append(el('span', l.kind === 'buy' ? 'stamp long bought' : 'stamp', doneWord(l).toUpperCase()));
   if (l.status === 'closed') b.append(el('span', 'stamp', 'CLOSED'));
   b.setAttribute('aria-label', `${cap(l.mess)} ${l.meal}, ${priceText(l)}, ${l.seller.name || l.seller.phone || 'unknown seller'}`);
