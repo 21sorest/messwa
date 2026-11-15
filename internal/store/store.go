@@ -138,6 +138,9 @@ func Open(path string) (*Store, error) {
 	}
 	for _, c := range []struct{ table, col string }{
 		{"sell_tasks", "target_paise INTEGER NOT NULL DEFAULT 0"},
+		{"sell_schedules", "revision INTEGER NOT NULL DEFAULT 1"},
+		{"sell_schedules", "attempts INTEGER NOT NULL DEFAULT 0"},
+		{"sell_schedules", "retry_at INTEGER NOT NULL DEFAULT 0"},
 		{"sell_tasks", "autopilot INTEGER NOT NULL DEFAULT 0"},
 		{"sell_task_offers", "error TEXT NOT NULL DEFAULT ''"},
 		{"sell_task_offers", "revoked_at INTEGER NOT NULL DEFAULT 0"},

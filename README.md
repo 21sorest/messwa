@@ -214,6 +214,22 @@ Sold means what it means on the board, the seller's tick or "sold". Deleted list
 
 To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` serves the board as it stood at that time on `127.0.0.1:8768`. Sold status reflects reactions up to now, not up to that time.
 
+
+### Meal planner
+
+In My Sales, the planner covers the next four weeks of your registrations. It uses the board's meal slots and price controls. Desktop shows dates down the side and meals across the top; phones show one compact card per day. Future registrations do not contribute to the historical sales totals.
+
+Tick individual meals, select a week, click a meal heading for all lunches that week, or choose a date range with a weekdays-only filter. Under ?Select a range & set prices together?, set minimum/opening prices, posting time and autopilot, then apply them to selected meals across all four weeks. This explicitly replaces their overrides. Each meal's three-dot button opens its own settings. Equal prices mean a fixed-price sale. Autopilot is off by default and skips buyers who need your help.
+
+Posting time is expressed in minutes before serving: 15 means 15 minutes before, and -15 means 15 minutes after. The allowed range is 30 minutes before to 90 minutes after serving starts, always before the meal ends. Each saved schedule keeps its actual prices, autopilot setting and posting timestamp when defaults change. The save summary counts new schedules, edits, removals and meals that will immediately start selling. Selection alone sends nothing.
+
+Save changes reports success or failure for each meal, continues saving the others, and retains failed drafts for retry. Expand a marked meal to read the reason. Waiting schedules can be edited in place, removed or started now. Clearing a week removes waiting schedules and draft selections; it never cancels an active sale. Running meals open the existing sale manager. Stale edits and cancellations are rejected rather than overwriting another tab's changes; other drafts stay intact.
+
+At posting time the runtime rechecks the registration, delivery/task records, selling settings, posting groups, connection and serving window. Connection outages, network timeouts, portal HTTP 429 and server errors get up to five retries, at 15, 30, 60, 120 and 240 seconds, while the meal is still open. Invalid registrations and other permanent failures stop with a visible reason. Retry timing survives restart. Task creation and its schedule link commit together; restart also reconciles schedules interrupted before task creation and legacy starts with a missing task link. The existing task send claims still govern external message delivery.
+
+The live `run` service is required to save and execute schedules; the standalone `dashboard` command only previews data. Planner checks: `node --test internal/dashboard/planner_test.cjs`; Go checks cover schedule edits, timer races, retry limits, invalid registrations, authorization, task linking and restart recovery. Recurring rules are the next phase in [TODO.md](TODO.md).
+
+
 ## MCP tools
 
 | Tool | Returns |

@@ -25,17 +25,18 @@ const salesDays = 28
 const minAsks = marketask.MinAsks
 
 type salesState struct {
-	Now     int64        `json:"now"`
-	TZ      string       `json:"tz"`
-	Today   string       `json:"today"`
-	From    string       `json:"from"`   // first day in Days
-	Recent  string       `json:"recent"` // first day of the four-week window
-	Messes  []mess       `json:"messes"`
-	Windows []slot       `json:"windows"` // today's meal windows
-	Days    []salesDay   `json:"days"`
-	Sales   []sale       `json:"sales"`
-	Market  []mealMarket `json:"market"`
-	Month   month        `json:"month"`
+	Now      int64        `json:"now"`
+	TZ       string       `json:"tz"`
+	Today    string       `json:"today"`
+	From     string       `json:"from"`   // first day in Days
+	Recent   string       `json:"recent"` // first day of the four-week window
+	Messes   []mess       `json:"messes"`
+	Windows  []slot       `json:"windows"` // today's meal windows
+	Days     []salesDay   `json:"days"`
+	Upcoming []salesDay   `json:"upcoming"` // next four weeks, separate from historical totals
+	Sales    []sale       `json:"sales"`
+	Market   []mealMarket `json:"market"`
+	Month    month        `json:"month"`
 	// Portal says why registrations are missing. Empty when they loaded.
 	Portal string `json:"portal,omitempty"`
 	// Owner is true for admins, who see the linked WhatsApp account's
@@ -116,7 +117,9 @@ type cell struct {
 	Schedule *cellSchedule `json:"schedule,omitempty"`
 	// Sellable is set on the open meal being served now and the next one,
 	// the meals the ledger offers to sell.
-	Sellable bool `json:"sellable,omitempty"`
+	Sellable      bool   `json:"sellable,omitempty"`
+	ScheduleIssue string `json:"schedule_issue,omitempty"`
+	ScheduleState string `json:"schedule_state,omitempty"`
 }
 
 // cellTask is a running sell task: its price range in rupees and who has
@@ -139,6 +142,10 @@ type aheadCell struct {
 // cellSchedule is a sale waiting for its meal: it starts a sell task at
 // At (unix seconds) with this price range in rupees.
 type cellSchedule struct {
+	Revision  int64   `json:"revision"`
+	State     string  `json:"state"`
+	Detail    string  `json:"detail,omitempty"`
+	RetryAt   int64   `json:"retry_at,omitempty"`
 	ID        int64   `json:"id"`
 	At        int64   `json:"at"`
 	Min       float64 `json:"min"`
@@ -357,6 +364,7 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	var ds []store.DeliveryRecord
 	running := map[string]*cellTask{}
 	waiting := map[string]*cellSchedule{}
+	issues := map[string]store.SellSchedule{}
 	// ahead is the next meal when it is tomorrow's, after today's last one.
 	var ahead *meals.Slot
 	sellable := map[string]bool{}
@@ -390,8 +398,11 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 			return out, err
 		}
 		for _, sc := range scs {
-			if sc.State == store.ScheduleWaiting {
-				waiting[sc.Date+"|"+sc.Meal] = &cellSchedule{ID: sc.ID, At: sc.StartsAt.Unix(), Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
+			if _, ok := issues[sc.Date+"|"+sc.Meal]; !ok {
+				issues[sc.Date+"|"+sc.Meal] = sc
+			}
+			if sc.State == store.ScheduleWaiting || sc.State == store.ScheduleStarting {
+				waiting[sc.Date+"|"+sc.Meal] = &cellSchedule{ID: sc.ID, Revision: sc.Revision, State: sc.State, Detail: sc.Detail, RetryAt: unix(sc.RetryAt), At: sc.StartsAt.Unix(), Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
 			}
 		}
 		if _, err := srv.SellControl(); err != nil {
@@ -463,10 +474,10 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	}
 
 	regs := map[string][]portal.Registration{}
-	// After today's last meal the read runs into tomorrow, for ahead.
+	// Owners can plan registered meals over the next four weeks.
 	to := ymd(today)
-	if ahead != nil {
-		to = ahead.Date
+	if out.Owner {
+		to = ymd(today.AddDate(0, 0, 27))
 	}
 	rows, err := cache.get(ctx, u.ID, ymd(from), to)
 	if err != nil {
@@ -482,6 +493,10 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	cellFor := func(date string, w meals.Slot) cell {
 		key := date + "|" + w.Meal
 		c := cell{Meal: w.Meal, Start: w.Start.Unix(), End: w.End.Unix(), State: "none"}
+		if issue, ok := issues[key]; ok && (issue.State == store.ScheduleFailed || issue.State == store.ScheduleCancelled) {
+			c.ScheduleIssue = issue.Detail
+			c.ScheduleState = issue.State
+		}
 		rs := regs[key]
 		if len(rs) > 0 {
 			c.Mess, c.Diet = rs[0].MessDiet()
@@ -547,6 +562,17 @@ func buildSales(ctx context.Context, cfg *config.Config, srv *mcpserver.Server, 
 	if ahead != nil {
 		if c := cellFor(ahead.Date, *ahead); c.State != "none" {
 			out.Ahead = &aheadCell{Date: ahead.Date, Cell: c}
+		}
+	}
+	if out.Owner {
+		for day := today; !day.After(today.AddDate(0, 0, 27)); day = day.AddDate(0, 0, 1) {
+			sd := salesDay{Date: ymd(day)}
+			for _, w := range sched.Windows(day) {
+				c := cellFor(sd.Date, w)
+				c.Sellable = c.State == "open"
+				sd.Cells = append(sd.Cells, c)
+			}
+			out.Upcoming = append(out.Upcoming, sd)
 		}
 	}
 

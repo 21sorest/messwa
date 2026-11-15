@@ -81,10 +81,11 @@ func TestSales(t *testing.T) {
 		if userID != admin.user.ID {
 			return nil, errors.New("portal read with someone else's key")
 		}
-		if from != "2026-10-07" || to != "2026-11-03" {
-			t.Errorf("read %s..%s, want the four weeks to today", from, to)
+		if from != "2026-10-07" || to != "2026-11-30" {
+			t.Errorf("read %s..%s, want history and four upcoming weeks", from, to)
 		}
 		return []portal.Registration{
+			{Date: "2026-11-30", Meal: "lunch", Mess: "palash", Category: "registered"},
 			{Date: "2026-11-02", Meal: "breakfast", Mess: "palash", Category: "registered", AvailedAt: str("2026-11-02T08:00:00Z")},
 			{Date: "2026-11-02", Meal: "lunch", Mess: "kadamba-nonveg", Category: "registered"},
 			{Date: "2026-11-02", Meal: "dinner", Mess: "palash", Category: "registered"},
@@ -125,6 +126,18 @@ func TestSales(t *testing.T) {
 		return s
 	}
 	s := get()
+	if len(s.Upcoming) != 28 || s.Upcoming[0].Date != s.Today || s.Upcoming[27].Date != "2026-11-30" {
+		t.Fatalf("upcoming window: %+v", s.Upcoming)
+	}
+	var futureLunch cell
+	for _, c := range s.Upcoming[27].Cells {
+		if c.Meal == "lunch" {
+			futureLunch = c
+		}
+	}
+	if futureLunch.State != "open" || !futureLunch.Sellable || futureLunch.Mess != "palash" {
+		t.Errorf("future registered lunch: %+v", futureLunch)
+	}
 	cellAt := func(s salesState, date, meal string) cell {
 		for _, d := range s.Days {
 			for _, c := range d.Cells {
@@ -331,6 +344,43 @@ func TestPhone(t *testing.T) {
 	}
 }
 
+func TestPlannerShowsRecentFailureOfAnOlderSchedule(t *testing.T) {
+	ctx := t.Context()
+	cfg := config.Default()
+	st := newTestStore(t)
+	ms := mcpserver.New(cfg, st, nil)
+	now := time.Date(2026, 11, 16, 7, 0, 0, 0, cfg.Location())
+	ms.SetClock(func() time.Time { return now })
+	oldRegs, oldBill := readRegistrations, readBill
+	defer func() { readRegistrations = oldRegs; readBill = oldBill }()
+	readRegistrations = func(context.Context, *accounts.Accounts, int64, string, string) ([]portal.Registration, error) {
+		return []portal.Registration{{Date: "2026-11-16", Meal: "lunch", Mess: "palash", Category: "registered"}}, nil
+	}
+	readBill = func(context.Context, *accounts.Accounts, int64, int, int) (portal.Bill, error) {
+		return portal.Bill{}, errors.New("not configured")
+	}
+	id, err := st.CreateSellSchedule(ctx, store.SellSchedule{Date: "2026-11-16", Meal: "lunch", UserID: 7, MinPaise: 3000, MaxPaise: 6000, StartsAt: now.Add(time.Hour), EndsAt: now.Add(7 * time.Hour), CreatedAt: now.Add(-72 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.EndSellSchedule(ctx, id, store.ScheduleFailed, 0, "Retries exhausted: WhatsApp disconnected", now); err != nil || !ok {
+		t.Fatal(err)
+	}
+	out, err := buildSales(ctx, cfg, ms, newRegCache(nil), &accounts.User{ID: 7, Role: accounts.Admin, Status: accounts.Active})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range out.Upcoming[0].Cells {
+		if c.Meal == "lunch" {
+			if c.ScheduleState != store.ScheduleFailed || c.ScheduleIssue != "Retries exhausted: WhatsApp disconnected" || !c.Sellable {
+				t.Fatalf("failed meal %+v", c)
+			}
+			return
+		}
+	}
+	t.Fatal("lunch missing")
+}
+
 // After today's last meal, tomorrow's breakfast comes back as Ahead, so it
 // can be sold the night before.
 func TestSalesAhead(t *testing.T) {
@@ -379,8 +429,8 @@ func TestSalesAhead(t *testing.T) {
 	}
 
 	out := get()
-	if to != "2026-11-04" {
-		t.Errorf("read registrations to %s, want tomorrow", to)
+	if to != "2026-11-30" {
+		t.Errorf("read registrations to %s, want four weeks ahead", to)
 	}
 	if out.Ahead == nil || out.Ahead.Date != "2026-11-04" {
 		t.Fatalf("ahead %+v, want tomorrow's breakfast", out.Ahead)
@@ -405,7 +455,7 @@ func TestSalesAhead(t *testing.T) {
 
 	// During the day there's nothing ahead.
 	clock = time.Date(2026, 11, 3, 13, 0, 0, 0, loc)
-	if out := get(); out.Ahead != nil || to != "2026-11-03" {
+	if out := get(); out.Ahead != nil || to != "2026-11-30" {
 		t.Fatalf("ahead %+v and read to %s at lunchtime", out.Ahead, to)
 	}
 }

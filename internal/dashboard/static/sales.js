@@ -126,6 +126,7 @@ function render() {
   renderSaved();
   renderAhead();
   renderLedger();
+  renderPlanner();
   if (D.owner) {
     renderFriends();
     renderRegulars();
@@ -485,8 +486,8 @@ modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); }
 // sellBounds is the slider's scale: wide enough for the median ask with
 // room to haggle above it.
 function sellBounds(c) {
-  const top = Math.max(150, c.ask ? Math.ceil((c.ask * 2.5) / 50) * 50 : 0, c.task ? Math.ceil(c.task.max / 50) * 50 : 0);
-  return { lo: 10, hi: top };
+  const top = Math.max(150, c.ask ? Math.ceil((c.ask * 2.5) / 50) * 50 : 0, c.task ? Math.ceil(c.task.max / 50) * 50 : 0, c.schedule ? Math.ceil(c.schedule.max / 50) * 50 : 0);
+  return { lo: c.planner ? 1 : 10, hi: top };
 }
 
 // sellDefaults opens a new sale a little under the median ask and asks a
@@ -670,7 +671,7 @@ function priceSlider(c) {
   // Both handles move in ₹5 steps. A running task can't switch between
   // haggling and a fixed price, so a fixed one moves both handles together
   // and a haggling one keeps them a step apart.
-  const STEP = 5;
+  const STEP = c.planner ? 1 : 5;
   const snap = (v) => Math.max(b.lo, Math.min(b.hi, Math.round(v / STEP) * STEP));
   const fixed = t && t.min === t.max;
   const gap = t && !fixed ? STEP : 0;
@@ -742,12 +743,11 @@ function priceView(date, c) {
     acts.append(btn('BACK', '', () => openSell(date, c)),
       btn('SAVE PRICES', 'gold', () => { const [min, max] = slider.get(); run({ action: 'prices', id: t.id, min, max }, 'Prices updated'); }));
   } else if (c.schedule) {
-    // A schedule's prices change by scheduling it again.
+    // Edit the waiting schedule in place, keeping its saved posting time.
     acts.append(btn('BACK', '', () => openSell(date, c)),
       btn('SAVE', 'gold', () => {
         const [min, max] = slider.get();
-        // The new schedule keeps autopilot.
-        run([{ action: 'unschedule', id: c.schedule.id }, { action: 'start', date, meal: c.meal, min, max, autopilot: !!c.schedule.autopilot }],
+        run({ action: 'plan', id: c.schedule.id, revision: c.schedule.revision, at: c.schedule.at, date, meal: c.meal, min, max, autopilot: !!c.schedule.autopilot },
           (res) => startedToast(c.meal, res));
       }));
   } else if (listAt(c)) {
@@ -1290,6 +1290,7 @@ me().then((m) => {
   $('useLink').hidden = m.role !== 'admin';
 }).catch(() => {});
 $('ledIcon').append(svgEl(icon('coin')));
+$('planIcon').append(svgEl(icon('coin')));
 $('frIcon').append(svgEl(icon('coin')));
 $('frAdd').addEventListener('click', () => { if (D) openFriendForm(); });
 $('regIcon').append(svgEl(icon('paper')));
@@ -1309,6 +1310,7 @@ $('pgNext').addEventListener('click', () => { if (D) { page = Math.max(0, page -
 addEventListener('keydown', (e) => {
   if (!modal.hidden) { if (e.key === 'Escape') closeModal(); return; }
   if (!D || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.matches('input, select, textarea, [contenteditable="true"]') || e.target.closest('#planner')) return;
   if (e.key === 'ArrowLeft') $('pgPrev').click();
   if (e.key === 'ArrowRight') $('pgNext').click();
 });
