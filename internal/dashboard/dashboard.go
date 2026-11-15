@@ -11,20 +11,29 @@
 package dashboard
 
 import (
+	"bytes"
+	"cmp"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/andybalholm/brotli"
 
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
 	"messwa/internal/meals"
+	"messwa/internal/store"
 )
 
 //go:embed static
@@ -57,9 +66,72 @@ type state struct {
 	// Sales are your running sell tasks, and ones that just ended, for the
 	// "my sale" chest. Admins only, like the rest of the linked account.
 	Sales []mcpserver.SaleView `json:"sales,omitempty"`
+	// Scheduled are your sales waiting for their meal to start, so the
+	// board shows them before anything is posted.
+	Scheduled []scheduledSale `json:"scheduled,omitempty"`
 	// NoGroups is true when your selling settings pick no group to post
 	// offers in, so the board can say so before a sale goes nowhere.
 	NoGroups bool `json:"no_groups,omitempty"`
+	// Nudge is true when the board should ask you to sell your next meal
+	// ([sell] nudge).
+	Nudge bool `json:"nudge,omitempty"`
+	// Meals is every meal the board shows, in serving order. Settings can
+	// hide snacks.
+	Meals []string `json:"meals"`
+}
+
+// scheduledSale is a waiting sell schedule as the board's sale cards draw
+// it. Prices are rupees, times unix seconds. Mess is known only for a
+// friend's meal; for your own the page takes it from the sales ledger.
+type scheduledSale struct {
+	ID        int64   `json:"id"`
+	Date      string  `json:"date"`
+	Meal      string  `json:"meal"`
+	BaseMeal  string  `json:"base_meal"`
+	ForFriend bool    `json:"for_friend,omitempty"`
+	Friend    string  `json:"friend,omitempty"`
+	Mess      string  `json:"mess,omitempty"`
+	At        int64   `json:"at"`
+	Ends      int64   `json:"ends"`
+	Min       float64 `json:"min"`
+	Max       float64 `json:"max"`
+	Autopilot bool    `json:"autopilot,omitempty"`
+}
+
+func scheduledSales(ctx context.Context, srv *mcpserver.Server) ([]scheduledSale, error) {
+	scs, err := srv.SellSchedules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []scheduledSale
+	var friends []store.FriendMeal
+	read := false
+	for _, sc := range scs {
+		if sc.State != store.ScheduleWaiting {
+			continue
+		}
+		v := scheduledSale{ID: sc.ID, Date: sc.Date, Meal: sc.Meal, At: sc.StartsAt.Unix(), Ends: sc.EndsAt.Unix(),
+			Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
+		v.BaseMeal, _, _ = strings.Cut(sc.Meal, "#")
+		if store.IsFriendSlot(sc.Meal) {
+			v.ForFriend = true
+			if !read {
+				read = true
+				if friends, err = srv.FriendMeals(ctx, srv.Now().Add(-24*time.Hour).Format(time.DateOnly)); err != nil {
+					return nil, err
+				}
+			}
+			for _, f := range friends {
+				if f.Date == sc.Date && f.Slot == sc.Meal {
+					v.Friend, v.Mess = f.Friend, f.Mess
+				}
+			}
+		}
+		out = append(out, v)
+	}
+	// Soonest first.
+	slices.SortFunc(out, func(a, b scheduledSale) int { return cmp.Compare(a.At, b.At) })
+	return out, nil
 }
 
 type mine struct {
@@ -104,7 +176,7 @@ type marketSale struct {
 func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.Accounts) http.Handler {
 	mux := http.NewServeMux()
 	files, _ := fs.Sub(static, "static")
-	mux.Handle("GET /", pages(revalidate(files, http.FileServerFS(files))))
+	mux.Handle("GET /", pages(assets(files)))
 	member := func(h http.HandlerFunc) http.Handler { return requireRole(accounts.Member, h) }
 	regs := newRegCache(acc)
 	authRoutes(mux, acc, srv, regs, "http://"+cfg.MCP.Listen+"/mcp")
@@ -141,11 +213,18 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			if st.Scheduled, err = scheduledSales(r.Context(), srv); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			st.NoGroups = !picksGroups(cfg.Live())
+			st.Nudge = cfg.Live().Sell.Nudge
 		}
 		sc := srv.Schedule()
+		st.Meals = []string{}
 		for _, s := range sc.Today {
 			st.Today = append(st.Today, toSlot(&s))
+			st.Meals = append(st.Meals, s.Meal)
 		}
 		if sc.Current != nil {
 			c := toSlot(sc.Current)
@@ -263,18 +342,68 @@ func toSlot(s *meals.Slot) slot {
 	return slot{Meal: s.Meal, Date: s.Date, Start: s.Start.Unix(), End: s.End.Unix()}
 }
 
+// writeJSON sends v uncached, since most answers change by the second and
+// differ by user.
 func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Vary", "Accept-Encoding")
-	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-		json.NewEncoder(w).Encode(v)
+	sendJSON(w, r, encodeJSON(v))
+}
+
+// writeJSONRevalidate sends v with a tag the browser can send back, and
+// answers a matching tag with an empty 304. For answers that stay the same
+// across visits, like the insights facts between snapshots.
+func writeJSONRevalidate(w http.ResponseWriter, r *http.Request, v any) {
+	b := encodeJSON(v)
+	sum := sha256.Sum256(b)
+	tag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("ETag", tag)
+	w.Header().Set("Vary", "Cookie")
+	if match(r.Header.Get("If-None-Match"), tag) {
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	w.Header().Set("Content-Encoding", "gzip")
-	gz := gzip.NewWriter(w)
-	json.NewEncoder(gz).Encode(v)
-	gz.Close()
+	sendJSON(w, r, b)
+}
+
+func encodeJSON(v any) []byte {
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(v)
+	return buf.Bytes()
+}
+
+var (
+	gzipPool   = sync.Pool{New: func() any { w, _ := gzip.NewWriterLevel(nil, gzip.DefaultCompression); return w }}
+	brotliPool = sync.Pool{New: func() any { return brotli.NewWriterLevel(nil, 5) }}
+)
+
+// sendJSON writes b, compressed with brotli or gzip when the browser takes
+// it and it's big enough to be worth it.
+func sendJSON(w http.ResponseWriter, r *http.Request, b []byte) {
+	h := w.Header()
+	h.Set("Content-Type", "application/json")
+	h.Add("Vary", "Accept-Encoding")
+	enc := r.Header.Get("Accept-Encoding")
+	switch {
+	case len(b) < 1024:
+		w.Write(b)
+	case accepts(enc, "br"):
+		h.Set("Content-Encoding", "br")
+		bw := brotliPool.Get().(*brotli.Writer)
+		bw.Reset(w)
+		bw.Write(b)
+		bw.Close()
+		brotliPool.Put(bw)
+	case accepts(enc, "gzip"):
+		h.Set("Content-Encoding", "gzip")
+		gw := gzipPool.Get().(*gzip.Writer)
+		gw.Reset(w)
+		gw.Write(b)
+		gw.Close()
+		gzipPool.Put(gw)
+	default:
+		w.Write(b)
+	}
 }
 
 // headers locks the page down: no framing, no third-party scripts, and
@@ -285,6 +414,9 @@ func headers(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			h.Set("Speculation-Rules", `"/`+speculationRules+`"`)
+		}
 		next.ServeHTTP(w, r)
 	})
 }

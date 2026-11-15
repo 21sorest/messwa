@@ -19,8 +19,12 @@ type Config struct {
 	// Groups are the mess buy/sell group JIDs (xxxx@g.us) to merge.
 	Groups []string `toml:"groups"`
 
-	Meals  []Meal `toml:"meals"`
-	Messes []Mess `toml:"messes"`
+	Meals []Meal `toml:"meals"`
+	// HideSnacks drops snacks from everything one user sees: the board,
+	// the sales page, the MCP tools and sell tasks. Dinner becomes the
+	// meal after lunch.
+	HideSnacks bool   `toml:"hide_snacks"`
+	Messes     []Mess `toml:"messes"`
 	// Seasons split the year into terms and breaks for the insights page.
 	Seasons []Season `toml:"seasons"`
 	Dedupe  Dedupe   `toml:"dedupe"`
@@ -113,6 +117,13 @@ type Sales struct {
 	MonthlyFee int `toml:"monthly_fee"`
 }
 
+// HiddenMeal reports whether meal is turned off by hide_snacks. A friend's
+// slot like "snacks#f1" counts as its meal.
+func (c *Config) HiddenMeal(meal string) bool {
+	base, _, _ := strings.Cut(meal, "#")
+	return c.HideSnacks && base == "snacks"
+}
+
 // VegOnly reports whether a mess serves only veg.
 func (c *Config) VegOnly(mess string) bool {
 	for _, m := range c.Messes {
@@ -172,6 +183,8 @@ func Default() *Config {
 			// Someone who posted that they want this meal is the likeliest
 			// buyer there is.
 			MessageBuyPosts: true,
+			Nudge:           true,
+			ListAt:          duration{-15 * time.Minute},
 			Repost:          true,
 			RepostMessages:  10,
 			RepostListings:  3,
@@ -219,6 +232,9 @@ func (c *Config) validateSell() error {
 	}
 	if s.PostGap.Duration < MinPostGap {
 		return fmt.Errorf("sell.post_gap must be at least %s", MinPostGap)
+	}
+	if d := s.ListAt.Duration; d < MinListAt || d > MaxListAt {
+		return fmt.Errorf("sell.list_at must be between %s and %s", MinListAt, MaxListAt)
 	}
 	if d := s.NegotiationSilence.Duration; d < MinNegotiationSilence || d > MaxNegotiationSilence {
 		return fmt.Errorf("sell.negotiation_silence must be between %s and %s", MinNegotiationSilence, MaxNegotiationSilence)

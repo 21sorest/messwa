@@ -120,6 +120,8 @@ var settings = []setting{
 		}},
 	boolSetting("sell.accept_plain_dms", func(c *Config) *bool { return &c.Sell.AcceptPlainDMs }),
 	boolSetting("sell.message_buy_posts", func(c *Config) *bool { return &c.Sell.MessageBuyPosts }),
+	boolSetting("sell.nudge", func(c *Config) *bool { return &c.Sell.Nudge }),
+	secondsSetting("sell.list_at", MinListAt, false, func(c *Config) *duration { return &c.Sell.ListAt }),
 	{key: "sell.buyers",
 		get: func(c *Config) any { b, _ := ParseBuyers(string(c.Sell.Buyers)); return b },
 		set: func(c *Config, v json.RawMessage) error {
@@ -144,6 +146,7 @@ var settings = []setting{
 	listSetting("sold.words", 0, func(c *Config) *[]string { return &c.Sold.Words }),
 	secondsSetting("dedupe.window", time.Hour, false, func(c *Config) *duration { return &c.Dedupe.Window }),
 	secondsSetting("dms.retention", time.Hour, false, func(c *Config) *duration { return &c.DMs.Retention }),
+	boolSetting("hide_snacks", func(c *Config) *bool { return &c.HideSnacks }),
 	intSetting("sales.monthly_fee", 0, func(c *Config) *int { return &c.Sales.MonthlyFee }),
 	{key: "seasons",
 		get: func(c *Config) any { return nonNil(c.Seasons) },

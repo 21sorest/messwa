@@ -41,7 +41,7 @@ const (
 	replyDebounce  = 2 * time.Second // a burst of messages gets one reply
 	sessionLimit   = config.NegotiationLimit
 	paidGrace      = 60 * time.Second // "paid" with no WhatsApp Pay payment yet
-	maxOfferFactor = 3                // an "offer" above 3x max_price is not a price
+	maxOfferFactor = 3                // an offer above 3x max_price goes to you instead of being agreed
 )
 
 // nudgeAfter is how long a buyer may stay quiet after the bot's first
@@ -220,9 +220,6 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		return step{next: next, agree: price}
 	}
 
-	if in.kind == intentOffer && in.offer > maxOfferFactor*h.max {
-		in = intent{kind: intentUnknown}
-	}
 	if in.kind != intentPaid && in.kind != intentAccept && in.wantsOtherMeal(h.meal) {
 		// "i texted for breakfast" to a lunch seller: no price changes that.
 		return step{next: st, pass: true, why: "wants another meal"}
@@ -256,9 +253,10 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 		c := in.offer
 		next.lastOffer = c
 		switch {
-		case c >= a:
-			return agree(a)
+		case c > maxOfferFactor*h.max:
+			return step{next: next, park: fmt.Sprintf("offered ₹%d, more than %dx the ₹%d max price", c, maxOfferFactor, h.max)}
 		case c >= w:
+			// Take the offer as made, including one above the ask.
 			return agree(c)
 		case st.saidLowest:
 			return step{next: next, park: fmt.Sprintf("offered ₹%d after the bot's lowest of ₹%d", c, a)}
@@ -358,6 +356,9 @@ type negotiation struct {
 	sessions map[types.JID]*session
 	resumed  []*session
 	holder   types.JID // the buyer whose payment turn is under way
+	// dropped are turn holders autopilot skipped, with why. Their turn
+	// ends through the outbid signal and lostTurn drops them for good.
+	dropped map[types.JID]string
 	// outbidC fires when someone agrees more than holder; see outbidLocked.
 	outbidC chan struct{}
 	sold    bool
@@ -801,6 +802,14 @@ func (n *negotiation) lostTurn(ctx context.Context, buyer types.JID, handedOff b
 		n.holder, n.outbidC = types.EmptyJID, nil
 	}
 	ss := n.sessions[buyer]
+	if note, ok := n.dropped[buyer]; ok {
+		delete(n.dropped, buyer)
+		if ss != nil {
+			ss.state = sessionEnded
+		}
+		n.mu.Unlock()
+		return n.dropTurn(ctx, buyer, note)
+	}
 	var agreed string
 	if ss != nil {
 		agreed = ss.agreed
@@ -982,7 +991,12 @@ func (n *negotiation) event(buyer types.JID, kind string, rupees int, text strin
 }
 
 // park stops the bot talking to a buyer and records why they need you.
+// On autopilot nobody is there to answer, so the buyer is skipped instead.
 func (n *negotiation) park(ctx context.Context, ss *session, note string) {
+	if n.t.Autopilot {
+		n.skip(ctx, ss, note)
+		return
+	}
 	n.mu.Lock()
 	holder := n.holder == ss.buyer
 	if !holder {
@@ -994,6 +1008,65 @@ func (n *negotiation) park(ctx context.Context, ss *session, note string) {
 		n.log.Error("could not park buyer", "buyer", ss.buyer, "err", err)
 	}
 	n.event(ss.buyer, store.EventParked, 0, note)
+}
+
+// skip drops a buyer an autopilot task would otherwise park for you, even
+// one offering more than the rest: the bot stops talking to them and sells
+// to the others. A buyer holding the payment turn loses it now, through the
+// outbid signal, and lostTurn tells them not to pay. A WhatsApp Pay payment
+// that matches what they were quoted still gets the meal, as for anyone
+// who left the haggle.
+func (n *negotiation) skip(ctx context.Context, ss *session, note string) {
+	n.mu.Lock()
+	holder := n.holder == ss.buyer
+	if holder {
+		if n.dropped == nil {
+			n.dropped = map[types.JID]string{}
+		}
+		n.dropped[ss.buyer] = note
+		select {
+		case n.outbidC <- struct{}{}:
+		default:
+		}
+	} else {
+		ss.state = sessionEnded
+	}
+	n.mu.Unlock()
+	n.log.Info("autopilot skipped a buyer who would need you", "buyer", ss.buyer, "why", note, "had_turn", holder)
+	if !holder {
+		if err := n.m.st.SkipSellTaskBuyer(ctx, n.t.ID, ss.buyer.String(), note); err != nil {
+			n.log.Error("could not skip buyer", "buyer", ss.buyer, "err", err)
+		}
+	}
+	n.event(ss.buyer, store.EventAutoSkipped, 0, note)
+}
+
+// dropTurn ends the turn of a holder autopilot skipped, for good. A buyer
+// already asked to pay hears not to.
+func (n *negotiation) dropTurn(ctx context.Context, buyer types.JID, note string) error {
+	prompted, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerOffered, store.BuyerSkipped, "", time.Time{})
+	if err != nil {
+		return err
+	}
+	if !prompted {
+		if _, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerAgreed, store.BuyerSkipped, "", time.Time{}); err != nil {
+			return err
+		}
+	}
+	if err := n.m.st.SkipSellTaskBuyer(ctx, n.t.ID, buyer.String(), note); err != nil {
+		n.log.Error("could not note why the buyer was skipped", "buyer", buyer, "err", err)
+	}
+	n.log.Info("autopilot ended a skipped buyer's turn", "buyer", buyer, "prompted", prompted)
+	if prompted {
+		// It goes out whatever the message limit: they must not pay now.
+		r := sayDropped()
+		if err := n.send(ctx, buyer, r); err != nil {
+			n.log.Warn("could not tell a skipped buyer not to pay", "buyer", buyer, "err", err)
+		} else {
+			n.event(buyer, store.EventBotSaid, 0, strings.Join(r, "\n"))
+		}
+	}
+	return nil
 }
 
 func (n *negotiation) send(ctx context.Context, to types.JID, r reply) error {

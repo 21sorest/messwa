@@ -168,20 +168,24 @@ function layout() {
   // the visual viewport, which widens when anything overflows; sizing the grid
   // from it then makes the overflow permanent.
   const w = document.documentElement.clientWidth || window.innerWidth;
-  let s, gap, cols;
-  if (w < 640) {
-    // Phones: a fixed column count, with slots stretched to fill the width.
-    // Budget = app padding 20 + chest padding 20 + chest border 2, then the tab
-    // column (one slot plus a double gap) beside the grid.
+  // The board's content width: the tab column (one slot plus a double gap)
+  // then the grid. Slots stretch so the two fill it edge to edge.
+  const chest = $('chest');
+  const cs = getComputedStyle(chest);
+  const inner = chest.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  let gap, cols;
+  if (w <= 640) {
+    // Phones: a fixed column count.
     gap = 5;
-    cols = w < 360 ? 4 : 5;
-    s = Math.max(44, Math.min(72, Math.floor((w - 42 - (cols + 1) * gap) / (cols + 1))));
+    cols = w < 360 ? 4 : w < 500 ? 5 : 6;
   } else {
-    s = w < 1000 ? 64 : 72;
+    // Wider screens: as many columns of about the target size as fit.
+    const target = w < 1000 ? 64 : 72;
     gap = 6;
-    const avail = Math.min(w, 1280) - 74 - s - gap * 2;
-    cols = Math.max(4, Math.min(12, Math.floor((avail + gap) / (s + gap))));
+    cols = Math.max(4, Math.min(20, Math.floor((inner - target - gap) / (target + gap))));
   }
+  // cols + 1 slots (tab column included) and cols + 1 gaps across.
+  const s = Math.max(44, Math.min(88, Math.floor((inner - (cols + 1) * gap) / (cols + 1))));
   const rows = cols <= 6 ? 7 : 5;
   L = { s, gap, cols, rows };
   const st = document.documentElement.style;
@@ -193,13 +197,22 @@ function layout() {
 
 // ---------- render ----------
 
+// boardMeals is the meals the server lists for you; settings can hide snacks.
+const boardMeals = () => (D && D.meals && D.meals.length ? D.meals : MEALS);
+
 function render() {
   if (!D) return;
+  if (S.meal !== 'all' && !boardMeals().includes(S.meal)) S.meal = 'all';
   const accent = messColor(S.tab);
   document.documentElement.style.setProperty('--accent', accent);
   renderDay();
   $('noGroups').hidden = !D.no_groups;
   renderSales();
+  // The ledger feeds the nudge and the mess of a scheduled sale's card.
+  const ledger = D.nudge || (D.scheduled || []).length > 0;
+  if (!ledger) { N = null; nudgeAt = 0; }
+  if (N || !D.nudge) renderNudge();
+  if (ledger) loadNudge();
   renderTabs();
   renderGrid();
   renderControls();
@@ -590,13 +603,13 @@ function renderControls() {
     [{ t: 'Meal filter', c: 'nm ce' }],
     0,
     opt('All meals', S.meal === 'all'),
-    ...MEALS.map((m) => {
+    ...boardMeals().map((m) => {
       const w = window_(m);
       return opt(`${cap(m)}${w ? `  ${hm(w.start)}-${hm(w.end)}` : ''}`, S.meal === m);
     }),
     0,
     [{ t: 'Click to cycle! Right click goes back.', c: 'ce' }],
-  ], S.meal === 'all' ? mealsAllIcon() : icon(S.meal)));
+  ], S.meal === 'all' ? mealsAllIcon(boardMeals()) : icon(S.meal)));
 
   const done = modeDone();
   add(ctl('check', `${done.toUpperCase()}: ${S.sold ? 'ON' : 'OFF'}`, S.sold ? 'on' : '', toggleSold, () => [
@@ -915,7 +928,7 @@ const sortPrice = () => update(() => {
 const step = (list, cur, dir) => list[(list.indexOf(cur) + dir + list.length) % list.length];
 const cycleDiet = (dir = 1) => update(() => { S.diet = step(DIETS, S.diet, dir); S.page = 0; });
 const cycleMeal = (dir = 1) => update(() => {
-  S.meal = step(['all', ...MEALS], S.meal, dir); S.page = 0;
+  S.meal = step(['all', ...boardMeals()], S.meal, dir); S.page = 0;
 });
 const toggleSold = () => update(() => { S.sold = !S.sold; S.page = 0; });
 const toggleMode = () => update(() => { S.mode = S.mode === 'sell' ? 'buy' : 'sell'; S.page = 0; });
@@ -1102,6 +1115,94 @@ function toast(msg) {
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+}
+
+// ---------- sell your next meal ----------
+
+// The nudge above the board points at your next registered meal nobody is
+// selling yet: the one being served now or the next one, the same meals
+// the sales ledger offers to sell. It reads api/sales, which asks the
+// portal, so it refreshes every few minutes rather than with the board.
+let N = null;            // last /api/sales, or null
+let nudgeAt = 0;
+const NUDGE_EVERY = 3 * 60 * 1000;
+const skipped = (() => { try { return new Set(JSON.parse(sessionStorage.getItem('nudge-skip') || '[]')); } catch { return new Set(); } })();
+
+async function loadNudge(force) {
+  if (!force && Date.now() - nudgeAt < NUDGE_EVERY) return;
+  nudgeAt = Date.now();
+  try {
+    const r = await fetch('api/sales', { cache: 'no-store' });
+    N = r.ok ? await r.json() : null;
+  } catch { N = null; }
+  renderNudge();
+  if (D && (D.scheduled || []).length) renderSales();
+}
+
+function nextSellable() {
+  if (!D.nudge || !N || !N.owner || N.sell_off) return null;
+  const n = now();
+  const out = [];
+  // Tomorrow's first meal comes as ahead once today's last one is over.
+  const days = N.ahead ? [...N.days, { date: N.ahead.date, cells: [N.ahead.cell] }] : N.days;
+  for (const d of days) for (const c of d.cells) {
+    if (c.state === 'open' && c.sellable && c.end > n && !skipped.has(`${d.date}|${c.meal}`)) out.push({ date: d.date, c });
+  }
+  out.sort((a, b) => a.c.start - b.c.start);
+  return out[0] || null;
+}
+
+// Lines for the nudge. The same meal keeps the same line across refreshes.
+function nudgeLine(c, key) {
+  const ask = c.ask ? rupees(Math.round(c.ask / 5) * 5) : '';
+  const lines = [
+    ask ? `You don't wanna waste ${ask}.` : `You don't wanna waste the money.`,
+    `Not hungry? Someone else is.`,
+    ask ? `Someone out there would pay about ${ask} for it.` : `Someone out there would pay for it.`,
+    `An uneaten ${c.meal} is money in the bin.`,
+    `The mess already has your money. Get some of it back.`,
+    `Skipping it? Get paid instead.`,
+    `Your ${c.meal} won't sell itself. Fine, we'll do it.`,
+  ];
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return lines[h % lines.length];
+}
+
+function renderNudge() {
+  const box = $('nudge');
+  const hit = nextSellable();
+  box.hidden = !hit;
+  if (!hit) { box.replaceChildren(); return; }
+  const { date, c } = hit;
+  const key = `${date}|${c.meal}`;
+  const n = now();
+  box.style.setProperty('--mess', messColor(c.mess));
+
+  const ic = el('span', 'nudge-icon');
+  ic.append(svgEl(messIcon(c.mess)));
+
+  const text = el('div', 'nudge-text');
+  text.append(el('b', 'nudge-line', nudgeLine(c, key)));
+  const what = el('span', 'nudge-what');
+  const name = el('span', 'nudge-meal', `${c.mess ? cap(c.mess) : 'Your'} ${c.meal}`);
+  what.append(name, ` ${dayWord(date)} ${hm(c.start)}-${hm(c.end)} · ${n >= c.start ? `serving now, ${dur(c.end - n)} left` : `starts in ${dur(c.start - n)}`}`);
+  text.append(what);
+
+  const go = el('a', 'nudge-go', 'SELL IT');
+  go.href = `sales.html#sell=${encodeURIComponent(key)}`;
+
+  const x = el('button', 'nudge-x', '×');
+  x.type = 'button';
+  x.setAttribute('aria-label', `Not this ${c.meal}`);
+  x.title = `Not this ${c.meal}`;
+  x.addEventListener('click', () => {
+    skipped.add(key);
+    try { sessionStorage.setItem('nudge-skip', JSON.stringify([...skipped])); } catch {}
+    renderNudge();
+  });
+
+  box.replaceChildren(ic, text, go, x);
 }
 
 // ---------- live status ----------

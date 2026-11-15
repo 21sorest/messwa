@@ -1,7 +1,7 @@
 'use strict';
 
 // The settings page. Everyone gets the YOU tab, which is saved in this
-// browser, and the OFFER, REPOST and BUYERS tabs, which set how messwa
+// browser apart from Hide snacks, and the OFFER, REPOST and BUYERS tabs, which set how messwa
 // sells from their own WhatsApp. Admins also get MARKET and CALENDAR,
 // which change messwa for everyone. Edits collect in a draft until Save
 // sends them to /api/settings. A value that matches the default isn't
@@ -243,6 +243,20 @@ paint(() => {
   $('postGap').max = String(Math.max(60, v));
   $('postGap').value = String(v);
   $('postGapV').textContent = `${v}s`;
+});
+
+// list_at is seconds from the meal's start; the slider moves in 5 minutes.
+const listWord = (s) => {
+  if (s === 0) return 'At the start';
+  const m = Math.abs(s) / 60, t = m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
+  return `${t} ${s < 0 ? 'before' : 'after'} start`;
+};
+$('listAt').addEventListener('input', (e) => set('sell.list_at', Number(e.target.value) * 60));
+paint(() => {
+  const v = draft['sell.list_at'];
+  $('listAt').value = String(Math.round(v / 60));
+  $('listAt').setAttribute('aria-valuetext', listWord(v));
+  $('listAtV').textContent = listWord(v);
 });
 
 // ---------- repost ----------
