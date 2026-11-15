@@ -9,6 +9,12 @@ Any change that alters what a page looks like (the dashboard under `internal/das
 3. Show all four images to the user in the chat before calling the work done.
 4. Add them to the PR description as a table with Before and After columns and one row each for desktop and mobile.
 
-`gh` can't upload images to a PR. Push them to the `pr-screenshots` orphan branch under `<pr-branch>/` and embed them with `https://raw.githubusercontent.com/shouryadixitisverycool/messwa/pr-screenshots/<pr-branch>/<file>.png`. Create that branch with `git switch --orphan pr-screenshots` if it doesn't exist yet. Don't commit screenshots to the PR branch itself.
+Upload them with `gh`'s `--attach` flag (gh 2.99 or later) on `gh pr create`, `gh pr edit` or `gh pr comment`. Write the table in a body file that references the local paths, such as `![Dashboard after, mobile](./after-mobile.png)`, then pass each file with `--attach`. `gh` uploads them and rewrites those references to the hosted URLs. `gh` resolves paths in a body file relative to that file's directory, so keep `body.md` next to the images. Keep both outside the repo and never commit them.
+
+```sh
+gh pr create --body-file body.md \
+  --attach ./before-desktop.png --attach ./after-desktop.png \
+  --attach ./before-mobile.png --attach ./after-mobile.png
+```
 
 The repo is public and the dashboard shows phone numbers and names. Take screenshots with test data, or blur real numbers and names before pushing.
