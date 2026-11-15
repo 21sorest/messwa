@@ -159,6 +159,15 @@ accept_payment_images = false
 # nothing is reserved for them. A buyer who writes after this, while the
 # meal is still unsold and the task active, picks up where they left off.
 negotiation_silence = "10m"
+# What the bot says to buyers. Each user usually sets this on the MESSAGES
+# tab of the settings page instead. messages maps a message ID (see
+# internal/wording/wording.go) to its variants; a variant is a list of one
+# or more messages sent back to back. {price}, {meal}, {day} and the other
+# variables are filled in, and [ ] marks a bit dropped when a variable in
+# it is empty. A message left out keeps the built-in lines. own_wording =
+# false sends the built-in lines and keeps messages for later.
+own_wording = true
+# messages = { counter = [["how about {price}"], ["{price}[ {buyer}]", "last one going"]] }
 
 # Seasons split the year for the insights page. In a term everyone is
 # registered with a mess, so the market is far busier than in a break, and the

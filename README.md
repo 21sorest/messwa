@@ -152,9 +152,9 @@ The MCP tools are `mark_sell_task_sold`, `add_sell_task_buyer`, `mute_sell_task_
 
 ### Settings page
 
-Everyone edits their own selling settings on the OFFER, REPOST and BUYERS tabs: the sell-task switch, offer groups, prices in posts, repost rules, buyer policy, handoff, image payments, unsaved chat retention and the monthly target. These settings are stored in that user's database and apply to their next actions and supported live task settings. New users start with conservative selling defaults, including image payments off. Their sell-task switch starts at `[mcp] new_user_sell_tasks`, off unless the operator sets it. File values remain the fallback for the migrated admin. There is no configured phone number or UPI address to migrate: sender identity comes from the user's device and payment prompts use WhatsApp Pay.
+Everyone edits their own selling settings on the OFFER, REPOST, BUYERS and MESSAGES tabs: the sell-task switch, offer groups, prices in posts, repost rules, buyer policy, handoff, image payments, unsaved chat retention, the monthly target and what the bot says to buyers. These settings are stored in that user's database and apply to their next actions and supported live task settings. New users start with conservative selling defaults, including image payments off. Their sell-task switch starts at `[mcp] new_user_sell_tasks`, off unless the operator sets it. File values remain the fallback for the migrated admin. There is no configured phone number or UPI address to migrate: sender identity comes from the user's device and payment prompts use WhatsApp Pay.
 
-`settings.html` has YOU, OFFER, REPOST and BUYERS tabs for everyone. The MARKET and CALENDAR tabs change messwa for everyone, so only admins get them:
+`settings.html` has YOU, OFFER, REPOST, BUYERS and MESSAGES tabs for everyone. The MARKET and CALENDAR tabs change messwa for everyone, so only admins get them:
 
 | Tab | Settings |
 | --- | --- |
@@ -162,6 +162,7 @@ Everyone edits their own selling settings on the OFFER, REPOST and BUYERS tabs: 
 | OFFER | `[mcp] sell_tasks`, `[sell] groups` or `group_count`, `post_gap`, `show_price`, `mention_extras`, `[sales] monthly_fee`, `[sell] list_at`, `nudge`, with a preview of the group post |
 | REPOST | `[sell] repost`, `repost_messages`, `repost_listings`, `max_reposts` |
 | BUYERS | `[sell] buyers`, `handoff`, `accept_plain_dms`, `message_buy_posts`, `accept_payment_images`, `[dms] retention` |
+| MESSAGES | `[sell] own_wording`, `messages`: every DM the bot sends a buyer, see [Bot wording](#bot-wording) |
 | MARKET | `[sold]` emojis, closed emojis, words and `admins_count`, `[dedupe] window` |
 | CALENDAR | meal times, `[[seasons]]`, each mess's `veg_only` |
 
@@ -947,7 +948,7 @@ A buyer who timed out and writes again while the task is active and the meal uns
 
 #### What buyers see
 
-Every DM the bot sends is in `buyer_text.go`. It writes like the sellers in the mess groups: lowercase, a bare number with no ₹, the meal named only in the group post, and a `?` to ask. Most replies have two to four variants picked at random, so a buyer who asks every meal doesn't get the same lines each time. Some go out as separate messages about a second apart, like `50` then `final offer`. The agreed price stays `ok {price}`, and the waiting message stays `someone else is paying rn, if they dont in 2 min its yours`. Payment instructions and the separate QR promise each pick their own variation; test mode sends a test QR notice instead of the promise.
+Every DM the bot sends comes from `buyer_text.go`, with the built-in lines in `internal/wording`. Out of the box it writes like the sellers in the mess groups: lowercase, a bare number with no ₹, the meal named only in the group post, and a `?` to ask. Most replies have two to four variants picked at random, so a buyer who asks every meal doesn't get the same lines each time. Some go out as separate messages about a second apart, like `50` then `final offer`. The agreed price stays `ok {price}`, and the waiting message stays `someone else is paying rn, if they dont in 2 min its yours`. Payment instructions and the separate QR promise each pick their own variation; test mode sends a test QR notice instead of the promise.
 
 | When | The bot says (one variant) |
 | --- | --- |
@@ -967,3 +968,30 @@ Every DM the bot sends is in `buyer_text.go`. It writes like the sellers in the 
 | Sold to someone else | `sold sorry` |
 
 The payment prompt names WhatsApp Pay and rules out GPay and UPI because a payment to the number never reaches the bot. It doesn't give a deadline; the two minutes still apply.
+
+#### Bot wording
+
+Each user can rewrite any of these lines on the MESSAGES tab of `settings.html`. The tab lists every message the bot sends, grouped by when it goes out. For each one you can edit the variants, add or delete them, and split a variant into up to four messages sent back to back. A preview shows it filled in with sample values. "Reset to default" goes back to the built-in lines. "Use my wording" switches between your lines and the built-in ones without losing your edits.
+
+Templates fill in variables in braces. The **?** button on the tab lists them with examples:
+
+| Variable | Example | What it is |
+| --- | --- | --- |
+| `{meal}` | `kadamba non-veg lunch` | Mess, diet and meal together |
+| `{mess}` | `kadamba` | The mess |
+| `{diet}` | `non-veg` | veg, non-veg or egg; empty when the mess has no diet |
+| `{mealtime}` | `lunch` | The meal |
+| `{day}` | `tmrw` | Which day the meal is for; empty for today's meal |
+| `{price}` | `35` | The price the bot is asking right now, in messages that quote one |
+| `{buyer}` | `Asha` | The buyer's WhatsApp name; may be empty |
+| `{extras}` | `chicken 65, lassi` | Extras registered for the meal; may be empty. Reading them takes a portal call, made only when a message uses `{extras}` |
+| `{ends}` | `2:30` | When the sale stops |
+| `{left}` | `25 min` | Time left until then |
+| `{was}` | `40` | The price before this one, in the counter, quiet drop and lowest messages |
+| `{wait}` | `2 min` | The payment window, in the "someone's paying" and outbid messages |
+
+Square brackets mark an optional bit, dropped when a variable inside it is empty: `its {price}[, for {day}]` sends `its 35` for today's meal and `its 35, for tmrw` otherwise.
+
+The server checks every save and refuses a message that leaves out a variable the bot relies on (a price message without `{price}`), uses a variable that message doesn't have, has unbalanced `[ ]` or `{ }`, or could come out empty. "Sold" stays one message, because an ended task may send only a sold line: the bot checks the text against your sold variants and the built-in ones before sending. Saved wording applies to running tasks from their next message.
+
+In `config.toml` the same thing is `[sell] messages`, a table of message IDs to lists of variants, e.g. `messages = { counter = [["how about {price}"], ["{price}", "last one going"]] }`. The IDs are in `internal/wording/wording.go`.

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -217,7 +216,7 @@ func (m *sellManager) answerLate(info types.MessageInfo) {
 			return
 		}
 		gate := &taskGate{m: m, id: t.ID}
-		if err := sendReply(ctx, gate.sendSold, to, saySold()); err != nil {
+		if err := sendReply(ctx, gate.sendSold, to, saleLines(m.cfg, t.Mess, t.Diet, t.Meal, t.Date, t.EndsAt, nil).sold()); err != nil {
 			m.log.Warn("could not tell a late buyer the meal sold", "task", t.ID, "err", err)
 			return
 		}
@@ -484,7 +483,7 @@ func (m *sellManager) Resume(ctx context.Context, enabled bool) error {
 func (m *sellManager) repostRules() repost.Rules { return repost.FromConfig(m.cfg.Live().Sell) }
 
 func (m *sellManager) newSale(date, meal string, end time.Time) *sale {
-	return &sale{log: m.log, loc: m.cfg.Location(), conn: m.conn, st: m.st, date: date, meal: meal, end: end}
+	return &sale{log: m.log, loc: m.cfg.Location(), conn: m.conn, st: m.st, date: date, meal: meal, end: end, cfg: m.cfg}
 }
 
 func (m *sellManager) launch(t store.SellTask, s *sale, ready chan struct{}) {
@@ -627,6 +626,13 @@ func (m *sellManager) runTask(ctx context.Context, t store.SellTask, s *sale, rt
 	// takes WhatsApp Pay alone.
 	s.acceptImages = settings.AcceptPaymentImages && !t.Autopilot
 	queue := newOfferQueue()
+	s.joined = queue
+	s.extras = sync.OnceValue(func() []string {
+		if ep, ok := s.portal.(extrasPortal); ok {
+			return readExtras(ctx, ep, m.log, t.Date, t.Meal, s.mess)
+		}
+		return nil
+	})
 	queue.join = func(peer, chat types.JID) bool {
 		if gate.turnsAway(ctx, peer, chat) {
 			logSavedSkip(m.log, peer, "task", t.ID)
@@ -1111,9 +1117,9 @@ func (g *taskGate) sendPaid(ctx context.Context, to types.JID, msg *waE2E.Messag
 
 // sendSold tells one of the task's buyers that the meal sold. Like
 // sendPaid it skips the active check, and only after the task sold the
-// meal; the message must be one of saySold's lines.
+// meal; the message must be a sold line (see isSold).
 func (g *taskGate) sendSold(ctx context.Context, to types.JID, msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (whatsmeow.SendResponse, error) {
-	if !slices.Contains(soldLines, msg.GetConversation()) {
+	if !isSold(g.m.cfg, msg.GetConversation()) {
 		return whatsmeow.SendResponse{}, errors.New("an ended task may only say the meal sold")
 	}
 	t, err := g.m.st.GetSellTask(ctx, g.id)

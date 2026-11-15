@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"time"
+
+	"messwa/internal/wording"
 )
 
 // Sell holds the settings for selling your own meals: the group offers that
@@ -65,6 +67,12 @@ type Sell struct {
 	// answer its last message before it stops negotiating with them. A
 	// buyer who writes later, while the meal is unsold, picks up again.
 	NegotiationSilence duration `toml:"negotiation_silence"`
+	// OwnWording sends Messages instead of the built-in lines. Turning it
+	// off keeps Messages for later.
+	OwnWording bool `toml:"own_wording"`
+	// Messages rewrites what the bot says to buyers, by slot: see
+	// internal/wording. A slot left out keeps the built-in lines.
+	Messages wording.Book `toml:"messages"`
 }
 
 // MinRepostGap is the shortest time between two copies in one group,

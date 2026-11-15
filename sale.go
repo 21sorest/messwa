@@ -95,6 +95,12 @@ type sale struct {
 
 	date, meal string
 	end        time.Time
+	// cfg is the account's config, for its wording; nil says the built-in
+	// lines. joined is everyone who replied, for their names, and extras
+	// lists the meal's extras. Both may be nil.
+	cfg        *config.Config
+	joined     *offerQueue
+	extras     func() []string
 	imageHash  string
 	mess, diet string
 
@@ -451,7 +457,7 @@ func (s *sale) takeTurn(ctx context.Context, buyer types.JID, d store.Delivery, 
 			// Likely a GPay or UPI screenshot, which the bot can't check.
 			if prompted && !nudged && !e.Info.Timestamp.Before(armedAt) {
 				nudged = true
-				go s.sayOnce(ctx, buyer, t.claimLine, lineNoScreenshots, sayNoScreenshots())
+				go s.sayOnce(ctx, buyer, t.claimLine, lineNoScreenshots, s.lines(buyer).noScreenshots())
 			}
 			return
 		}
@@ -747,13 +753,13 @@ func (s *sale) sellToQueue(ctx, notifyCtx context.Context, q *offerQueue, j sale
 				}
 				return errHandedOff
 			}
-			payUntil := time.Now().Add(2 * time.Minute).Truncate(time.Second)
+			payUntil := time.Now().Add(payTurn).Truncate(time.Second)
 			if s.end.Before(payUntil) {
 				payUntil = s.end
 			}
 			t = turn{
 				arm:      j.arm,
-				prompt:   paymentPrompt(amount, s.testImage),
+				prompt:   s.lines(buyer).payPrompt(amount, s.testImage),
 				payUntil: payUntil,
 				prompting: func(ctx context.Context) (bool, error) {
 					return j.prompting(ctx, buyer, amount, payUntil)
@@ -855,7 +861,7 @@ func (s *sale) tellSold(notifyCtx context.Context, j saleJournal, buyers []types
 			continue
 		}
 		sendCtx, stop := context.WithTimeout(notifyCtx, time.Minute)
-		notifyErr := sendReply(sendCtx, s.send, waiting, saySold())
+		notifyErr := sendReply(sendCtx, s.send, waiting, s.lines(waiting).sold())
 		stop()
 		if notifyErr != nil {
 			s.log.Warn("could not notify queued buyer that meal sold", "err", notifyErr)
@@ -874,6 +880,15 @@ const (
 // lineJournal claims once-per-buyer lines across restarts.
 type lineJournal interface {
 	claimLine(ctx context.Context, buyer types.JID, kind string) (bool, error)
+}
+
+// lines are the bot's lines for this meal, said to buyer.
+func (s *sale) lines(buyer types.JID) lines {
+	l := saleLines(s.cfg, s.mess, s.diet, s.meal, s.date, s.end, s.extras)
+	if s.joined != nil && !buyer.IsEmpty() {
+		l = l.forBuyer(s.joined.name(buyer))
+	}
+	return l
 }
 
 // sayOnce sends r to buyer unless claim says it already went out.
