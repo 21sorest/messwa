@@ -249,8 +249,6 @@ button.slot { padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-tap
 .messg { position: absolute; left: calc(var(--c) - 1px); bottom: calc(var(--c) + 3px); width: calc(var(--ci) + 1px); height: calc(var(--ci) + 1px); }
 .qty { position: absolute; right: var(--c); bottom: calc(var(--c) + 2px); font: 700 calc(var(--ci) + 1px) Pixel; color: #fff; text-shadow: 2px 2px 0 rgba(0, 0, 0, .7); }
 .ticked { position: absolute; left: 50%; top: 6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--egg); box-shadow: 0 0 6px var(--egg); }
-.bar { position: absolute; left: calc(var(--c) + 1px); right: calc(var(--c) + 1px); bottom: calc(var(--c) - 2px); height: 3px; border-radius: 2px; background: rgba(0, 0, 0, .55); overflow: hidden; }
-.bar i { display: block; height: 100%; width: 100%; transform-origin: left; }
 
 .item.sold > :not(.stamp), .item.closed > :not(.stamp) { opacity: .28; filter: grayscale(1); }
 .stamp {
