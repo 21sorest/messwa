@@ -401,11 +401,11 @@ const rupees = (v) => '₹' + (Number.isInteger(v) ? v.toLocaleString('en-IN') :
 const PRICE_STEP = 5;
 function priceRange(o) {
   const B = o.bounds, gap = o.fixed ? 0 : o.gap || 0;
+  // The range inputs start on a multiple of ₹5. A range from ₹1 with a
+  // step of 5 would only stop on 1, 6, 11 and so on.
+  const R0 = Math.floor(B.lo / PRICE_STEP) * PRICE_STEP;
   const clamp = (x) => Math.min(10000, Math.max(1, Math.round(x)));
-  // The range inputs count their steps from their min, so a min of ₹1
-  // would only stop on ₹1, ₹6, ₹11. Start them on a multiple of ₹5.
-  const rmin = Math.floor(B.lo / PRICE_STEP) * PRICE_STEP;
-  const pct = (p) => Math.min(100, Math.max(0, ((p - rmin) / (B.hi - rmin)) * 100));
+  const pct = (p) => Math.min(100, Math.max(0, ((p - R0) / (B.hi - R0)) * 100));
   let lo = clamp(o.lo), hi = o.fixed ? lo : Math.max(clamp(o.hi), lo + gap);
 
   // The −/+ buttons land on the next multiple of ₹5, so ₹17 goes to ₹20 or ₹15.
@@ -417,6 +417,7 @@ function priceRange(o) {
     const w = el('div', 'pr-box');
     const minus = el('button', '', '−'), plus = el('button', '', '+');
     const inp = el('input');
+    inp.className = 'pr-num';
     Object.assign(inp, { type: 'text', inputMode: 'numeric', autocomplete: 'off', enterKeyHint: 'done' });
     inp.setAttribute('aria-label', `${aria} in rupees`);
     for (const [btn, d, word] of [[minus, -1, 'down'], [plus, 1, 'up']]) {
@@ -456,7 +457,7 @@ function priceRange(o) {
   }
   const range = (label) => {
     const r = el('input');
-    Object.assign(r, { type: 'range', min: rmin, max: B.hi, step: PRICE_STEP });
+    Object.assign(r, { type: 'range', min: R0, max: B.hi, step: PRICE_STEP });
     r.setAttribute('aria-label', label);
     return r;
   };
