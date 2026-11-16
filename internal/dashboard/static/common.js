@@ -390,7 +390,7 @@ const rupees = (v) => '₹' + (Number.isInteger(v) ? v.toLocaleString('en-IN') :
 // whole rupee from 1 to 10000. o is
 //
 //   lo, hi     the starting floor and opening price
-//   bounds     {lo, hi}, the slider's scale (lo a multiple of 5)
+//   bounds     {lo, hi}, the slider's scale
 //   fixed      one price: a single box, and both ends move together
 //   gap        how far apart the two ends must stay (0 lets them meet)
 //   marks      [{at, cls}] ticks on the track, e.g. the median ask
@@ -402,7 +402,10 @@ const PRICE_STEP = 5;
 function priceRange(o) {
   const B = o.bounds, gap = o.fixed ? 0 : o.gap || 0;
   const clamp = (x) => Math.min(10000, Math.max(1, Math.round(x)));
-  const pct = (p) => Math.min(100, Math.max(0, ((p - B.lo) / (B.hi - B.lo)) * 100));
+  // The range inputs count their steps from their min, so a min of ₹1
+  // would only stop on ₹1, ₹6, ₹11. Start them on a multiple of ₹5.
+  const rmin = Math.floor(B.lo / PRICE_STEP) * PRICE_STEP;
+  const pct = (p) => Math.min(100, Math.max(0, ((p - rmin) / (B.hi - rmin)) * 100));
   let lo = clamp(o.lo), hi = o.fixed ? lo : Math.max(clamp(o.hi), lo + gap);
 
   // The −/+ buttons land on the next multiple of ₹5, so ₹17 goes to ₹20 or ₹15.
@@ -453,7 +456,7 @@ function priceRange(o) {
   }
   const range = (label) => {
     const r = el('input');
-    Object.assign(r, { type: 'range', min: B.lo, max: B.hi, step: PRICE_STEP });
+    Object.assign(r, { type: 'range', min: rmin, max: B.hi, step: PRICE_STEP });
     r.setAttribute('aria-label', label);
     return r;
   };

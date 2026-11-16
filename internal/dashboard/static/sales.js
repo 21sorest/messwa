@@ -9,8 +9,6 @@ let skew = 0;           // server clock minus ours, seconds
 let lastOK = 0;
 let failed = false;
 let streaming = false;
-let page = 0;           // ledger week: 0 ends today, 1 the week before, ...
-let pickedCell = '';    // "date|meal" in the ledger inspector
 let pickedBuyer = '';   // buyer key in the regulars inspector
 
 const now = () => Date.now() / 1000 + skew;
@@ -78,38 +76,20 @@ async function load() {
   tickLive();
 }
 
-// The board's "sell it" link lands here as #sell=date|meal and opens that
-// meal's sell menu once.
+// The board's "sell it" link lands here as #sell=date|meal, and the
+// attention banner's as #attention-meal=date|meal. Either shows that meal's
+// week with the meal open in the panel; a running or finished sale also
+// opens its sell sheet.
 function openFromHash() {
-  const attention = /^#attention-meal=(.+)$/.exec(location.hash);
-  if (attention) {
-    history.replaceState(null, '', location.pathname + location.search);
-    const [date, meal] = decodeURIComponent(attention[1]).split('|');
-    const age = Math.round((dayOf(D.today) - dayOf(date)) / 86400000);
-    if (age >= 0 && age < D.days.length) {
-      page = Math.floor(age / 7); renderLedger(); pickCell(date + '|' + meal);
-      $('insp').scrollIntoView({ block: 'center' });
-    } else {
-      // A meal still to come: its slot in the planner, else the tomorrow box.
-      const index = (D.upcoming || []).findIndex((d) => d.date === date);
-      if (D.owner && index >= 0) {
-        planPage = Math.floor(index / 7); planPicked = date + '|' + meal; renderPlanner();
-        $('planner').scrollIntoView({ block: 'start' });
-      } else {
-        const a = $('ahead');
-        (!a.hidden && D.ahead && D.ahead.date === date ? a : $('insp')).scrollIntoView({ block: 'center' });
-      }
-    }
-    return;
-  }
-  const m = /^#sell=(.+)$/.exec(location.hash);
+  const m = /^#(sell|attention-meal)=(.+)$/.exec(location.hash);
   if (!m) return;
   history.replaceState(null, '', location.pathname + location.search);
-  const [date, meal] = decodeURIComponent(m[1]).split('|');
-  const day = D.days.find((d) => d.date === date);
-  let c = day && day.cells.find((x) => x.meal === meal);
-  if (!c && D.ahead && D.ahead.date === date && D.ahead.cell.meal === meal) c = D.ahead.cell;
-  if (c && canSell(c)) openSell(date, c);
+  const [date, meal] = decodeURIComponent(m[2]).split('|');
+  const hit = calFind(`${date}|${meal}`);
+  if (!hit) return;
+  calGoto(date, meal);
+  const c = hit[1];
+  if (m[1] === 'sell' && !calPlannable(c) && canSell(c)) openSell(date, c);
 }
 
 function connect() {
@@ -145,9 +125,8 @@ function render() {
   for (const id of ['regSec', 'pcSec', 'earnSec']) $(id).hidden = !D.owner;
   for (const e of document.querySelectorAll('.own')) e.hidden = !D.owner;
   renderSaved();
-  renderAhead();
-  renderLedger();
-  renderPlanner();
+  renderCalendar();
+  if (typeof refreshRecurringRulesView === 'function') refreshRecurringRulesView();
   if (D.owner) {
     renderFriends();
     renderRegulars();
@@ -219,79 +198,6 @@ function savedTip() {
 }
 
 // ---------- ledger ----------
-
-const pages = () => Math.max(1, Math.ceil(D.days.length / 7));
-const weekDates = () => {
-  const end = addDays(D.today, -7 * page);
-  return Array.from({ length: 7 }, (_, i) => addDays(end, i - 6));
-};
-const dayMap = () => new Map(D.days.map((d) => [d.date, d]));
-
-function renderLedger() {
-  page = Math.min(page, pages() - 1);
-  const dates = weekDates();
-  const days = dayMap();
-  const g = $('lgrid');
-  g.replaceChildren(el('div'));
-  const cells = [];
-  for (const date of dates) {
-    const h = el('div', 'dh' + (date === D.today ? ' today' : ''), date === D.today ? 'TODAY' : `${fmt(date, { weekday: 'short' }).toUpperCase()} ${dayOf(date).getUTCDate()}`);
-    const total = sum(D.sales.filter((s) => isSold(s) && s.date === date).map((s) => s.amount));
-    h.append(days.has(date) ? el('span', total ? '' : 'none', total ? rupees(total) : '-') : el('span', 'none', ' '));
-    g.append(h);
-  }
-  // Skip a meal row when nothing in it was registered this week.
-  const cellAt = (date, meal) => { const day = days.get(date); return day && day.cells.find((x) => x.meal === meal); };
-  const shown = meals().filter((meal) => dates.some((date) => { const c = cellAt(date, meal); return c && c.state !== 'none'; }));
-  for (const meal of shown) {
-    const mh = el('div', 'mh');
-    mh.append(svgEl(icon(meal)));
-    mh.title = cap(meal);
-    g.append(mh);
-    for (const date of dates) {
-      const c = cellAt(date, meal);
-      if (!c) { g.append(el('div', 'slot out')); continue; }
-      if (c.state === 'none') { g.append(el('div', 'slot')); continue; }
-      cells.push([date, c]);
-      g.append(cellNode(date, c));
-    }
-  }
-
-  // Keep the inspected slot if it's still on this page; otherwise show the
-  // latest sale, or the latest anything.
-  const key = ([d, c]) => `${d}|${c.meal}`;
-  if (!cells.some((x) => key(x) === pickedCell)) {
-    const latest = cells.filter(([, c]) => c.sale != null).pop() || cells[cells.length - 1];
-    pickedCell = latest ? key(latest) : '';
-  }
-  ledgerCells = new Map(cells.map((x) => [key(x), x]));
-  pickCell(pickedCell);
-
-  const first = days.has(dates[0]) ? dates[0] : D.days[0].date;
-  const soldHere = cells.filter(([, c]) => c.state === 'sold' || c.state === 'sending');
-  const earned = sum(soldHere.map(([, c]) => D.sales[c.sale].amount));
-  const wasted = cells.filter(([, c]) => c.state === 'wasted');
-  const lost = sum(wasted.map(([, c]) => c.ask || 0));
-  const meta = $('ledMeta');
-  const span = `${fmtDay(first)} - ${dates[6] === D.today ? 'today' : fmtDay(dates[6])}`;
-  if (D.owner) {
-    meta.replaceChildren(`${span} · `, el('b', '', String(soldHere.length)), ' sold · ', el('span', 'gold', rupees(earned)));
-  } else {
-    $('ledName').textContent = 'Meal ledger';
-    meta.replaceChildren(span);
-  }
-  if (wasted.length) meta.append(' · ', el('span', 'red', `${wasted.length} wasted`), lost ? ` (${rupees(Math.round(lost))} at median)` : '');
-  $('pgPrev').disabled = page >= pages() - 1;
-  $('pgNext').disabled = page === 0;
-}
-
-let ledgerCells = new Map();
-function pickCell(k) {
-  pickedCell = k;
-  for (const n of $('lgrid').querySelectorAll('.cell')) n.classList.toggle('active', n.dataset.k === k);
-  const hit = ledgerCells.get(k);
-  fillLines($('insp'), hit ? cellLines(...hit) : [[{ t: 'Nothing registered or sold this week.', c: 'c8' }]]);
-}
 
 function cellNode(date, c) {
   const n = el('div', `slot item cell is-${c.state}`);
@@ -431,59 +337,11 @@ function cellLines(date, c) {
   return lines;
 }
 
-$('lgrid').addEventListener('pointerover', (e) => {
-  const n = e.target.closest('.cell');
-  if (n && n.dataset.k !== pickedCell) pickCell(n.dataset.k);
-});
-const sellTarget = (e) => {
-  const n = e.target.closest('.cell.sellable');
-  return n && ledgerCells.get(n.dataset.k);
-};
-$('lgrid').addEventListener('click', (e) => {
-  const hit = sellTarget(e);
-  if (hit) openSell(...hit);
-});
-$('lgrid').addEventListener('keydown', (e) => {
-  const hit = (e.key === 'Enter' || e.key === ' ') && sellTarget(e);
-  if (hit) { e.preventDefault(); openSell(...hit); }
-});
-
-// ---------- up next ----------
-
-// After today's last meal the ledger has nothing left to sell, so
-// tomorrow's first meal shows above it, to sell or schedule the night
-// before. It stays out of the grid and every total.
-function renderAhead() {
-  const b = $('ahead');
-  const a = D.owner && D.ahead;
-  b.hidden = !a;
-  if (!a) { b.replaceChildren(); aheadLines = null; return; }
-  const { date, cell: c } = a;
-  b.style.setProperty('--m', messColor(c.mess));
-  const ic = el('span', 'ah-ic');
-  ic.append(svgEl(icon(c.meal)));
-  const what = el('span', 'ah-what');
-  const nm = el('b', '', `${messName(c.mess)}${c.diet ? ` ${DIET_LABEL[c.diet].toLowerCase()}` : ''} ${c.meal}`);
-  what.append(el('span', 'ah-k', 'UP NEXT'), nm, el('span', 'ah-when', `${dayWord(date)}, ${hm(c.start)}-${hm(c.end)}`));
-  const act = el('span', 'ah-act');
-  if (c.schedule) act.append(el('b', 'gold', `GOES UP ${hm(c.schedule.at)}`), el('small', '', `${priceText(c.schedule)}${c.schedule.autopilot ? ' · ✈ autopilot' : ''}`));
-  else if (c.task) act.append(el('b', 'gold', 'SELLING'), el('small', '', priceText(c.task)));
-  else if (c.state === 'open') act.append(el('b', 'gold', 'SELL ›'), listAt(c) ? el('small', '', `goes up ${hm(listAt(c))}`) : '');
-  else act.append(el('b', '', c.state.toUpperCase()));
-  b.replaceChildren(ic, what, act);
-  b.disabled = !canSell(c);
-  b.onclick = () => openSell(date, c);
-  b.setAttribute('aria-label', c.schedule ? `Tomorrow's ${c.meal} goes up at ${hm(c.schedule.at)}. Manage it`
-    : c.task ? `Manage the sale of tomorrow's ${c.meal}` : `Sell tomorrow's ${c.meal}`);
-  aheadLines = () => cellLines(date, c);
-}
-let aheadLines = null;
-
 // ---------- selling from the ledger ----------
 
-// canSell: the meal being served now or the next one, while it's still
-// open, or any meal with a task running (to mark sold, reprice or stop it).
-// A sold meal opens too, to delete the sale.
+// canSell: a meal the sell sheet can open: an open one being served now or
+// next, a schedule, a running task (to mark sold, reprice or stop it), or a
+// sold meal (to delete the sale).
 const canSell = (c) => D.owner && (c.task != null || c.schedule != null || (c.state === 'open' && c.sellable) || SELL.isSold(c));
 
 const modal = $('modal');
@@ -493,7 +351,7 @@ modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); }
 
 // The sell sheet lives in sell.js; the board opens the same one.
 const SELL = sellSheet({ data: () => D, now, close: closeModal, toast, reload: load });
-// planner.js prices meals with the same slider and defaults.
+// ledger.js prices meals with the same slider and defaults.
 const { priceSlider, priceText, listAt, listWhen, sellBounds, sellDefaults } = SELL;
 const openSell = (date, c, view) => SELL.open(date, c, view);
 
@@ -971,14 +829,12 @@ me().then((m) => {
   $('useLink').hidden = m.role !== 'admin';
 }).catch(() => {});
 $('ledIcon').append(svgEl(icon('coin')));
-$('planIcon').append(svgEl(icon('coin')));
 $('frIcon').append(svgEl(icon('coin')));
 $('frAdd').addEventListener('click', () => { if (D) openFriendForm(); });
 $('regIcon').append(svgEl(icon('paper')));
 $('pcIcon').append(svgEl(icon('chart')));
 $('cardIcon').append(svgEl(icon('chart')));
 tip($('xpBar'), () => (D ? savedTip() : []));
-tip($('ahead'), () => (aheadLines ? aheadLines() : []));
 // The phone layout draws at the box's pixel width, so redraw when the box
 // resizes, not only when it crosses into or out of the narrow layout.
 new ResizeObserver(() => {
@@ -986,12 +842,10 @@ new ResizeObserver(() => {
   renderPrices();
   if (tipFor && !tipFor.isConnected) hideTip();
 }).observe($('pplot'));
-$('pgPrev').addEventListener('click', () => { if (D) { page = Math.min(pages() - 1, page + 1); renderLedger(); if (D.owner) renderEarnings(); } });
-$('pgNext').addEventListener('click', () => { if (D) { page = Math.max(0, page - 1); renderLedger(); if (D.owner) renderEarnings(); } });
 addEventListener('keydown', (e) => {
   if (!modal.hidden) { if (e.key === 'Escape') closeModal(); return; }
   if (!D || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.target.matches('input, select, textarea, [contenteditable="true"]') || e.target.closest('#planner')) return;
+  if (e.target.matches('input, select, textarea, [contenteditable="true"]') || e.target.closest('#insp')) return;
   if (e.key === 'ArrowLeft') $('pgPrev').click();
   if (e.key === 'ArrowRight') $('pgNext').click();
 });
