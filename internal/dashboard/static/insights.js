@@ -13,7 +13,8 @@ let failed = false;
 
 const PREFS = 'messwa.insights';
 // season is a season's key, '' for whichever one today is in, or 'all'.
-const F = { season: '', weeks: 4, mess: 'all', diet: 'all', metric: 'rate' };
+const FDEF = { season: '', weeks: 4, mess: 'all', diet: 'all' }; // what Reset filters goes back to
+const F = { ...FDEF, metric: 'rate' };
 try { Object.assign(F, JSON.parse(localStorage.getItem(PREFS) || '{}')); } catch { /* private mode */ }
 // A link like insights.html?mess=bakul&metric=ask opens that view.
 for (const [k, v] of new URLSearchParams(location.search)) if (k in F) F[k] = k === 'weeks' ? parseInt(v, 10) || 0 : v;
@@ -196,38 +197,183 @@ function slot(rows, mess, wd, meal, nServ) {
 
 // ---------- filters ----------
 
+// HOPPER is the filter button's icon, a pixel funnel.
+const HOPPER_ROWS = [
+  'oooooooooooooo',
+  'oLLLLLLLLLLLLo',
+  'oLddddddddddLo',
+  'oLddddddddddLo',
+  'oLLLLLLLLLLLLo',
+  'ooDLLLLLLLLDoo',
+  '..oDLLLLLLDo..',
+  '...oDLLLLDo...',
+  '....oLLLLo....',
+  '....oDDDDo....',
+  '.....oLLo.....',
+  '.....oDDo.....',
+  '......oo......',
+];
+const HOPPER = pix(HOPPER_ROWS, { o: '#3b4150', L: '#a3acbb', D: '#727b8c', d: '#262a33' });
+const HOPPER_ON = pix(HOPPER_ROWS, { o: '#5c4513', L: '#ffc53d', D: '#c98f16', d: '#2b220c' }); // a filter is on
+const DIET_NAMES = [['all', 'Any diet'], ['veg', 'Veg'], ['nonveg', 'Non-veg'], ['egg', 'Egg']];
+let fView = ''; // the group open in the filter menu, '' for the list of groups
+
+// Icons for the picks that have none of their own.
+const ANY_SEASON = pix(Array(12).fill('bbbbbbgggggg'), { b: TERM, g: '#ffc53d' });
+const ANY_DIET = pix([
+  '............',
+  '.gggg..rrrr.',
+  '.gggg..rrrr.',
+  '.gggg..rrrr.',
+  '.gggg..rrrr.',
+  '............',
+  '............',
+  '....yyyy....',
+  '....yyyy....',
+  '....yyyy....',
+  '....yyyy....',
+  '............',
+], { g: '#34c463', r: '#e2553f', y: '#f2b51b' });
+// weeksIcon draws a range as three bars of four weeks; all weeks fills them blue.
+function weeksIcon(n) {
+  const rows = [];
+  for (let i = 0; i < 3; i++) {
+    const c = !n ? 'b' : i < n / 4 ? 'g' : 'd';
+    rows.push(c.repeat(12), c.repeat(12), c.repeat(12), '............');
+  }
+  return pix(rows, { g: '#ffc53d', d: '#2b3346', b: TERM });
+}
+
+// filterGroups lists the menu's groups. Each item is [value, label, icon, tip, note].
+function filterGroups() {
+  const sel = F.season || D.current;
+  const swatch = (s) => pix(Array(12).fill('xxxxxxxxxxxx'), { x: s.term ? TERM : '#ffc53d' });
+  return [
+    {
+      key: 'season', name: 'Season', on: (v) => v === sel,
+      items: [...shownSeasons().map((s) => [s.key, `${s.name.replace(/ term$/i, '')} '${seasonYear(s).slice(2)}`, swatch(s), seasonTip(s), `${fmtShort(s.from)} to ${fmtShort(s.to)}`]),
+        ['all', 'All seasons', ANY_SEASON, () => [[{ t: 'All seasons', c: 'nm' }], [{ t: 'Terms and breaks together. Weekday patterns blend two different markets.', c: 'c7' }]], 'Terms and breaks together']],
+      set: (v) => { F.season = v === D.current ? '' : v; pick = null; load(); },
+    },
+    { key: 'range', name: 'Range', field: 'weeks', on: (v) => F.weeks === v, items: RANGES.map(([v]) => [v, v ? `${v} weeks` : 'All weeks', weeksIcon(v)]), set: () => load() },
+    {
+      key: 'mess', name: 'Mess', field: 'mess', on: (v) => F.mess === v,
+      items: [['all', 'All messes', icon('all')], ...D.messes.map((m) => [m.name, cap(m.name), messIcon(m.name)])],
+      set: (v) => { if (pick && v !== 'all' && pick.mess !== v) pick = null; render(); },
+    },
+    { key: 'diet', name: 'Diet', field: 'diet', on: (v) => F.diet === v, items: DIET_NAMES.map(([v, t]) => [v, t, v === 'all' ? ANY_DIET : dietMark(v)]), set: () => render() },
+  ];
+}
+const current = (g) => g.items.find(([v]) => g.on(v)) || [];
+const picked = (g) => current(g)[1] || '';
+const changed = (g) => (g.field ? F[g.field] !== FDEF[g.field] : F.season !== FDEF.season);
+const filtered = () => Object.keys(FDEF).some((k) => F[k] !== FDEF[k]);
+
 function renderFilters() {
   const group = (box, items, on, set) => {
     box.replaceChildren();
-    for (const [v, label, iconMarkup, tipFn] of items) {
-      const b = el('button', 'win' + (on(v) ? ' on' : ''));
+    for (const [v, label] of items) {
+      const b = el('button', 'win' + (on(v) ? ' on' : ''), label);
       b.type = 'button';
-      if (tipFn) tip(b, tipFn);
-      if (iconMarkup) {
-        const i = svgEl(iconMarkup);
-        i.setAttribute('width', 11); i.setAttribute('height', 11);
-        i.style.setProperty('display', 'inline-block');
-        i.style.setProperty('vertical-align', '-2px');
-        i.style.setProperty('margin-right', '5px');
-        b.append(i);
-      }
-      b.append(label);
       b.addEventListener('click', () => set(v));
       box.append(b);
     }
   };
-  const sel = F.season || D.current;
-  const swatch = (s) => pix(['xxx', 'xxx', 'xxx'], { x: s.term ? TERM : '#ffc53d' });
-  group($('fSeason'), [...shownSeasons().map((s) => [s.key, seasonChip(s), swatch(s), seasonTip(s)]),
-    ['all', 'ALL SEASONS', null, () => [[{ t: 'All seasons', c: 'nm' }], [{ t: 'Terms and breaks together. Weekday patterns blend two different markets.', c: 'c7' }]]]],
-  (v) => v === sel, (v) => { F.season = v === D.current ? '' : v; pick = null; savePrefs(); load(); renderFilters(); });
-  group($('fRange'), RANGES, (v) => F.weeks === v, (v) => { F.weeks = v; savePrefs(); load(); renderFilters(); });
-  group($('fMess'), [['all', 'ALL MESSES'], ...D.messes.map((m) => [m.name, m.name.toUpperCase(), messIcon(m.name)])], (v) => F.mess === v,
-    (v) => { F.mess = v; if (pick && v !== 'all' && pick.mess !== v) pick = null; savePrefs(); renderFilters(); render(); });
-  group($('fDiet'), [['all', 'ANY DIET'], ['veg', 'VEG', dietMark('veg')], ['nonveg', 'NON-VEG', dietMark('nonveg')], ['egg', 'EGG', dietMark('egg')]], (v) => F.diet === v,
-    (v) => { F.diet = v; savePrefs(); renderFilters(); render(); });
   group($('fMetric'), METRICS, (v) => F.metric === v, (v) => { F.metric = v; savePrefs(); renderFilters(); renderBoards(); });
+  const gs = filterGroups(), on = filtered();
+  const t = $('fToggle');
+  t.classList.toggle('on', on);
+  t.title = `Filters: ${gs.map(picked).join(' · ')}`;
+  t.setAttribute('aria-label', t.title);
+  $('fIcon').replaceChildren(pixIcon(on ? HOPPER_ON : HOPPER, 16));
+  if (!$('fMenu').hidden) renderMenu(gs);
 }
+
+const pixIcon = (markup, size) => {
+  const i = svgEl(markup);
+  i.setAttribute('width', size); i.setAttribute('height', size);
+  return i;
+};
+
+// renderMenu draws the filter menu: a slot per group showing its current
+// pick, or the open group's choices with a way back.
+function renderMenu(gs = filterGroups()) {
+  const m = $('fMenu');
+  m.replaceChildren();
+  const tile = (markup) => { const t = el('span', 'ftile'); if (markup) t.append(pixIcon(markup, 16)); return t; };
+  const text = (top, main, note) => {
+    const t = el('span', 'ftext');
+    if (top) t.append(el('b', '', top));
+    t.append(el('span', '', main));
+    if (note) t.append(el('small', '', note));
+    return t;
+  };
+  const row = (cls, ...kids) => {
+    const b = el('button', `fitem ${cls}`);
+    b.type = 'button';
+    b.setAttribute('role', 'menuitem');
+    b.append(...kids);
+    m.append(b);
+    return b;
+  };
+  const head = el('div', 'fhead');
+  m.append(head);
+  const g = gs.find((x) => x.key === fView);
+  const back = () => { fView = ''; renderMenu(gs); m.querySelector('.fitem').focus(); };
+  if (!g) {
+    head.append(pixIcon(HOPPER, 14), el('b', '', 'FILTERS'));
+    const r = el('button', 'freset', 'RESET');
+    r.type = 'button';
+    r.disabled = !filtered();
+    r.addEventListener('click', () => {
+      const reload = F.season !== FDEF.season || F.weeks !== FDEF.weeks;
+      Object.assign(F, FDEF);
+      pick = null;
+      savePrefs();
+      if (reload) load(); else { renderFilters(); render(); }
+    });
+    head.append(r);
+    for (const x of gs) {
+      row(changed(x) ? 'set' : '', tile(current(x)[2]), text(x.name.toUpperCase(), picked(x)), pixIcon(icon('next'), 10))
+        .addEventListener('click', () => { fView = x.key; renderMenu(gs); m.querySelector('.fitem').focus(); });
+    }
+    return;
+  }
+  const bk = el('button', 'fbackbtn');
+  bk.type = 'button';
+  bk.setAttribute('aria-label', 'Back to filters');
+  bk.append(pixIcon(icon('prev'), 10));
+  bk.addEventListener('click', back);
+  head.append(bk, el('b', '', g.name.toUpperCase()));
+  for (const [v, label, mark, tipFn, note] of g.items) {
+    const on = g.on(v);
+    const b = row(`fopt${on ? ' on' : ''}`, tile(mark), text('', label, note));
+    if (on) b.append(pixIcon(icon('check'), 12));
+    b.setAttribute('role', 'menuitemradio');
+    b.setAttribute('aria-checked', on);
+    if (tipFn) tip(b, tipFn);
+    b.addEventListener('click', () => {
+      if (g.field) F[g.field] = v;
+      g.set(v);
+      savePrefs();
+      fView = '';
+      renderFilters();
+    });
+  }
+}
+
+function showMenu(open) {
+  $('fMenu').hidden = !open;
+  $('fToggle').setAttribute('aria-expanded', open);
+  if (open) { fView = ''; renderMenu(); }
+}
+$('fIcon').append(pixIcon(HOPPER, 16)); // until the data loads
+$('fToggle').addEventListener('click', () => showMenu($('fMenu').hidden && !!D));
+document.addEventListener('pointerdown', (e) => { if (!$('fMenu').hidden && !e.target.closest('.fbar')) showMenu(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || $('fMenu').hidden) return;
+  if (fView) { fView = ''; renderMenu(); $('fMenu').querySelector('.fitem').focus(); } else { showMenu(false); $('fToggle').focus(); }
+});
 
 // ---------- render ----------
 
@@ -389,7 +535,7 @@ function renderBoards() {
   const cells = [];
   for (const m of messes) for (let wd = 0; wd < 7; wd++) for (const ml of meals) cells.push(slot(rows, m, wd, ml, sv[wd]));
   const vals = cells.map(cellValue).filter((v) => v != null);
-  const lo = F.metric === 'ask' ? Math.min(...vals) : 0, hi = F.metric === 'rate' ? 1 : Math.max(...vals, 0.001);
+  const lo = F.metric === 'ask' && vals.length ? Math.min(...vals) : 0, hi = F.metric === 'rate' ? 1 : Math.max(...vals, 0.001);
   const shade = (v) => (v == null ? 0 : (v - lo) / Math.max(hi - lo, 0.001));
   const todayWd = wdOf(D.today);
   const box = $('boards');
@@ -454,9 +600,11 @@ function renderBoards() {
     ramp.append(i);
   }
   const what = { rate: 'share of listings that sold', listed: 'listings per serving', ask: 'median asking price', wanted: 'buy requests per serving' }[F.metric];
-  key.append(el('span', '', F.metric === 'ask' ? `₹${Math.round(lo) || 0}` : '0'), ramp,
-    el('span', '', F.metric === 'rate' ? '100%' : cellLabel({}, hi)), el('span', '', `· ${what}. ×N under a day is how many of it this range covers.${F.metric === 'rate' ? ` Faded slots have fewer than ${MIN_SLOT} listings.` : ''}`));
-  box.append(key);
+  // Rate's scale is always 0-100%. The others come from the data, so with no
+  // values their ends read '-', like an empty cell.
+  const ends = F.metric === 'rate' ? ['0', '100%'] : vals.length ? [F.metric === 'ask' ? cellLabel({}, lo) : '0', cellLabel({}, hi)] : ['-', '-'];
+  key.append(el('span', '', ends[0]), ramp, el('span', '', ends[1]), el('span', 'wnote', `${cap(what)}. ×N under a day is how many of it this range covers.${F.metric === 'rate' ? ` Faded slots have fewer than ${MIN_SLOT} listings.` : ''}`));
+  keyPop(box.closest('.chest').querySelector('.chest-head')).replaceChildren(key);
   renderRanks(cells);
   renderSlot(rows, sv);
 }

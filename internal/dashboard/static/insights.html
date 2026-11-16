@@ -23,21 +23,20 @@
         <h1>Market insights</h1>
         <p class="sub">What sells, when, and who's selling</p>
       </div>
-      <nav class="navs" aria-label="Pages">
-        <a class="nav-link" href="./" title="Back to the listings"><span id="navIcon"></span>Auction house</a>
-        <a class="nav-link" href="sales.html" title="Who you sold to, and for how much"><span id="salesIcon"></span>My sales</a>
-        <a class="nav-link" href="usage.html" title="How everyone is using messwa"><span id="useIcon"></span>Usage</a>
-        <a class="nav-link" href="account.html" id="accountLink" title="Your account">Account</a>
-      </nav>
+      <div class="navrow">
+        <nav class="navs" aria-label="Pages">
+          <a class="nav-link" href="./" title="Back to the listings"><span id="navIcon"></span>Auction house</a>
+          <a class="nav-link" href="sales.html" title="Who you sold to, and for how much"><span id="salesIcon"></span>My sales</a>
+          <a class="nav-link" href="usage.html" title="How everyone is using messwa"><span id="useIcon"></span>Usage</a>
+          <a class="nav-link" href="account.html" id="accountLink" title="Your account">Account</a>
+        </nav>
+        <div class="fbar">
+          <button class="win ftoggle" id="fToggle" type="button" aria-label="Filters" title="Filters" aria-haspopup="menu" aria-expanded="false" aria-controls="fMenu"><span id="fIcon"></span></button>
+          <div class="fmenu" id="fMenu" role="menu" aria-label="Filters" hidden></div>
+        </div>
+      </div>
     </div>
   </header>
-
-  <div class="filters" id="filters" aria-label="Filters">
-    <div class="wins" id="fSeason" aria-label="Season"></div>
-    <div class="wins" id="fRange" aria-label="Range"></div>
-    <div class="wins" id="fMess" aria-label="Mess"></div>
-    <div class="wins" id="fDiet" aria-label="Diet"></div>
-  </div>
 
   <p class="notice" id="notice" hidden></p>
 
@@ -59,7 +58,7 @@
     <div class="chest-head">
       <span class="head-icon" id="snIcon"></span>
       <span class="head-name">Terms vs breaks</span>
-      <span class="head-meta">Whole seasons side by side. Follows the mess and diet filters, not the range.</span>
+      <span class="head-meta"></span>
       <span class="pleg"><span><i class="lt"></i>term</span><span><i class="lk"></i>break</span></span>
     </div>
     <div class="seasons" id="seasons"></div>
@@ -70,7 +69,7 @@
     <div class="chest-head">
       <span class="head-icon" id="wkIcon"></span>
       <span class="head-name">Weekly menu board</span>
-      <span class="head-meta" id="wkMeta">Each weekday has its own menu, so every Tuesday lunch is one slot</span>
+      <span class="head-meta"></span>
       <div class="wins" id="fMetric" aria-label="Metric"></div>
     </div>
     <div class="boards" id="boards"></div>
@@ -131,7 +130,7 @@
     </div>
     <div class="play">
       <div class="mini wide">
-        <h4 id="nrK">People listing per day</h4>
+        <h4><span id="nrK">People listing per day</span></h4>
         <div id="newret"></div>
         <div class="pleg"><span><i class="ls"></i>returning</span><span><i class="ln"></i>new</span></div>
       </div>
