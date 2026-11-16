@@ -540,3 +540,21 @@ function userLink(m) {
   a.firstChild.append(svgEl(icon('paper')));
   a.title = m.role === 'admin' ? 'Your account (admin)' : 'Your account';
 }
+
+// The shared credit keeps every dashboard page in the same pixel style.
+{
+  const credit = el('footer', 'site-credit');
+  const heart = el('span', 'site-credit-heart');
+  heart.setAttribute('role', 'img');
+  heart.setAttribute('aria-label', 'love');
+  heart.append(svgEl(pix([
+    '.rr.rr.',
+    'rrrrrrr',
+    'rhhrrrr',
+    '.rrrrr.',
+    '..rrr..',
+    '...r...',
+  ], { r: '#e2553f', h: '#ff9a87' })));
+  credit.append('Made with ', heart, ' by ', el('span', 'site-credit-names', 'Shourya and Atharva'));
+  document.body.append(credit);
+}

@@ -777,3 +777,13 @@ a.copy.linked:hover .copy-go { color: var(--gold); }
 .sell-tool.auto.on b, .sell-tool.auto.on span { color: #5aa9ff; }
 .auto-note b { color: #5aa9ff; font-weight: 600; }
 .auto-note[hidden] { display: none; }
+
+.site-credit {
+  padding: 12px 20px 28px;
+  color: var(--muted);
+  font: 10px/1.8 Pixel, monospace;
+  text-align: center;
+}
+.site-credit-heart { display: inline-block; vertical-align: -3px; margin: 0 3px; }
+.site-credit-heart svg { width: 14px; height: 12px; }
+.site-credit-names { color: var(--gold); }
