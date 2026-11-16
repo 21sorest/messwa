@@ -284,10 +284,11 @@ function sellSheet(ctx) {
   }
 
   // priceSlider is the price picker for a cell-like c (ask, task). It
-  // returns its nodes and a getter for [lowest, opening]. A running task
+  // returns its nodes and a getter for [lowest, opening], and calls
+  // onChange(lo, hi) after every change, typed, stepped or dragged. A running task
   // can't switch between haggling and a fixed price, so a fixed one shows
   // one price and a haggling one keeps its ends a rupee apart.
-  function priceSlider(c) {
+  function priceSlider(c, onChange) {
     const t = c.task;
     const b = sellBounds(c);
     const [lo, hi] = sellDefaults(c, b);
@@ -304,6 +305,7 @@ function sellSheet(ctx) {
           ? `Posts the meal at ${rupees(lo)} and sells to the first buyer who pays it.`
           : `Opens at ${rupees(hi)} and haggles down toward the median, reaching ${rupees(lo)} only as the meal nears its end. Never goes below ${rupees(lo)}.`;
         if (t) note.textContent += ' Prices already quoted or agreed stand.';
+        if (onChange) onChange(lo, hi);
       },
     });
     pr.focus.dataset.focus = '1';

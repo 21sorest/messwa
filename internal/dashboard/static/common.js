@@ -390,7 +390,7 @@ const rupees = (v) => '₹' + (Number.isInteger(v) ? v.toLocaleString('en-IN') :
 // whole rupee from 1 to 10000. o is
 //
 //   lo, hi     the starting floor and opening price
-//   bounds     {lo, hi}, the slider's scale (lo a multiple of 5)
+//   bounds     {lo, hi}, the slider's scale
 //   fixed      one price: a single box, and both ends move together
 //   gap        how far apart the two ends must stay (0 lets them meet)
 //   marks      [{at, cls}] ticks on the track, e.g. the median ask

@@ -16,7 +16,7 @@ let recurringEditing = null;
 let recurringRelative = {};
 const recurringRelDefault = { low: -15, high: 25 };
 const recurringDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Monday first, as the planner reads.
+// Monday first, as the ledger reads.
 const recurringDayOrder = [1, 2, 3, 4, 5, 6, 0];
 const recurringOffsets = [30, 20, 15, 10, 5, 0, -10, -15, -30, -45, -60, -90];
 
@@ -292,7 +292,7 @@ function renderRecurringRules() {
   const on = recurringRules.filter((r) => r.enabled).length, waiting = recurringRules.reduce((n, r) => n + (r.waiting || 0), 0);
   $('ruleMeta').replaceChildren(el('b', '', String(on)), ' active · ', el('b', '', String(waiting)), ' meals waiting');
   if (!recurringRules.length) {
-    list.append(el('div', 'empty-note', 'Selling the same meals every week? Make a rule once. It schedules matching registered meals four weeks ahead, at your prices. Untick a meal in the planner to keep it.'));
+    list.append(el('div', 'empty-note', 'Selling the same meals every week? Make a rule once. It schedules matching registered meals four weeks ahead, at your prices. Unschedule a meal in the ledger to keep it.'));
     return;
   }
   for (const r of recurringRules) {
@@ -409,7 +409,7 @@ $('ruleForm').addEventListener('submit', async (e) => {
     setRuleBusy(false);
     showRuleSheet(false);
     editRecurringRule(saved, false);
-    if (typeof toast === 'function') toast(saved.last_error ? `Rule saved. Scheduling will retry: ${saved.last_error}` : `Saved ${saved.name}. Its meals show in the planner.`);
+    if (typeof toast === 'function') toast(saved.last_error ? `Rule saved. Scheduling will retry: ${saved.last_error}` : `Saved ${saved.name}. Its meals show in the ledger.`);
     await loadRecurringRules(); await load();
   } catch (error) { $('ruleError').textContent = error.message; }
   finally { setRuleBusy(false); }
