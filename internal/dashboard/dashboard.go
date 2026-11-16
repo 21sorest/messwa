@@ -96,6 +96,10 @@ type scheduledSale struct {
 	Min       float64 `json:"min"`
 	Max       float64 `json:"max"`
 	Autopilot bool    `json:"autopilot,omitempty"`
+	// Opens is the earliest the offer may go up, when OpensAfter, the
+	// meal before, ends: Start now waits for it.
+	Opens      int64  `json:"opens,omitempty"`
+	OpensAfter string `json:"opens_after,omitempty"`
 }
 
 func scheduledSales(ctx context.Context, srv *mcpserver.Server) ([]scheduledSale, error) {
@@ -110,8 +114,9 @@ func scheduledSales(ctx context.Context, srv *mcpserver.Server) ([]scheduledSale
 		if sc.State != store.ScheduleWaiting {
 			continue
 		}
-		v := scheduledSale{ID: sc.ID, Date: sc.Date, Meal: sc.Meal, At: sc.StartsAt.Unix(), Ends: sc.EndsAt.Unix(),
+		v := scheduledSale{ID: sc.ID, Date: sc.Date, Meal: sc.Meal, At: srv.ScheduledAt(sc).Unix(), Ends: sc.EndsAt.Unix(),
 			Min: float64(sc.MinPaise) / 100, Max: float64(sc.MaxPaise) / 100, Autopilot: sc.Autopilot}
+		v.Opens, v.OpensAfter = opensAt(srv, sc.Date, sc.Meal)
 		v.BaseMeal, _, _ = strings.Cut(sc.Meal, "#")
 		if store.IsFriendSlot(sc.Meal) {
 			v.ForFriend = true
@@ -237,6 +242,8 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.
 		writeJSON(w, r, st)
 	}))
 
+	attentionRoutes(mux, srv)
+	recurringRoutes(mux, srv)
 	mux.Handle("GET /api/sales", member(salesHandler(cfg, srv, regs)))
 	mux.Handle("GET /api/insights", requireRole(accounts.Admin, insightsHandler(cfg, srv)))
 

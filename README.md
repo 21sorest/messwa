@@ -152,9 +152,9 @@ The MCP tools are `mark_sell_task_sold`, `add_sell_task_buyer`, `mute_sell_task_
 
 ### Settings page
 
-Everyone edits their own selling settings on the OFFER, REPOST and BUYERS tabs: the sell-task switch, offer groups, prices in posts, repost rules, buyer policy, handoff, image payments, unsaved chat retention and the monthly target. These settings are stored in that user's database and apply to their next actions and supported live task settings. New users start with conservative selling defaults, including image payments off. Their sell-task switch starts at `[mcp] new_user_sell_tasks`, off unless the operator sets it. File values remain the fallback for the migrated admin. There is no configured phone number or UPI address to migrate: sender identity comes from the user's device and payment prompts use WhatsApp Pay.
+Everyone edits their own selling settings on the OFFER, REPOST, BUYERS and MESSAGES tabs: the sell-task switch, offer groups, prices in posts, repost rules, buyer policy, handoff, image payments, unsaved chat retention, the monthly target and what the bot says to buyers. These settings are stored in that user's database and apply to their next actions and supported live task settings. New users start with conservative selling defaults, including image payments off. Their sell-task switch starts at `[mcp] new_user_sell_tasks`, off unless the operator sets it. File values remain the fallback for the migrated admin. There is no configured phone number or UPI address to migrate: sender identity comes from the user's device and payment prompts use WhatsApp Pay.
 
-`settings.html` has YOU, OFFER, REPOST and BUYERS tabs for everyone. The MARKET and CALENDAR tabs change messwa for everyone, so only admins get them:
+`settings.html` has YOU, OFFER, REPOST, BUYERS and MESSAGES tabs for everyone. The MARKET and CALENDAR tabs change messwa for everyone, so only admins get them:
 
 | Tab | Settings |
 | --- | --- |
@@ -162,6 +162,7 @@ Everyone edits their own selling settings on the OFFER, REPOST and BUYERS tabs: 
 | OFFER | `[mcp] sell_tasks`, `[sell] groups` or `group_count`, `post_gap`, `show_price`, `mention_extras`, `[sales] monthly_fee`, `[sell] list_at`, `nudge`, with a preview of the group post |
 | REPOST | `[sell] repost`, `repost_messages`, `repost_listings`, `max_reposts` |
 | BUYERS | `[sell] buyers`, `handoff`, `accept_plain_dms`, `message_buy_posts`, `accept_payment_images`, `[dms] retention` |
+| MESSAGES | `[sell] own_wording`, `messages`: every DM the bot sends a buyer, see [Bot wording](#bot-wording) |
 | MARKET | `[sold]` emojis, closed emojis, words and `admins_count`, `[dedupe] window` |
 | CALENDAR | meal times, `[[seasons]]`, each mess's `veg_only` |
 
@@ -169,7 +170,9 @@ Everyone edits their own selling settings on the OFFER, REPOST and BUYERS tabs: 
 
 Edits wait for SAVE. messwa stores what you save in a `settings` table in the user's private `messwa.db`, on top of `config.toml`: a value equal to the file's isn't stored, so it keeps following the file. Every command reads the saved values when it starts, and `deliver-qr` flags still override them for one run.
 
-Saves made in `run`'s own dashboard apply at once: the next sell task, `sell_task_status` and running tasks' reposts, the sold rule, dedupe, pruning, the sales page target and the insights seasons. Turning sell tasks on or off adds or removes their MCP tools for connected agents. A save made from `messwa dashboard` reaches a running `run` within 30 seconds. Meal times and `veg_only` show APPLIES ON RESTART: `run` builds its listing classifier and meal schedule once, when it starts.
+Saves made in `run`'s own dashboard apply at once: the next sell task, `sell_task_status` and running tasks' reposts, the sold rule, dedupe, pruning, the sales page target and the insights seasons. Turning sell tasks on or off adds or removes their MCP tools for connected agents. A save made from `messwa dashboard` reaches a running `run` within 30 seconds. `veg_only` shows APPLIES ON RESTART: `run` builds its listing classifier once, when it starts.
+
+**Meal times come from the mess portal.** `run` and `messwa dashboard` read `/config/meal-timings` when they start and every 3 hours after. The endpoint needs no API key. The portal lists each mess and diet separately, and a meal's window runs from the earliest start to the latest end among them: breakfast 06:30 to 10:30, lunch 11:30 to 15:30 as of 15 Nov 2026. The new windows apply at once, with no restart, to classifying posts that name no meal, sell task deadlines and the price slide toward a meal's end. The last answer is saved in `state/meal-times.json`, so a start without network still uses it. The settings page then shows the portal's times as FROM THE MESS PORTAL and locks them. Until the portal first answers, the windows in `config.toml` or the settings page apply. A portal answer with overlapping or unreadable windows is ignored.
 
 Some things stay in `config.toml`: the listen addresses, `state_dir`, `timezone`, `token_env`, `beeper_db`, the top-level `groups`, and meal keywords and mess names and aliases. If a saved value stops fitting the file, for example a `group_count` above the groups it now lists, messwa logs a warning, skips that value and starts anyway.
 
@@ -213,6 +216,38 @@ Each weekday has its own menu, so the page treats "Bakul, Tuesday lunch" as one 
 Sold means what it means on the board, the seller's tick or "sold". Deleted listings are left out. `messwa dashboard` writes any missing rows when it starts, so the page works without the live service.
 
 To preview without the live service, `messwa dashboard -at "2026-11-02 12:45"` serves the board as it stood at that time on `127.0.0.1:8768`. Sold status reflects reactions up to now, not up to that time.
+
+
+### Meal calendar
+
+In My Sales, the sales ledger covers four weeks back and four weeks ahead, one Monday-to-Sunday week at a time. Past days show what became of each meal; days to come show your registrations, ready to sell. **This week** jumps back to today's week. Meals still to come don't count toward the sales totals.
+
+Click a meal to open it in the panel beside the grid. A past meal shows what happened to it. A running or sold one has a button that opens its sell sheet. A meal still to come shows its lowest and opening prices, when the offer goes up and autopilot. Its buttons save straight away: **Schedule for 11:15** (or **Start selling now** once that time has passed), and for a scheduled meal **Save changes**, **Start now** and **Unschedule**. Nothing waits for a separate save. Equal prices mean a fixed-price sale. Autopilot is off by default and skips buyers who need your help. Hovering a meal shows its details without opening it.
+
+To set several meals at once, shift-click (or Ctrl/Cmd-click) them, click a day or a meal icon to pick that whole column or row, or turn on **Pick several** so plain clicks and taps add to the pick. Picked meals get a gold edge and a tick. The panel then lists them and sets the same prices, posting time and autopilot on all of them: **Schedule 3 · Update 2** saves new schedules and edits the waiting ones in one go, and **Unschedule** drops the waiting ones. Meals already set that way are skipped. A meal that fails stays picked with the reason; the rest are saved.
+
+Posting time moves in 5-minute steps from 30 minutes before serving starts to 90 minutes after, always before the meal ends. An offer never goes up while the meal before is still being served. Each saved schedule keeps its prices, autopilot and posting time when defaults change. Waiting schedules are edited in place, and an edit made against an older version is rejected rather than overwriting another tab's change.
+
+At posting time the runtime rechecks the registration, delivery/task records, selling settings, posting groups, connection and serving window. Connection outages, network timeouts, portal HTTP 429 and server errors get up to five retries, at 15, 30, 60, 120 and 240 seconds, while the meal is still open. Invalid registrations and other permanent failures stop with a visible reason. Retry timing survives restart. Task creation and its schedule link commit together; restart also reconciles schedules interrupted before task creation and legacy starts with a missing task link. The existing task send claims still govern external message delivery.
+
+The live `run` service is required to save and execute schedules; the standalone `dashboard` command only previews data. Calendar checks: `node --test internal/dashboard/ledger_test.cjs`; Go checks cover schedule edits, timer races, retry limits, invalid registrations, authorization, task linking and restart recovery. Recurring rules schedule meals in the same calendar, as described below.
+
+### Recurring meal rules
+
+The **Recurring rules** section sits below the sales ledger. **+ New rule** opens a sheet for the rule's name, days, meals, start and end dates, price range, posting time and autopilot; click a rule to edit it. Price is either a fixed ₹ range or **% of median**: each meal gets its own lowest and opening percentages, applied to the median ask for that meal's mess and diet on its latest same-weekday serving, rounded to ₹5. A meal with no median yet uses the fixed range. The service reprices waiting meals when the median moves; meals edited by hand, meals waiting on a retry and meals from an earlier version of the rule keep their prices. Date ranges may span up to one year. Preview shows new schedules, immediate starts, affected waiting schedules, preserved overrides and kept meals before Save is enabled. Changing the form invalidates its preview.
+
+The account runtime generates ordinary schedules for confirmed, unused regular registrations over the coming four weeks, checks again on startup and refreshes every five minutes. As more registrations become available, they join the calendar without editing the rule. The existing scheduler then owns posting, registration rechecks, bounded retries and restart recovery. The rule does not create another WhatsApp connection. Enabling a rule requires selling to be enabled and the account to be linked.
+
+Manual schedules and previously handled meals take priority. Overlapping rules do not create duplicate sales or silently restart terminally failed occurrences. An explicit manual sale can still retry a meal after its failure has been reviewed. Every generated schedule retains its source rule and revision.
+
+Unchecking a saved meal stores a durable, account-specific keep exception. It cannot be recreated by another rule or after a restart. **Allow recurring sale again** in that meal's settings explicitly clears the exception and regenerates matching schedules, potentially starting immediately. Explicitly scheduling a kept meal manually also clears its exception.
+
+Rule edits normally affect only newly generated schedules. **Also update its waiting meals** (shown when the rule has some) updates its existing waiting meals while preserving individual overrides. A per-meal edit marks an override. Turning **Active** off stops new generation; previously saved schedules continue unless the change is applied. **Delete** asks before removing the rule and offers a separate option to remove all of that rule's waiting schedules, including overrides. Removed waiting meals are kept out of every rule until restored. Active sales always continue through their existing sale manager.
+
+Registration-read and generation failures appear beside the rule and in the attention inbox, with a link back to that rule. The existing alert resolution/deduplication behavior applies. Browser notifications still require an open dashboard tab; recurring generation itself runs in the service with the browser closed.
+
+
+
 
 ## MCP tools
 
@@ -318,7 +353,7 @@ claude mcp add --transport http messwa http://127.0.0.1:8766/mcp
 
 ### Docker
 
-On this server the container is the live service. It uses host networking, so `config.toml` works unchanged: the dashboard binds the host's Tailscale address and MCP stays on loopback, where tokenless requests act as the first admin. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
+The live service runs on an AWS EC2 instance in `/opt/messwa`, reached over Tailscale. Pushing to the `prod` branch deploys it (see [Deploying to AWS](#deploying-to-aws)). The container uses host networking, so `config.toml` works unchanged: the dashboard binds the host's Tailscale address and MCP stays on loopback, where tokenless requests act as the first admin. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
 
 ```sh
 docker compose up -d --build        # rebuild and redeploy after code changes
@@ -332,6 +367,19 @@ To serve MCP beyond loopback, set `[mcp] listen` to that address. Every request 
 The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don't run both: WhatsApp allows one connection per linked device.
 
 `/healthz` reports service availability. A disconnected user does not make the shared service unhealthy; the account page reports that user's connection status.
+
+### Deploying to AWS
+
+Every push to `prod` runs `.github/workflows/deploy.yml`. It runs `go vet` and `go test`, builds the image, pushes it to ECR tagged with the commit SHA, and runs `deploy/aws-deploy.sh` on the instance through Session Manager. The script pulls the image, restarts the container and waits for `/healthz`. If the service doesn't come up healthy within 90 seconds, it puts the previous image back and the job fails.
+
+```sh
+git push origin origin/master:prod     # ship master
+git push origin <sha>:prod --force     # roll back to an older commit
+```
+
+The job logs in to AWS with GitHub's OIDC token, so the repo stores no AWS keys. The IAM role `messwa-github-deploy` only accepts tokens from this repo's `prod` branch. It reads the repo variables `AWS_DEPLOY_ROLE_ARN` and `EC2_INSTANCE_ID`.
+
+The instance reaches the campus-only mess portal (`mess.iiit.ac.in`, 10.10.32.26) through the home server's Tailscale subnet routes and an `/etc/hosts` entry. If the home server is down, portal features fail but WhatsApp and the dashboard keep running.
 
 ### Log files
 
@@ -922,10 +970,12 @@ Buyers message several sellers at once and leave within a minute, so the bot ans
 | `45 final`, `max 45`, `last 45` below its lowest | Says `50`, then `final offer` |
 | `too much`, `negotiable?`, `pls`, `people are selling at 70` | Comes down one step |
 | `ok`, `fine`, `done` (after a price), `same number?`, `gpay?`, `paying` | Agrees to its current price |
-| `nv?`, `kadamba?` | `bakul non-veg, 50` |
+| `nv?`, `kadamba?` | `bakul non-veg lunch, 50` |
 | `upi id?`, `send qr`, `cash?`, `can i pay in other ways` | `only whatsapp pay sorry`, once. Asking again hands them to you |
-| `nvm`, `no thanks`, `not interested` | Counters once with a lower price. A second pass, or a pass after its lowest or at `min_price`, stops talking to them |
+| `nvm`, `no thanks`, `not interested`, `not req`, `dont need` | Counters once with a lower price. A second pass, or a pass after its lowest or at `min_price`, stops talking to them |
 | `bought already`, `sorry bought`, `got from other`, `mil gaya` | Stops talking to them, with no counter |
+| `dont need lunch` (to a lunch seller) | Turns down the meal itself: stops talking to them, with no counter |
+| `breakfast?`, `i texted for breakfast` (to a lunch seller) | Names only other meals. The first time, the bot says `its lunch` (with the price if it hasn't quoted one). If they name another meal again, it stops talking to them, with no counter |
 
 After two counters the next one is its lowest. A buyer still below that after the bot says so is handed to you.
 
@@ -943,14 +993,14 @@ A buyer who timed out and writes again while the task is active and the meal uns
 
 #### What buyers see
 
-Every DM the bot sends is in `buyer_text.go`. It writes like the sellers in the mess groups: lowercase, a bare number with no ₹, the meal named only in the group post, and a `?` to ask. Most replies have two to four variants picked at random, so a buyer who asks every meal doesn't get the same lines each time. Some go out as separate messages about a second apart, like `50` then `final offer`. The agreed price stays `ok {price}`, and the waiting message stays `someone else is paying rn, if they dont in 2 min its yours`. Payment instructions and the separate QR promise each pick their own variation; test mode sends a test QR notice instead of the promise.
+Every DM the bot sends comes from `buyer_text.go`, with the built-in lines in `internal/wording`. Out of the box it writes like the sellers in the mess groups: lowercase, a bare number with no ₹, the meal named only in the group post, and a `?` to ask. Most replies have two to four variants picked at random, so a buyer who asks every meal doesn't get the same lines each time. Some go out as separate messages about a second apart, like `50` then `final offer`. The agreed price stays `ok {price}`, and the waiting message stays `someone else is paying rn, if they dont in 2 min its yours`. Payment instructions and the separate QR promise each pick their own variation; test mode sends a test QR notice instead of the promise.
 
 | When | The bot says (one variant) |
 | --- | --- |
 | First price | `60`. For a meal that isn't today's: `60, its for tmrw` |
 | Coming down | `how about 50`, then `45?` |
 | Its lowest | `40`, `final offer` |
-| `nv?`, `kadamba?` | `kadamba non-veg for 60` |
+| `nv?`, `kadamba?` | `kadamba non-veg lunch for 60` |
 | A message it can't read | `60, want it?` |
 | Quiet for a minute after the first price | `yes or no?` |
 | Still quiet a minute later | `can do 40 if you want it` |
@@ -963,3 +1013,37 @@ Every DM the bot sends is in `buyer_text.go`. It writes like the sellers in the 
 | Sold to someone else | `sold sorry` |
 
 The payment prompt names WhatsApp Pay and rules out GPay and UPI because a payment to the number never reaches the bot. It doesn't give a deadline; the two minutes still apply.
+
+#### Bot wording
+
+Each user can rewrite any of these lines on the MESSAGES tab of `settings.html`. The tab lists every message the bot sends, grouped by when it goes out. For each one you can edit the variants, add or delete them, and split a variant into up to four messages sent back to back. A preview shows it filled in with sample values. "Reset to default" goes back to the built-in lines. "Use my wording" switches between your lines and the built-in ones without losing your edits.
+
+Templates fill in variables in braces. The **?** button on the tab lists them with examples:
+
+| Variable | Example | What it is |
+| --- | --- | --- |
+| `{meal}` | `kadamba non-veg lunch` | Mess, diet and meal together |
+| `{mess}` | `kadamba` | The mess |
+| `{diet}` | `non-veg` | veg, non-veg or egg; empty when the mess has no diet |
+| `{mealtime}` | `lunch` | The meal |
+| `{day}` | `tmrw` | Which day the meal is for; empty for today's meal |
+| `{price}` | `35` | The price the bot is asking right now, in messages that quote one |
+| `{buyer}` | `Asha` | The buyer's WhatsApp name; may be empty |
+| `{extras}` | `chicken 65, lassi` | Extras registered for the meal; may be empty. Reading them takes a portal call, made only when a message uses `{extras}` |
+| `{ends}` | `2:30` | When the sale stops |
+| `{left}` | `25 min` | Time left until then |
+| `{was}` | `40` | The price before this one, in the counter, quiet drop and lowest messages |
+| `{wait}` | `2 min` | The payment window, in the "someone's paying" and outbid messages |
+
+Square brackets mark an optional bit, dropped when a variable inside it is empty: `its {price}[, for {day}]` sends `its 35` for today's meal and `its 35, for tmrw` otherwise.
+
+The server checks every save and refuses a message that leaves out a variable the bot relies on (a price message without `{price}`), uses a variable that message doesn't have, has unbalanced `[ ]` or `{ }`, or could come out empty. "Sold" stays one message, because an ended task may send only a sold line: the bot checks the text against your sold variants and the built-in ones before sending. Saved wording applies to running tasks from their next message.
+
+In `config.toml` the same thing is `[sell] messages`, a table of message IDs to lists of variants, e.g. `messages = { counter = [["how about {price}"], ["{price}", "last one going"]] }`. The IDs are in `internal/wording/wording.go`.
+### Attention inbox and alerts
+
+When something needs you, Auction House and My Sales show a "needs you" banner under the header. It lists QR deliveries that may not have arrived, refunds due, blocked sales, failed schedules, offers that didn't post, recurring rules that hit an error, and a WhatsApp disconnect while a sale is running or scheduled. The banner turns red when anything costs money or stops a sale, and stays hidden when the list is empty. Each row links to the sale, the meal in the ledger, or the account page, and older sales still open after their board cards are gone.
+
+Done hides an issue for you until it changes. It doesn't send a refund or retry a delivery. Resolutions are saved per user in the account database. Disconnects and failed posts have no Done button; they clear once WhatsApp reconnects or the post goes through.
+
+Alert me turns on browser alerts after the browser asks for permission. Each issue alerts once per browser, and nothing fires for issues already listed when you turned alerts on. Alerts only work while a dashboard tab is open, and the list refreshes every 15 seconds. They aren't push notifications while the app is closed.

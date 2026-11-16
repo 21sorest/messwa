@@ -264,6 +264,7 @@ type DeliveryRecord struct {
 	ArmedAt, OfferAt, PaidAt, SentAt time.Time // zero when unknown
 	// PaymentKind is empty for WhatsApp Pay, or PaidByImage.
 	PaymentKind string
+	TaskID      int64
 }
 
 // Deliveries returns every recorded meal, oldest first: armed, handed_off,
@@ -272,7 +273,7 @@ func (s *Store) Deliveries(ctx context.Context) ([]DeliveryRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT d.date,d.meal,d.peer,d.amount,d.state,d.mess,d.diet,
  CASE WHEN d.buyer_name != '' THEN d.buyer_name ELSE coalesce((SELECT p.push_name FROM dm_peers p WHERE d.peer IN (p.jid, p.alt) AND p.push_name != '' LIMIT 1), '') END,
  coalesce((SELECT CASE WHEN p.jid = d.peer THEN p.alt ELSE p.jid END FROM dm_peers p WHERE d.peer IN (p.jid, p.alt) LIMIT 1), ''),
- d.armed_at, coalesce(d.offer_at,0), coalesce(d.paid_at,0), coalesce(d.sent_at,0), d.payment_kind
+ d.armed_at, coalesce(d.offer_at,0), coalesce(d.paid_at,0), coalesce(d.sent_at,0), d.payment_kind, coalesce(d.task_id,0)
  FROM qr_deliveries d ORDER BY d.date, d.meal`)
 	if err != nil {
 		return nil, err
@@ -288,7 +289,7 @@ func (s *Store) Deliveries(ctx context.Context) ([]DeliveryRecord, error) {
 	for rows.Next() {
 		var r DeliveryRecord
 		var armed, offer, paid, sent int64
-		if err := rows.Scan(&r.Date, &r.Meal, &r.Peer, &r.Amount, &r.State, &r.Mess, &r.Diet, &r.BuyerName, &r.PeerAlt, &armed, &offer, &paid, &sent, &r.PaymentKind); err != nil {
+		if err := rows.Scan(&r.Date, &r.Meal, &r.Peer, &r.Amount, &r.State, &r.Mess, &r.Diet, &r.BuyerName, &r.PeerAlt, &armed, &offer, &paid, &sent, &r.PaymentKind, &r.TaskID); err != nil {
 			return nil, err
 		}
 		r.ArmedAt, r.OfferAt, r.PaidAt, r.SentAt = unix(armed), unix(offer), unix(paid), unix(sent)
@@ -363,6 +364,42 @@ func (s *Store) RecordManualSale(ctx context.Context, m ManualSale, force bool) 
 	}
 	if err != nil {
 		return state, err
+	}
+	return state, tx.Commit()
+}
+
+// DeleteSale removes the meal's delivery record, whatever its state, so
+// the meal counts as unsold and a new sell task can offer it. A sell task
+// that ended sold on it becomes cancelled, so it stops telling late buyers
+// the meal sold. A record an active sell task holds is left alone: stop
+// the task first. It returns the deleted record's state.
+func (s *Store) DeleteSale(ctx context.Context, date, meal string, at time.Time) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	var state string
+	var task sql.NullInt64
+	var taskActive bool
+	err = tx.QueryRowContext(ctx, `SELECT d.state, d.task_id, coalesce((SELECT t.state='active' FROM sell_tasks t WHERE t.id=d.task_id), 0)
+ FROM qr_deliveries d WHERE d.date=? AND d.meal=?`, date, meal).Scan(&state, &task, &taskActive)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", errors.New("that meal has no sale recorded")
+	case err != nil:
+		return "", err
+	case taskActive:
+		return state, fmt.Errorf("sell task %d is still selling this meal; stop it first", task.Int64)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM qr_deliveries WHERE date=? AND meal=?`, date, meal); err != nil {
+		return state, err
+	}
+	if task.Valid {
+		if _, err := tx.ExecContext(ctx, `UPDATE sell_tasks SET state='cancelled',detail=? WHERE id=? AND state='sold'`,
+			"sale deleted by you on "+at.Format("2 Jan 15:04"), task.Int64); err != nil {
+			return state, err
+		}
 	}
 	return state, tx.Commit()
 }

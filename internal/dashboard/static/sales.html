@@ -11,7 +11,12 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="sales.css">
 <script src="common.js" defer></script>
+<link rel="stylesheet" href="attention.css">
+<script src="attention.js" defer></script>
+<script src="sell.js" defer></script>
 <script src="sales.js" defer></script>
+<script src="ledger.js" defer></script>
+<script src="recurring.js" defer></script>
 </head>
 <body>
 <div class="app sales">
@@ -40,8 +45,9 @@
       <span class="head-name" id="ledName">Sales ledger</span>
       <span class="head-meta" id="ledMeta"></span>
       <span class="pager">
-        <button class="pg" id="pgPrev" aria-label="Earlier week">&lsaquo;</button>
-        <button class="pg" id="pgNext" aria-label="Later week">&rsaquo;</button>
+        <button class="sell-btn pg-today" id="pgToday" type="button" hidden>This week</button>
+        <button class="pg" id="pgPrev" type="button" aria-label="Earlier week">&lsaquo;</button>
+        <button class="pg" id="pgNext" type="button" aria-label="Later week">&rsaquo;</button>
       </span>
     </div>
     <div class="saved" id="saved">
@@ -49,10 +55,15 @@
       <div class="xp-bar" id="xpBar"><i class="earned" id="xpEarned"></i><i class="could" id="xpCould"></i></div>
       <div class="saved-row" id="savedRow"></div>
     </div>
-    <button type="button" class="ahead" id="ahead" hidden></button>
     <div class="ledger">
-      <div class="lgrid" id="lgrid" aria-label="Meals by day"></div>
-      <div class="lside"><div class="side-k"><span class="on-hover">Hover</span><span class="on-touch">Tap</span> a slot</div><div class="panel" id="insp"></div></div>
+      <div class="lgrid" id="lgrid" role="group" aria-label="Meals by day"></div>
+      <div class="lside">
+        <div class="side-top">
+          <span class="side-k" id="sideK">This week</span>
+          <button class="cal-multi" id="calMulti" type="button" aria-pressed="false" hidden title="Taps add meals to the pick instead of opening one"><i></i>Pick several</button>
+        </div>
+        <div class="panel" id="insp" aria-live="polite"></div>
+      </div>
     </div>
     <div class="slegend">
       <span class="own"><i class="sw s"></i>Sold</span>
@@ -62,7 +73,20 @@
       <span><i class="sw a"></i>Ate it</span>
       <span><i class="sw w"></i>Wasted</span>
       <span><i class="sw u"></i>Registered</span>
+      <span class="own"><i class="sw p"></i>Picked</span>
+      <span class="own"><i class="sw x"></i>Needs a look</span>
     </div>
+  </section>
+
+  <section class="chest own" id="ruleSec" hidden aria-label="Recurring rules">
+    <div class="chest-head">
+      <span class="head-icon" id="ruleIcon"></span>
+      <span class="head-name">Recurring rules</span>
+      <span class="head-meta" id="ruleMeta"></span>
+      <button class="sell-btn gold fr-add" id="ruleNew" type="button">+ New rule</button>
+    </div>
+    <div class="friends rule-list" id="ruleList"></div>
+    <p class="sell-err" id="ruleListError" role="alert"></p>
   </section>
 
   <section class="chest own" id="friendSec" hidden aria-label="Friends' meals">
@@ -107,6 +131,61 @@
 
 <div class="modal" id="modal" hidden>
   <div class="sheet sell-sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Sell this meal"></div>
+</div>
+<div class="modal" id="ruleModal" hidden>
+  <div class="sheet sell-sheet rule-sheet" role="dialog" aria-modal="true" aria-labelledby="ruleTitle">
+    <div class="sell-head">
+      <h2 id="ruleTitle">New rule</h2>
+      <div class="sub" id="ruleSub">Sells matching registered meals up to four weeks ahead.</div>
+    </div>
+    <form id="ruleForm" class="sell-form" novalidate>
+      <fieldset class="plan-fieldset rule-fields" id="ruleFields">
+        <input id="ruleID" type="hidden"><input id="ruleRevision" type="hidden">
+        <input id="ruleMin" type="hidden"><input id="ruleMax" type="hidden">
+        <input id="ruleName" class="rule-name" maxlength="80" autocomplete="off" placeholder="Name, e.g. Weekday lunches" aria-label="Rule name">
+        <fieldset class="rseg rule-days" id="ruleDays"><legend>Days</legend></fieldset>
+        <fieldset class="rseg rule-meals" id="ruleMeals"><legend>Meals</legend></fieldset>
+        <div class="rf">
+          <span class="rf-k">Dates <b id="ruleSpan"></b></span>
+          <div class="rule-dates">
+            <input type="date" id="ruleFrom" aria-label="From">
+            <span class="rd-arrow" aria-hidden="true">&rarr;</span>
+            <input type="date" id="ruleThrough" aria-label="Until">
+          </div>
+        </div>
+        <div class="rf">
+          <div class="rf-top">
+            <span class="rf-k">Price</span>
+            <fieldset class="toggle2" id="rulePricing"><legend>Pricing</legend></fieldset>
+          </div>
+          <div class="rule-rel" id="ruleRelative" hidden></div>
+          <div class="fr-price" id="rulePrice"></div>
+        </div>
+        <label class="rf rule-when"><span class="rf-k">Goes up</span><span class="rw-in"><i id="ruleClock" aria-hidden="true"></i><select id="ruleBefore"></select></span></label>
+        <div class="rule-switches">
+          <label class="rsw"><span class="rsw-t"><b>Autopilot</b><small>Skips buyers who need you</small></span><input id="ruleAuto" type="checkbox" role="switch"><i aria-hidden="true"></i></label>
+          <label class="rsw"><span class="rsw-t"><b>Active</b><small>Keeps scheduling new meals</small></span><input id="ruleEnabled" type="checkbox" role="switch"><i aria-hidden="true"></i></label>
+          <label class="rsw" id="ruleApplyRow" hidden><span class="rsw-t"><b>Update <span id="ruleWaitingCount">0</span> waiting</b><small>Meals you edited by hand keep theirs</small></span><input id="ruleApply" type="checkbox" role="switch"><i aria-hidden="true"></i></label>
+        </div>
+      </fieldset>
+      <div class="rule-preview" id="rulePreviewBox" hidden>
+        <div class="sell-sum" id="rulePreviewSum" hidden></div>
+        <p class="sell-note" id="rulePreviewText" role="status"></p>
+      </div>
+      <div class="rule-delete" id="ruleDeleteBox" hidden>
+        <p class="sell-note">Stops the rule. Meals already selling carry on, and its waiting meals stay scheduled unless you remove them. Removed meals stay out of every rule until you allow them again from the ledger.</p>
+        <label class="rsw"><span class="rsw-t"><b>Remove its waiting meals</b></span><input id="ruleRemoveWaiting" type="checkbox" role="switch"><i aria-hidden="true"></i></label>
+        <div class="sell-acts"><button type="button" class="sell-btn" id="ruleDeleteBack">BACK</button><button type="button" class="sell-btn red" id="ruleDelete">DELETE RULE</button></div>
+      </div>
+      <p class="sell-err" id="ruleError" role="alert"></p>
+      <div class="sell-acts" id="ruleActs">
+        <button type="button" class="sell-btn red rule-del" id="ruleDeleteAsk" hidden>DELETE</button>
+        <button type="button" class="sell-btn" id="ruleCancel">CANCEL</button>
+        <button type="button" class="sell-btn gold" id="rulePreview">PREVIEW</button>
+        <button type="submit" class="sell-btn gold" id="ruleSave" disabled hidden>SAVE RULE</button>
+      </div>
+    </form>
+  </div>
 </div>
 <div class="tip" id="tip" hidden></div>
 </body>

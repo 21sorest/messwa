@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
+	"messwa/internal/config"
+	"messwa/internal/meals"
 	"messwa/internal/store"
 )
 
@@ -13,6 +16,10 @@ import (
 // anything straight away: it saves a schedule, and at [sell] list_at
 // around the meal's start a timer starts the sell task as if you had
 // clicked then. The task runs till the meal ends, like any other.
+//
+// No offer goes up before the meal served before it has ended, scheduled
+// or started by hand: a dinner offer posted during snacks gets read as a
+// snacks offer.
 //
 // Everything a click would check (the registration, the groups, a sale
 // already running) is checked when you schedule, so a mistake shows then,
@@ -23,6 +30,12 @@ import (
 // served or its list_at time has passed. Otherwise it schedules one and
 // returns the schedule's id and when the task will start.
 func (m *sellManager) StartOrSchedule(ctx context.Context, userID int64, date, meal string, minRupees, maxRupees int, autopilot bool) (int64, time.Time, error) {
+	return m.PlanSchedule(ctx, userID, 0, 0, date, meal, minRupees, maxRupees, time.Time{}, autopilot)
+}
+
+// PlanSchedule creates or edits one waiting sale. An explicit posting time
+// is frozen into this schedule, independently of later defaults.
+func (m *sellManager) PlanSchedule(ctx context.Context, userID, id, revision int64, date, meal string, minRupees, maxRupees int, at time.Time, autopilot bool) (int64, time.Time, error) {
 	if minRupees <= 0 || maxRupees < minRupees || maxRupees > 10000 {
 		return 0, time.Time{}, errors.New("min_price must be at least 1 and max_price between min_price and 10000")
 	}
@@ -31,11 +44,37 @@ func (m *sellManager) StartOrSchedule(ctx context.Context, userID int64, date, m
 		return 0, time.Time{}, err
 	}
 	now := time.Now()
-	at := listTime(slot.Start, slot.End, m.cfg.Live().Sell.ListAt.Duration)
-	if !now.Before(slot.Start) || !now.Before(at) {
+	opens := listOpens(m.cfg, slot)
+	custom := !at.IsZero()
+	if !custom {
+		at = listTime(slot.Start, slot.End, m.cfg.Live().Sell.ListAt.Duration, opens)
+	}
+	if m.cfg.Live().HiddenMeal(meal) {
+		return 0, time.Time{}, errors.New("this meal is hidden in settings")
+	}
+	if custom && (at.Before(slot.Start.Add(-30*time.Minute)) || at.After(slot.Start.Add(90*time.Minute)) || !at.Before(slot.End)) {
+		return 0, time.Time{}, errors.New("posting time must be within 30 minutes before and 90 minutes after serving starts, and before the meal ends")
+	}
+	// A custom time inside the meal before waits for it to end, so the
+	// saved time is the one the offer really goes up at.
+	if at.Before(opens) {
+		at = opens
+	}
+	if id > 0 && !now.Before(at) {
+		return 0, time.Time{}, errors.New("posting time is already due; use Start now or choose a later time")
+	}
+	if id == 0 && ((!custom && !now.Before(slot.Start)) || !now.Before(at)) {
 		id, err := m.start(ctx, userID, date, meal, minRupees, maxRupees, "", autopilot)
 		return id, time.Time{}, err
 	}
+	return m.schedule(ctx, userID, id, revision, slot, date, meal, minRupees, maxRupees, autopilot, at, false)
+}
+
+// schedule saves a waiting schedule that starts the meal's task at at, or
+// edits schedule id at revision. With replace, it first ends a schedule
+// already waiting for the meal.
+func (m *sellManager) schedule(ctx context.Context, userID, id, revision int64, slot meals.Slot, date, meal string, minRupees, maxRupees int, autopilot bool, at time.Time, replace bool) (int64, time.Time, error) {
+	now := time.Now()
 	if settings, err := taskSellSettings(m.cfg); err != nil {
 		return 0, time.Time{}, err
 	} else if len(settings.Groups) == 0 {
@@ -50,9 +89,31 @@ func (m *sellManager) StartOrSchedule(ctx context.Context, userID int64, date, m
 	if err := m.newSale(date, meal, slot.End).usePortal(ctx, p, m.cfg.VegOnly); err != nil {
 		return 0, time.Time{}, err
 	}
-	sc := store.SellSchedule{Date: date, Meal: meal, MinPaise: int64(minRupees) * 100, MaxPaise: int64(maxRupees) * 100,
+	if replace {
+		if old, err := m.st.EndWaitingSellSchedule(ctx, date, meal, store.ScheduleCancelled, 0, "replaced", now); err != nil {
+			return 0, time.Time{}, err
+		} else if old != 0 {
+			m.disarm(old)
+		}
+	}
+	sc := store.SellSchedule{ID: id, Revision: revision, Date: date, Meal: meal, MinPaise: int64(minRupees) * 100, MaxPaise: int64(maxRupees) * 100,
 		UserID: userID, StartsAt: at, EndsAt: slot.End, CreatedAt: now, Autopilot: autopilot}
-	if sc.ID, err = m.st.CreateSellSchedule(ctx, sc); err != nil {
+	if id > 0 {
+		old, e := m.st.GetSellSchedule(ctx, id)
+		if e != nil {
+			return 0, time.Time{}, e
+		}
+		if old == nil || old.UserID != userID || old.Date != date || old.Meal != meal {
+			return 0, time.Time{}, errors.New("schedule not found for this meal")
+		}
+		ok, e := m.st.UpdateSellSchedule(ctx, sc)
+		if e != nil {
+			return 0, time.Time{}, e
+		}
+		if !ok {
+			return 0, time.Time{}, errors.New("schedule changed or started in another tab; refresh and review this meal")
+		}
+	} else if sc.ID, err = m.st.CreateSellSchedule(ctx, sc); err != nil {
 		return 0, time.Time{}, err
 	}
 	sc.State = store.ScheduleWaiting
@@ -64,34 +125,69 @@ func (m *sellManager) StartOrSchedule(ctx context.Context, userID int64, date, m
 
 // listTime is when a scheduled sale for a meal from start to end goes up:
 // offset from the start, or the start itself when the offset would land
-// at or after the end.
-func listTime(start, end time.Time, offset time.Duration) time.Time {
+// at or after the end, but never before opens.
+func listTime(start, end time.Time, offset time.Duration, opens time.Time) time.Time {
 	at := start.Add(offset)
 	if !at.Before(end) {
-		return start
+		at = start
+	}
+	if at.Before(opens) {
+		return opens
 	}
 	return at
 }
 
+// listOpens is the earliest an offer for slot may go up: when the meal
+// before it ends. Zero when there is none.
+func listOpens(cfg *config.Config, slot meals.Slot) time.Time {
+	if prev, ok := meals.New(cfg).Prev(slot); ok {
+		return prev.End
+	}
+	return time.Time{}
+}
+
+// tooEarly is the error for starting slot's offer before listOpens.
+func tooEarly(cfg *config.Config, slot meals.Slot, now time.Time) error {
+	prev, ok := meals.New(cfg).Prev(slot)
+	if !ok || !now.Before(prev.End) {
+		return nil
+	}
+	return fmt.Errorf("the %s offer can go up once %s ends at %s; schedule it instead", slot.Meal, prev.Meal, prev.End.In(cfg.Location()).Format("15:04"))
+}
+
 // CancelSchedule drops a waiting schedule before its task starts.
 func (m *sellManager) CancelSchedule(ctx context.Context, id int64) error {
-	ok, err := m.st.EndSellSchedule(ctx, id, store.ScheduleCancelled, 0, "cancelled", time.Now())
+	sc, err := m.st.GetSellSchedule(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return fmt.Errorf("sell schedule %d is not waiting; it may have started already", id)
+	if sc == nil {
+		return fmt.Errorf("schedule %d not found", id)
 	}
-	m.disarm(id)
-	m.log.Info("sell schedule cancelled", "schedule", id)
-	m.changed()
-	return nil
+	return m.CancelPlannedSchedule(ctx, id, sc.Revision)
 }
 
 // StartNow starts a sell task straight away, even for a meal that hasn't
-// begun, on autopilot or not.
-func (m *sellManager) StartNow(ctx context.Context, userID int64, date, meal string, minRupees, maxRupees int, autopilot bool) (int64, error) {
-	return m.start(ctx, userID, date, meal, minRupees, maxRupees, "", autopilot)
+// begun, on autopilot or not, and returns its id with a zero time. While
+// the meal before is still served it can't post yet, so it schedules the
+// task for when that meal ends instead, replacing a schedule already
+// waiting, and returns the schedule's id and that time.
+func (m *sellManager) StartNow(ctx context.Context, userID int64, date, meal string, minRupees, maxRupees int, autopilot bool) (int64, time.Time, error) {
+	if minRupees <= 0 || maxRupees < minRupees || maxRupees > 10000 {
+		return 0, time.Time{}, errors.New("min_price must be at least 1 and max_price between min_price and 10000")
+	}
+	slot, err := findSlot(m.cfg, date, meal)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	if opens := listOpens(m.cfg, slot); time.Now().Before(opens) {
+		if m.cfg.Live().HiddenMeal(meal) {
+			return 0, time.Time{}, errors.New("snacks are turned off in your settings")
+		}
+		return m.schedule(ctx, userID, 0, 0, slot, date, meal, minRupees, maxRupees, autopilot, opens, true)
+	}
+	id, err := m.start(ctx, userID, date, meal, minRupees, maxRupees, "", autopilot)
+	return id, time.Time{}, err
 }
 
 // SetScheduleAutopilot turns autopilot on or off for a schedule that
@@ -118,6 +214,16 @@ func (m *sellManager) resumeSchedules(ctx context.Context, enabled bool) error {
 		return err
 	}
 	for _, sc := range all {
+		if sc.State == store.ScheduleStarting || (sc.State == store.ScheduleStarted && sc.TaskID == 0) {
+			if err := m.st.RecoverSellSchedule(ctx, sc.ID); err != nil {
+				return err
+			}
+			fresh, err := m.st.GetSellSchedule(ctx, sc.ID)
+			if err != nil {
+				return err
+			}
+			sc = *fresh
+		}
 		if sc.State != store.ScheduleWaiting {
 			continue
 		}
@@ -141,7 +247,17 @@ func (m *sellManager) arm(sc store.SellSchedule) {
 	if old := m.timers[sc.ID]; old != nil {
 		old.Stop()
 	}
-	m.timers[sc.ID] = time.AfterFunc(time.Until(sc.StartsAt), func() { m.fire(sc.ID) })
+	// A schedule saved before the previous-meal limit may say earlier.
+	at := sc.StartsAt
+	if slot, err := findSlot(m.cfg, sc.Date, sc.Meal); err == nil {
+		if opens := listOpens(m.cfg, slot); at.Before(opens) {
+			at = opens
+		}
+	}
+	if sc.RetryAt.After(at) {
+		at = sc.RetryAt
+	}
+	m.timers[sc.ID] = time.AfterFunc(time.Until(at), func() { m.fire(sc.ID) })
 }
 
 func (m *sellManager) disarm(id int64) {
@@ -170,9 +286,11 @@ func (m *sellManager) fire(id int64) {
 		}
 		return
 	}
-	if ok, err := m.st.EndSellSchedule(ctx, id, store.ScheduleStarted, 0, "", time.Now()); err != nil || !ok {
+	if ok, err := m.st.ClaimSellSchedule(ctx, id, sc.Revision, time.Now()); err != nil || !ok {
 		if err != nil {
 			m.log.Error("claim sell schedule", "schedule", id, "err", err)
+		} else if fresh, e := m.st.GetSellSchedule(ctx, id); e == nil && fresh != nil && fresh.State == store.ScheduleWaiting {
+			m.arm(*fresh)
 		}
 		return
 	}
@@ -191,9 +309,30 @@ func (m *sellManager) fire(id int64) {
 		fail("the meal ended before the offer went up")
 		return
 	}
-	task, err := m.start(m.base, sc.UserID, sc.Date, sc.Meal, int(sc.MinPaise/100), int(sc.MaxPaise/100), sc.Handoff, sc.Autopilot)
+	if m.connected != nil && !m.connected(2*time.Second) {
+		m.retrySchedule(ctx, *sc, errors.New("WhatsApp is disconnected"))
+		return
+	}
+	attemptCtx, cancel := context.WithTimeout(m.base, 30*time.Second)
+	defer cancel()
+	task, err := m.start(attemptCtx, sc.UserID, sc.Date, sc.Meal, int(sc.MinPaise/100), int(sc.MaxPaise/100), sc.Handoff, sc.Autopilot)
 	if err != nil {
-		fail(err.Error())
+		// Starting manually can win while this attempt is checking the portal.
+		if latest, e := m.st.GetSellSchedule(ctx, id); e == nil && latest != nil && latest.State == store.ScheduleStarted && latest.TaskID != 0 {
+			return
+		}
+		if m.base.Err() != nil {
+			_ = m.st.RecoverSellSchedule(ctx, id)
+			return
+		}
+		var temporary interface{ Temporary() bool }
+		var ne net.Error
+		retry := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &temporary) && temporary.Temporary()) || (errors.As(err, &ne) && ne.Timeout())
+		if retry {
+			m.retrySchedule(ctx, *sc, err)
+		} else {
+			fail(err.Error())
+		}
 		return
 	}
 	if err := m.st.SetSellScheduleResult(ctx, id, store.ScheduleStarted, task, ""); err != nil {
@@ -206,4 +345,35 @@ func (m *sellManager) changed() {
 	if m.notify != nil {
 		m.notify()
 	}
+}
+
+// Connection and portal outages get five retries, capped by the meal's end.
+func (m *sellManager) retrySchedule(ctx context.Context, sc store.SellSchedule, cause error) {
+	delay := 15 * time.Second * time.Duration(1<<min(sc.Attempts, 4))
+	at := time.Now().Add(delay)
+	if sc.Attempts >= 5 || !at.Before(sc.EndsAt) {
+		_ = m.st.SetSellScheduleResult(ctx, sc.ID, store.ScheduleFailed, 0, "Retries exhausted: "+cause.Error())
+		return
+	}
+	if err := m.st.RetrySellSchedule(ctx, sc.ID, at, cause.Error()); err != nil {
+		m.log.Error("save schedule retry", "err", err)
+		return
+	}
+	sc.RetryAt = at
+	sc.Attempts++
+	m.arm(sc)
+	m.changed()
+}
+
+func (m *sellManager) CancelPlannedSchedule(ctx context.Context, id, revision int64) error {
+	ok, err := m.st.CancelPlannedSchedule(ctx, id, revision)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("schedule changed or started in another tab; refresh and review this meal")
+	}
+	m.disarm(id)
+	m.changed()
+	return nil
 }

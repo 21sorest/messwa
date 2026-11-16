@@ -56,12 +56,20 @@ type Client struct {
 // New returns a client that reads the portal with one person's mess API
 // key. MESS_API_URL overrides the portal address.
 func New(key string) (*Client, error) {
+	if strings.TrimSpace(key) == "" {
+		return nil, ErrNoKey
+	}
+	return newClient(key)
+}
+
+// Public returns a client without an API key, for the endpoints anyone
+// may read, such as MealTimings.
+func Public() (*Client, error) { return newClient("") }
+
+func newClient(key string) (*Client, error) {
 	base := os.Getenv("MESS_API_URL")
 	if base == "" {
 		base = "https://mess.iiit.ac.in/api"
-	}
-	if strings.TrimSpace(key) == "" {
-		return nil, ErrNoKey
 	}
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -129,22 +137,24 @@ func (c *Client) getData(ctx context.Context, endpoint string, params url.Values
 		return nil, errors.New("could not construct portal read request")
 	}
 	// The existing MCP uses the API key directly, without a Bearer prefix.
-	req.Header.Set("Authorization", c.key)
+	if c.key != "" {
+		req.Header.Set("Authorization", c.key)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, errors.New("could not reach mess portal; check network/DNS and MESS_API_URL")
+		return nil, readError("could not reach mess portal; check network/DNS and MESS_API_URL")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return nil, errors.New("mess portal rejected the mess API key")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("mess portal returned HTTP %d", resp.StatusCode)
+		return nil, HTTPError{Status: resp.StatusCode}
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
 	if err != nil {
-		return nil, errors.New("could not read portal response")
+		return nil, readError("could not read portal response")
 	}
 	if len(b) > 2*1024*1024 {
 		return nil, errors.New("portal response exceeds 2 MiB")
@@ -157,3 +167,15 @@ func (c *Client) getData(ctx context.Context, endpoint string, params url.Values
 	}
 	return envelope.Data, nil
 }
+
+// HTTPError distinguishes outages from invalid registrations and credentials.
+type HTTPError struct{ Status int }
+
+func (e HTTPError) Error() string   { return fmt.Sprintf("mess portal returned HTTP %d", e.Status) }
+func (e HTTPError) Temporary() bool { return e.Status == 429 || e.Status >= 500 }
+
+// Preserve retry classification without exposing a transport error's URL or key.
+type readError string
+
+func (e readError) Error() string   { return string(e) }
+func (e readError) Temporary() bool { return true }

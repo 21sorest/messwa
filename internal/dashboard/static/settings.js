@@ -1,7 +1,7 @@
 'use strict';
 
 // The settings page. Everyone gets the YOU tab, which is saved in this
-// browser apart from Hide snacks, and the OFFER, REPOST and BUYERS tabs, which set how messwa
+// browser apart from Hide snacks, and the OFFER, REPOST, BUYERS and MESSAGES tabs, which set how messwa
 // sells from their own WhatsApp. Admins also get MARKET and CALENDAR,
 // which change messwa for everyone. Edits collect in a draft until Save
 // sends them to /api/settings. A value that matches the default isn't
@@ -106,6 +106,8 @@ function showErr(e) {
 
 $('undo').addEventListener('click', () => { draft = clone(D.values); showErr(); repaint(); });
 $('saveBtn').addEventListener('click', async () => {
+  const bad = badSlots();
+  if (bad.length) { showErr(new Error(`Fix the messages marked in red first: ${bad.join(', ')}`)); return; }
   // Only values that differ from config.toml are saved.
   const values = {};
   for (const k of Object.keys(D.values)) if (!same(draft[k], D.defaults[k])) values[k] = draft[k];
@@ -402,11 +404,18 @@ function restartTag(id, key) {
   paint(() => { $(id).hidden = !(D.restart.includes(key) || !same(draft[key], D.values[key])); });
 }
 restartTag('mealsRestart', 'meals.times');
+// With portal times in use the bot ignores the saved ones, so the page
+// shows the portal's and doesn't let them be edited.
+const portalMeals = () => (D.portal_meals && Object.keys(D.portal_meals).length ? D.portal_meals : null);
+paint(() => {
+  $('mealsPortal').hidden = !portalMeals();
+  if (portalMeals()) $('mealsRestart').hidden = true;
+});
 restartTag('messRestart', 'messes.veg_only');
 
 let mealInputs = null;
 paint(() => {
-  const times = draft['meals.times'];
+  const times = Object.assign({}, draft['meals.times'], portalMeals() || {});
   const bars = [el('div', 'axis')];
   for (const name of D.meals) {
     const t = times[name];
@@ -462,6 +471,7 @@ paint(() => {
     }
   }
   for (const [name, [a, b]] of Object.entries(mealInputs)) {
+    a.disabled = b.disabled = !!portalMeals();
     const t = times[name] || { starts: '', ends: '' };
     if (document.activeElement !== a) a.value = t.starts;
     if (document.activeElement !== b) b.value = t.ends;
@@ -570,6 +580,273 @@ paint(() => {
 const fee = document.querySelector('[data-key="sales.monthly_fee"]');
 fee.addEventListener('input', () => { const v = Math.max(0, Math.floor(Number(fee.value) || 0)); set('sales.monthly_fee', v); });
 paint(() => { if (document.activeElement !== fee) fee.value = String(draft['sales.monthly_fee']); });
+
+// ---------- messages: what the bot says to buyers ----------
+
+// draft['sell.messages'] holds only the messages this account rewrote, as
+// variants of one or more parts. A message left out keeps the built-in
+// lines from D.wording. The checks here match internal/wording, which the
+// server runs again on save.
+
+let msgCur = null;      // the slot open in the editor
+let msgShown = 0;       // which variant the preview shows
+let msgView = null;     // what the editor last drew, so typing doesn't redraw it
+let msgLastInput = null; // where a variable chip inserts
+
+const W = () => D.wording;
+const slotOf = (id) => W().slots.find((s) => s.id === id);
+const ownMsgs = () => draft['sell.messages'] || {};
+const variantsOf = (id) => ownMsgs()[id] || slotOf(id).default;
+const varOf = (name) => W().vars.find((v) => v.name === name);
+const sample = () => Object.fromEntries(W().vars.map((v) => [v.name, v.example]));
+
+// setVariants saves id's variants, dropping them when they match the
+// built-in ones so the message keeps following them.
+function setVariants(id, vs) {
+  const next = clone(ownMsgs());
+  if (vs === null || same(vs, slotOf(id).default)) delete next[id]; else next[id] = vs;
+  set('sell.messages', next);
+}
+
+function checkVariant(slot, parts) {
+  const errs = [];
+  const allowed = slot.uses || [];
+  if (slot.single && parts.length > 1) errs.push('must be a single message');
+  if (parts.length > W().max_parts) errs.push(`at most ${W().max_parts} messages`);
+  for (const p of parts) {
+    if (!p.trim()) { errs.push('has an empty message'); continue; }
+    if (p.length > W().max_len) errs.push(`a message is over ${W().max_len} characters`);
+    let open = false;
+    for (const c of p) {
+      if (c === '[') { if (open) errs.push('has [ ] inside [ ]'); open = true; }
+      if (c === ']') { if (!open) errs.push('has a ] without its ['); open = false; }
+    }
+    if (open) errs.push('has a [ without its ]');
+    const names = [...p.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]);
+    for (const n of names) if (!allowed.includes(n)) errs.push(`{${n}} isn't available here`);
+    if ((p.match(/\{/g) || []).length !== names.length || (p.match(/\}/g) || []).length !== names.length) errs.push('has a { without its }');
+    if (!p.replace(/\[[^\[\]]*\]/g, '').trim()) errs.push('a message is all optional, so it could come out empty');
+    if (slot.needs_text && p.replace(/\[[^\[\]]*\]/g, '').replace(/\{[^{}]*\}/g, '').trim().length < 3) errs.push('needs some words of its own, not just variables');
+  }
+  const all = parts.join('\n');
+  for (const r of slot.required || []) if (!all.includes(`{${r}}`)) errs.push(`needs {${r}} so the buyer sees it`);
+  return [...new Set(errs)];
+}
+
+function slotErrors(id) {
+  const vs = ownMsgs()[id];
+  if (!vs) return [];
+  if (!vs.length) return ['needs at least one variant'];
+  return vs.flatMap((parts) => checkVariant(slotOf(id), parts));
+}
+const badSlots = () => (D && W() ? W().slots.filter((s) => slotErrors(s.id).length).map((s) => s.name) : []);
+
+// fill renders a template like the bot does: an optional bit with an
+// empty variable in it drops out.
+function fill(tmpl, vals) {
+  return tmpl
+    .replace(/\[([^\[\]]*)\]/g, (_, inner) => ([...inner.matchAll(/\{(\w+)\}/g)].every((m) => vals[m[1]]) ? inner : ''))
+    .replace(/\{([^{}]*)\}/g, (_, k) => vals[k] || '')
+    .replace(/ {2,}/g, ' ').trim();
+}
+
+function paintMsgList() {
+  const out = [];
+  let group = '';
+  for (const s of W().slots) {
+    if (s.group !== group) { group = s.group; out.push(el('div', 'msg-grp', group)); }
+    const b = el('button', 'msg-item');
+    b.type = 'button';
+    b.setAttribute('aria-current', String(s.id === msgCur));
+    const dot = el('span', 'dot');
+    if (slotErrors(s.id).length) dot.classList.add('bad'); else if (ownMsgs()[s.id]) dot.classList.add('on');
+    b.append(dot, s.name, el('span', 'n', String(variantsOf(s.id).length)));
+    b.addEventListener('click', () => {
+      msgCur = s.id; msgShown = 0; msgView = null; repaint();
+      // On a phone the editor sits under the list.
+      if (matchMedia('(max-width: 700px)').matches) $('msgEd').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    out.push(b);
+  }
+  $('msgList').replaceChildren(...out);
+  const n = Object.keys(ownMsgs()).length;
+  $('msgEdited').hidden = !n;
+  $('msgEdited').textContent = `${n} edited`;
+  $('msgCols').classList.toggle('off', !draft['sell.own_wording']);
+}
+
+// paintChecks refreshes the parts of the editor that follow the text:
+// errors, the preview and the list's dots. Typing calls it instead of
+// redrawing, so the input keeps its focus and caret.
+function paintChecks() {
+  const slot = slotOf(msgCur);
+  const vs = variantsOf(msgCur);
+  document.querySelectorAll('#msgEd .variant').forEach((box, i) => {
+    const errs = vs[i] ? checkVariant(slot, vs[i]) : [];
+    box.classList.toggle('bad', errs.length > 0);
+    box.classList.toggle('shown', i === msgShown);
+    box.querySelector('.v-errs').replaceChildren(...errs.map((e) => el('div', 'v-err', `⚠ ${e}`)));
+  });
+  const parts = vs[Math.min(msgShown, vs.length - 1)] || [];
+  const vals = sample();
+  const bubs = parts.map((p) => fill(p, vals)).filter(Boolean).map((t) => {
+    const b = el('div', 'bub me', t);
+    b.append(el('span', 't', '12:04 ✓✓'));
+    return b;
+  });
+  $('msgPreview').replaceChildren(...(bubs.length ? bubs : [el('div', 'bub me ghost', '(nothing)')]));
+  paintMsgList();
+}
+
+function insertVar(name) {
+  const inp = msgLastInput && document.body.contains(msgLastInput) ? msgLastInput : document.querySelector('#msgEd .part input');
+  if (!inp) return;
+  const at = inp.selectionStart ?? inp.value.length;
+  const end = inp.selectionEnd ?? at;
+  inp.value = inp.value.slice(0, at) + `{${name}}` + inp.value.slice(end);
+  inp.focus();
+  inp.setSelectionRange(at + name.length + 2, at + name.length + 2);
+  inp.dispatchEvent(new Event('input'));
+}
+
+function paintMsgEditor() {
+  const slot = slotOf(msgCur);
+  const vs = variantsOf(msgCur);
+  const own = !!ownMsgs()[msgCur];
+  const view = JSON.stringify([msgCur, vs, own]);
+  if (view === msgView) { paintChecks(); return; }
+  msgView = view;
+
+  const head = el('div', 'h');
+  head.append(slot.group, el('span', 'sp'));
+  if (own) {
+    const reset = el('button', 'btn small tiny', '↺ Reset to default');
+    reset.type = 'button';
+    reset.addEventListener('click', () => { msgShown = 0; setVariants(msgCur, null); });
+    head.append(reset);
+  }
+  const q = el('button', 'q-btn', '?');
+  q.type = 'button';
+  q.title = 'What can I write here?';
+  q.setAttribute('aria-label', 'Help with variables');
+  q.addEventListener('click', openVarHelp);
+  head.append(q);
+
+  const chips = el('div', 'vars');
+  chips.append(el('span', 'lbl', 'Click to insert'));
+  for (const name of slot.uses || []) {
+    const c = el('button', 'var', `{${name}}`);
+    c.type = 'button';
+    if ((slot.required || []).includes(name)) c.classList.add('req');
+    c.title = varOf(name)?.about || '';
+    c.addEventListener('mousedown', (e) => e.preventDefault());
+    c.addEventListener('click', () => insertVar(name));
+    chips.append(c);
+  }
+  const hint = el('p', 'msg-hint');
+  hint.append('Wrap optional bits in [ ]. ', el('code', '', '[, for {day}]'), ' drops out when the meal is today.');
+
+  const edit = (fn) => { const next = clone(variantsOf(msgCur)); fn(next); setVariants(msgCur, next); };
+  const boxes = vs.map((parts, i) => {
+    const box = el('div', 'variant');
+    const vh = el('div', 'variant-h', `Variant ${i + 1}${parts.length > 1 ? ` · ${parts.length} messages` : ''}`);
+    vh.append(el('span', 'sp'));
+    const eye = el('button', 'icon-btn', '👁');
+    eye.type = 'button';
+    eye.title = 'Preview this one';
+    eye.addEventListener('click', () => { msgShown = i; paintChecks(); });
+    vh.append(eye);
+    if (vs.length > 1) {
+      const del = el('button', 'icon-btn', '✕');
+      del.type = 'button';
+      del.title = 'Delete this variant';
+      del.addEventListener('click', () => { msgShown = 0; edit((n) => n.splice(i, 1)); });
+      vh.append(del);
+    }
+    box.append(vh);
+    parts.forEach((p, j) => {
+      const row = el('div', 'part');
+      const inp = el('input');
+      inp.type = 'text';
+      inp.value = p;
+      inp.maxLength = W().max_len;
+      inp.spellcheck = false;
+      inp.setAttribute('aria-label', `Variant ${i + 1}, message ${j + 1}`);
+      inp.addEventListener('focus', () => { msgLastInput = inp; msgShown = i; paintChecks(); });
+      inp.addEventListener('input', () => {
+        const next = clone(variantsOf(msgCur));
+        next[i][j] = inp.value;
+        // Keep the editor as it is: only the text changed.
+        msgView = JSON.stringify([msgCur, next, !same(next, slot.default)]);
+        msgShown = i;
+        setVariants(msgCur, next);
+      });
+      row.append(el('span', 'k', String(j + 1)), inp);
+      if (parts.length > 1) {
+        const x = el('button', 'icon-btn', '✕');
+        x.type = 'button';
+        x.title = 'Remove this message';
+        x.addEventListener('click', () => edit((n) => n[i].splice(j, 1)));
+        row.append(x);
+      }
+      box.append(row);
+    });
+    if (!slot.single && parts.length < W().max_parts) {
+      const add = el('button', 'add-part', '+ follow-up message');
+      add.type = 'button';
+      add.addEventListener('click', () => edit((n) => n[i].push('')));
+      box.append(add);
+    }
+    box.append(el('div', 'v-errs'));
+    return box;
+  });
+
+  const addV = el('button', 'add-variant', '+ Add variant');
+  addV.type = 'button';
+  addV.disabled = vs.length >= W().max_variants;
+  addV.addEventListener('click', () => {
+    msgShown = vs.length;
+    edit((n) => n.push([(slot.required || []).map((r) => `{${r}}`).join(' ')]));
+  });
+
+  const ph = el('div', 'h', 'Preview');
+  ph.append(el('span', 'sp'));
+  const another = el('button', 'btn small tiny', '🎲 Another');
+  another.type = 'button';
+  another.addEventListener('click', () => { msgShown = (msgShown + 1) % variantsOf(msgCur).length; paintChecks(); });
+  ph.append(another);
+  const chat = el('div', 'chat');
+  chat.id = 'msgPreview';
+
+  $('msgEd').replaceChildren(head, el('div', 'msg-title', slot.name), el('div', 'msg-when', slot.when), chips, hint, ...boxes, addV, ph, chat);
+  paintChecks();
+}
+
+paint(() => {
+  if (!W()) return;
+  if (!msgCur || !slotOf(msgCur)) msgCur = W().slots[0].id;
+  if (msgShown >= variantsOf(msgCur).length) msgShown = 0;
+  paintMsgEditor();
+});
+
+function openVarHelp() {
+  const slot = slotOf(msgCur);
+  const lead = $('varHelpLead');
+  lead.replaceChildren('Type these in any message and the bot fills them in when it sends. Faded ones aren\'t available in ', el('b', '', slot.name), '.');
+  $('varHelpRows').replaceChildren(...W().vars.map((v) => {
+    const tr = el('tr');
+    if (!(slot.uses || []).includes(v.name)) tr.className = 'na';
+    const name = el('td');
+    name.append(el('span', 'var', `{${v.name}}`));
+    const about = el('td', '', v.about);
+    if (v.can_be_empty) about.append(el('span', 'tag', 'can be empty'));
+    tr.append(name, el('td', 'ex', v.example), about);
+    return tr;
+  }));
+  $('varHelp').showModal();
+}
+$('varHelpX').addEventListener('click', () => $('varHelp').close());
+$('varHelp').addEventListener('click', (e) => { if (e.target === $('varHelp')) $('varHelp').close(); });
 
 // ---------- start ----------
 

@@ -7,6 +7,8 @@ import (
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/meals"
+	"messwa/internal/wording"
 )
 
 type settingsGroup struct {
@@ -26,6 +28,30 @@ type settingsState struct {
 	Groups   []settingsGroup `json:"groups"`
 	Meals    []string        `json:"meals"`
 	Messes   []string        `json:"messes"`
+	Wording  wordingInfo     `json:"wording"`
+	// PortalMeals are the meal windows the mess portal gave, which the bot
+	// uses instead of meals.times. Empty until the portal has answered.
+	PortalMeals map[string]config.MealTime `json:"portal_meals,omitempty"`
+}
+
+// wordingInfo describes the bot's messages for the Messages tab: what each
+// one is for, the variables, and the limits the server checks.
+type wordingInfo struct {
+	Slots       []wording.Slot `json:"slots"`
+	Vars        []wording.Var  `json:"vars"`
+	MaxVariants int            `json:"max_variants"`
+	MaxParts    int            `json:"max_parts"`
+	MaxLen      int            `json:"max_len"`
+}
+
+func newWordingInfo() wordingInfo {
+	slots := make([]wording.Slot, len(wording.Slots))
+	for i, s := range wording.Slots {
+		// The page lists every variable a slot can use.
+		s.Uses = s.Allowed()
+		slots[i] = s
+	}
+	return wordingInfo{Slots: slots, Vars: wording.Vars, MaxVariants: wording.MaxVariants, MaxParts: wording.MaxParts, MaxLen: wording.MaxLen}
 }
 
 // settingsRoutes adds the settings API. srv and cfg are the signed-in
@@ -59,7 +85,7 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 		}
 		live := cfg.Live()
 		out := settingsState{Values: only(r, live.Values()), Defaults: only(r, cfg.File().Values()),
-			Saved: []string{}, Restart: []string{}, Groups: []settingsGroup{}, Meals: []string{}, Messes: []string{}}
+			Saved: []string{}, Restart: []string{}, Groups: []settingsGroup{}, Meals: []string{}, Messes: []string{}, Wording: newWordingInfo()}
 		for _, k := range config.SettingKeys() {
 			if !mine(r, k) {
 				continue
@@ -81,6 +107,7 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 		for _, m := range cfg.Messes {
 			out.Messes = append(out.Messes, m.Name)
 		}
+		out.PortalMeals = meals.PortalTimes()
 		writeJSON(w, r, out)
 	}
 

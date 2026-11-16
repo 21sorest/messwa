@@ -38,8 +38,17 @@ type SellScheduler interface {
 	// SetScheduleAutopilot turns autopilot on or off for a waiting
 	// schedule: its task will skip buyers who would need you.
 	SetScheduleAutopilot(ctx context.Context, id int64, on bool) error
-	// StartNow starts a task straight away, on autopilot or not.
-	StartNow(ctx context.Context, userID int64, date, meal string, minRupees, maxRupees int, autopilot bool) (int64, error)
+	// StartNow starts a task straight away, on autopilot or not, and
+	// returns a zero time. While the meal before is still served it
+	// schedules the task for when that meal ends instead and returns the
+	// schedule id and that time.
+	StartNow(ctx context.Context, userID int64, date, meal string, minRupees, maxRupees int, autopilot bool) (int64, time.Time, error)
+}
+
+// SchedulePlanner adds optimistic edits and explicit posting times to the planner.
+type SchedulePlanner interface {
+	PlanSchedule(ctx context.Context, userID, id, revision int64, date, meal string, min, max int, at time.Time, autopilot bool) (int64, time.Time, error)
+	CancelPlannedSchedule(ctx context.Context, id, revision int64) error
 }
 
 // SetSellTasks adds the sell task tools while the sell_tasks setting is on.

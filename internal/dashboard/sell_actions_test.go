@@ -35,6 +35,54 @@ type dashboardOperator struct {
 	scheduleAt time.Time
 }
 
+func (o *dashboardOperator) PlanSchedule(_ context.Context, user, id, revision int64, date, meal string, min, max int, at time.Time, auto bool) (int64, time.Time, error) {
+	if o.failStart != nil {
+		return 0, time.Time{}, o.failStart
+	}
+	o.tasks = append(o.tasks, fmt.Sprintf("plan %d %d %d %s %s %d-%d %d %v", user, id, revision, date, meal, min, max, at.Unix(), auto))
+	return 4, at, nil
+}
+func (o *dashboardOperator) CancelPlannedSchedule(_ context.Context, id, revision int64) error {
+	if o.failStart != nil {
+		return o.failStart
+	}
+	o.tasks = append(o.tasks, fmt.Sprintf("unplan %d %d", id, revision))
+	return nil
+}
+
+func TestPlannerActionsAPI(t *testing.T) {
+	cfg := config.Default()
+	cfg.MCP.SellTasks = true
+	cfg.Groups = []string{"a@g.us"}
+	cfg.Sell.GroupCount = 1
+	st := newTestStore(t)
+	srv := mcpserver.New(cfg, st, nil)
+	op := &dashboardOperator{}
+	srv.SetSellTasks(op)
+	d := startDashboard(t, cfg, st, srv, NewHub())
+	admin, member := d.as(t, accounts.Admin), d.as(t, accounts.Member)
+	in := map[string]any{"action": "plan", "id": 4, "revision": 2, "date": "2026-11-16", "meal": "lunch", "min": 30, "max": 60, "at": 1794890700, "autopilot": true}
+	if res := member.send(t, "POST", "/api/sell-action", in); res.StatusCode != 403 {
+		t.Fatalf("member plan %d", res.StatusCode)
+	}
+	saved := admin.csrf
+	admin.csrf = ""
+	if res := admin.send(t, "POST", "/api/sell-action", in); res.StatusCode != 403 {
+		t.Fatalf("missing CSRF %d", res.StatusCode)
+	}
+	admin.csrf = saved
+	if res := admin.send(t, "POST", "/api/sell-action", in); res.StatusCode != 200 {
+		t.Fatalf("plan %d", res.StatusCode)
+	}
+	if len(op.tasks) != 1 || op.tasks[0] != fmt.Sprintf("plan %d 4 2 2026-11-16 lunch 30-60 1794890700 true", admin.user.ID) {
+		t.Fatalf("plan arguments %+v", op.tasks)
+	}
+	op.failStart = errors.New("schedule changed in another tab")
+	if res := admin.send(t, "POST", "/api/sell-action", map[string]any{"action": "unplan", "id": 4, "revision": 2}); res.StatusCode != 409 {
+		t.Fatalf("stale cancellation %d", res.StatusCode)
+	}
+}
+
 func (o *dashboardOperator) StartOrSchedule(ctx context.Context, user int64, date, meal string, min, max int, _ bool) (int64, time.Time, error) {
 	if o.scheduleAt.IsZero() {
 		id, err := o.Start(ctx, user, date, meal, min, max, "")
@@ -43,12 +91,13 @@ func (o *dashboardOperator) StartOrSchedule(ctx context.Context, user int64, dat
 	o.tasks = append(o.tasks, fmt.Sprintf("schedule %d %s %s %d-%d", user, date, meal, min, max))
 	return 4, o.scheduleAt, nil
 }
-func (o *dashboardOperator) StartNow(ctx context.Context, user int64, date, meal string, min, max int, autopilot bool) (int64, error) {
+func (o *dashboardOperator) StartNow(ctx context.Context, user int64, date, meal string, min, max int, autopilot bool) (int64, time.Time, error) {
 	if autopilot {
 		o.tasks = append(o.tasks, fmt.Sprintf("autopilot start %d %s %s %d-%d", user, date, meal, min, max))
-		return 9, nil
+		return 9, time.Time{}, nil
 	}
-	return o.Start(ctx, user, date, meal, min, max, "")
+	id, err := o.Start(ctx, user, date, meal, min, max, "")
+	return id, time.Time{}, err
 }
 func (o *dashboardOperator) SetScheduleAutopilot(_ context.Context, id int64, on bool) error {
 	o.tasks = append(o.tasks, fmt.Sprintf("autopilot %d %v", id, on))

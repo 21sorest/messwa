@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"messwa/internal/wording"
 )
 
 // Settings are values an admin saved on the dashboard's settings page, by
@@ -139,6 +141,26 @@ var settings = []setting{
 	intSetting("sell.max_reposts", 0, func(c *Config) *int { return &c.Sell.MaxReposts }),
 	secondsSetting("sell.negotiation_silence", MinNegotiationSilence, false, func(c *Config) *duration { return &c.Sell.NegotiationSilence }),
 	boolSetting("sell.accept_payment_images", func(c *Config) *bool { return &c.Sell.AcceptPaymentImages }),
+	boolSetting("sell.own_wording", func(c *Config) *bool { return &c.Sell.OwnWording }),
+	{key: "sell.messages",
+		get: func(c *Config) any {
+			if c.Sell.Messages == nil {
+				return wording.Book{}
+			}
+			return c.Sell.Messages
+		},
+		set: func(c *Config, v json.RawMessage) error {
+			var b wording.Book
+			if err := strictJSON(v, &b); err != nil {
+				return err
+			}
+			b = b.Clean()
+			if err := b.Check(); err != nil {
+				return err
+			}
+			c.Sell.Messages = b
+			return nil
+		}},
 	boolSetting("mcp.sell_tasks", func(c *Config) *bool { return &c.MCP.SellTasks }),
 	listSetting("sold.emojis", 1, func(c *Config) *[]string { return &c.Sold.Emojis }),
 	listSetting("sold.closed_emojis", 0, func(c *Config) *[]string { return &c.Sold.ClosedEmojis }),

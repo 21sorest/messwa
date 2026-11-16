@@ -122,7 +122,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		return err
 	}
 	s := &sale{
-		log: log, loc: cfg.Location(), date: *date, meal: *meal, end: slot.End,
+		log: log, loc: cfg.Location(), date: *date, meal: *meal, end: slot.End, cfg: cfg,
 		image: data, testImage: *qr == "", imageHash: fmt.Sprintf("%x", sha256.Sum256(data)),
 		diagnostics: *diagnostics, assumeUnreadable: *assumeUnreadable, acceptImages: sell.AcceptPaymentImages,
 	}
@@ -224,6 +224,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 			ShowPrice: sell.ShowPrice, Day: offerDay(cfg, *date), Extras: extras})
 	}
 	queue := newOfferQueue()
+	s.joined = queue
 	queue.join = savedContactFilter(ctx, s.conn, log, sell.Buyers)
 	posting := watchGroupOffer(ctx, s.conn, queue)
 	defer posting.close()
