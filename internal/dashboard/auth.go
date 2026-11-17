@@ -214,8 +214,49 @@ type meResp struct {
 func setCookie(w http.ResponseWriter, r *http.Request, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name: cookieName, Value: value, Path: "/", MaxAge: maxAge,
-		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil,
+		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: viaHTTPS(r),
 	})
+}
+
+// fromProxy reports whether r came through a reverse proxy on this host,
+// such as Caddy in front of a loopback dashboard. Only then are its
+// X-Forwarded-* headers believed.
+func fromProxy(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// viaHTTPS reports whether the browser reached us over HTTPS, directly or
+// through a local proxy that terminated TLS.
+func viaHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return fromProxy(r) && strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+}
+
+// clientIP is the address sign-in lockouts and sign-up limits count
+// against. Behind a local proxy every request comes from loopback, so the
+// proxy's X-Forwarded-For is used instead. Its last entry is the one the
+// proxy added; earlier entries come from the client and can be forged.
+func clientIP(r *http.Request) string {
+	from, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if !fromProxy(r) {
+		return from
+	}
+	xff := r.Header.Values("X-Forwarded-For")
+	if len(xff) == 0 {
+		return from
+	}
+	hops := strings.Split(xff[len(xff)-1], ",")
+	if ip := net.ParseIP(strings.TrimSpace(hops[len(hops)-1])); ip != nil {
+		return ip.String()
+	}
+	return from
 }
 
 // authRoutes adds sign-in, the account page's API, and MCP token management.
@@ -245,7 +286,7 @@ func authRoutes(mux *http.ServeMux, acc *accounts.Accounts, srv *mcpserver.Serve
 		if !readJSON(w, r, &in) {
 			return
 		}
-		from, _, _ := net.SplitHostPort(r.RemoteAddr)
+		from := clientIP(r)
 		tok, s, err := acc.Login(r.Context(), strings.TrimSpace(in.Name), in.Password, from)
 		switch {
 		case errors.Is(err, accounts.ErrBadLogin), errors.Is(err, accounts.ErrLocked):
@@ -265,7 +306,7 @@ func authRoutes(mux *http.ServeMux, acc *accounts.Accounts, srv *mcpserver.Serve
 		if !readJSON(w, r, &in) {
 			return
 		}
-		from, _, _ := net.SplitHostPort(r.RemoteAddr)
+		from := clientIP(r)
 		name := strings.TrimSpace(in.Name)
 		if _, err := acc.SignUp(r.Context(), name, in.Password, from); err != nil {
 			code := http.StatusBadRequest

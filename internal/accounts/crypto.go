@@ -25,6 +25,17 @@ var (
 
 const argonKeyLen = 32
 
+// argonSlots caps how many hashes run at once. Each one takes argonMemory
+// (64 MiB), so a burst of sign-in attempts would otherwise run a small
+// server out of memory. Extra callers wait their turn.
+var argonSlots = make(chan struct{}, 4)
+
+func argonKey(pw, salt []byte, t, m uint32, p uint8, n uint32) []byte {
+	argonSlots <- struct{}{}
+	defer func() { <-argonSlots }()
+	return argon2.IDKey(pw, salt, t, m, p, n)
+}
+
 // CheapHashing makes password hashing fast and weak. Only tests call it.
 func CheapHashing() { argonTime, argonMemory, argonLanes = 1, 8, 1 }
 
@@ -34,7 +45,7 @@ func hashPassword(pw string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	sum := argon2.IDKey([]byte(pw), salt, argonTime, argonMemory, argonLanes, argonKeyLen)
+	sum := argonKey([]byte(pw), salt, argonTime, argonMemory, argonLanes, argonKeyLen)
 	b64 := base64.RawStdEncoding
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, argonMemory, argonTime, argonLanes, b64.EncodeToString(salt), b64.EncodeToString(sum)), nil
 }
@@ -58,7 +69,7 @@ func checkPassword(hash, pw string) bool {
 	if err1 != nil || err2 != nil || len(want) == 0 {
 		return false
 	}
-	got := argon2.IDKey([]byte(pw), salt, t, m, p, uint32(len(want)))
+	got := argonKey([]byte(pw), salt, t, m, p, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
