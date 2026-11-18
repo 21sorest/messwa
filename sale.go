@@ -516,7 +516,7 @@ func (s *sale) takeTurn(ctx context.Context, buyer types.JID, d store.Delivery, 
 						finish(e, true, "", false)
 						return
 					}
-					s.log.Warn("payment amount unreadable after recovery; not sending the meal image. Check the buyer's chat, or rerun with -assume-unreadable-payment",
+					s.log.Warn("payment amount unreadable after recovery; not sending the meal image. Check the buyer's chat, or turn on [sell] accept_unreadable_payments",
 						"date", d.Date, "meal", d.Meal, "payment_id", e.Info.ID)
 				}()
 			}

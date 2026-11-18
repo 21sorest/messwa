@@ -38,7 +38,7 @@ words = ["sold", "done", "gone"]
 
 [dms]
 # DM content from unsaved numbers is deleted after this long.
-retention = "72h"
+retention = "24h"
 
 [mcp]
 listen = "127.0.0.1:8766"
@@ -153,6 +153,15 @@ max_reposts = 20
 # sale; the log, sell_task_status and the sales page mark it unverified.
 # Off by default. Applies to group offers, sell tasks and deliver-qr -peer.
 accept_payment_images = false
+# Count a WhatsApp Pay message from the paying buyer whose amount stays
+# unreadable as a payment of the agreed price. Linked devices sometimes get
+# a payment with no amount or currency; the bot asks the phone for the full
+# message for up to 40 seconds first, and only then assumes. Anyone who can
+# make WhatsApp deliver such a message gets the QR without paying, so check
+# your UPI app after. Autopilot ignores it. On by default. Applies to group
+# offers, sell tasks and deliver-qr -peer; -assume-unreadable-payment
+# overrides it for one run.
+accept_unreadable_payments = true
 # How long a negotiating sell task waits for a buyer to answer before it
 # stops talking to them, 1m to 30m. A quiet buyer holds one of 10
 # negotiation slots and counts as competition, which slows the price drop;

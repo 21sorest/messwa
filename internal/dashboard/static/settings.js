@@ -17,6 +17,36 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private window */ } },
 };
 
+// ---------- help ----------
+
+// In a pane marked data-help, each row's description moves behind a small
+// ? right after its name and opens as a popover, styled like a chart's key.
+for (const small of document.querySelectorAll('[data-help] .row .lbl > small')) {
+  const row = small.closest('.row');
+  const name = row.querySelector('[aria-label]')?.getAttribute('aria-label') || 'this setting';
+  const pop = el('div', 'keypop');
+  pop.popover = 'auto';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', name);
+  pop.textContent = small.textContent;
+  const b = el('button', 'keybtn qhelp', '?');
+  b.type = 'button';
+  b.setAttribute('aria-label', `What "${name}" does`);
+  b.setAttribute('aria-expanded', 'false');
+  b.popoverTargetElement = pop;
+  pop.addEventListener('toggle', (e) => {
+    const open = e.newState === 'open';
+    b.setAttribute('aria-expanded', String(open));
+    if (open) placeKey(b, pop);
+  });
+  const tag = small.parentElement.querySelector(':scope > .tag');
+  if (tag) tag.before(b); else small.before(b);
+  const text = b.previousSibling;
+  if (text?.nodeType === Node.TEXT_NODE) text.textContent = text.textContent.trimEnd();
+  small.remove();
+  row.append(pop);
+}
+
 // ---------- tabs ----------
 
 function showPane(id) {

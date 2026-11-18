@@ -14,7 +14,7 @@ func TestExampleConfig(t *testing.T) {
 	if len(c.Meals) != 4 || len(c.Messes) != 4 {
 		t.Errorf("defaults: %d meals, %d messes", len(c.Meals), len(c.Messes))
 	}
-	if c.Dedupe.Window.Hours() != 24 || c.DMs.Retention.Hours() != 72 {
+	if c.Dedupe.Window.Hours() != 24 || c.DMs.Retention.Hours() != 24 {
 		t.Errorf("durations: %v %v", c.Dedupe.Window, c.DMs.Retention)
 	}
 }

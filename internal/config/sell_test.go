@@ -50,6 +50,18 @@ func TestAcceptPaymentImagesSetting(t *testing.T) {
 	}
 }
 
+func TestAcceptUnreadablePaymentsSetting(t *testing.T) {
+	if !Default().Sell.AcceptUnreadablePayments {
+		t.Fatal("unreadable payments are refused by default")
+	}
+	p := filepath.Join(t.TempDir(), "c.toml")
+	os.WriteFile(p, []byte("[sell]\naccept_unreadable_payments = false\n"), 0o600)
+	c, err := Load(p)
+	if err != nil || c.Sell.AcceptUnreadablePayments {
+		t.Fatalf("accept_unreadable_payments = false loaded as %v, %v", c.Sell.AcceptUnreadablePayments, err)
+	}
+}
+
 func TestHandoffOverride(t *testing.T) {
 	for _, tc := range []struct {
 		configured     Handoff

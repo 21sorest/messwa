@@ -247,3 +247,7 @@ button.var:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent
   /* Twenty pips don't fit one row on a phone; wrap them ten and ten. */
   .pips { max-width: 216px; }
 }
+
+/* A row's ? sits after its name and opens the description. */
+.lbl > .keybtn.qhelp { width: 20px; height: 20px; margin: 0 6px 0 6px; border-radius: 6px; font: 700 12px/1 var(--sans); vertical-align: 2px; }
+.keypop { line-height: 1.45; }

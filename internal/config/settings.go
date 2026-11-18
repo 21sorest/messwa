@@ -141,6 +141,7 @@ var settings = []setting{
 	intSetting("sell.max_reposts", 0, func(c *Config) *int { return &c.Sell.MaxReposts }),
 	secondsSetting("sell.negotiation_silence", MinNegotiationSilence, false, func(c *Config) *duration { return &c.Sell.NegotiationSilence }),
 	boolSetting("sell.accept_payment_images", func(c *Config) *bool { return &c.Sell.AcceptPaymentImages }),
+	boolSetting("sell.accept_unreadable_payments", func(c *Config) *bool { return &c.Sell.AcceptUnreadablePayments }),
 	boolSetting("sell.own_wording", func(c *Config) *bool { return &c.Sell.OwnWording }),
 	{key: "sell.messages",
 		get: func(c *Config) any {
