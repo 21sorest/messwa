@@ -1,25 +1,28 @@
 package main
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"os"
 	"testing"
 
 	"messwa/internal/config"
+	"messwa/internal/meals"
 )
 
-func TestValidMealTimes(t *testing.T) {
-	ok := map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "10:30"}, "lunch": {Starts: "11:30", Ends: "15:30"},
-		"snacks": {Starts: "16:45", Ends: "18:15"}, "dinner": {Starts: "18:30", Ends: "22:30"}}
-	if !validMealTimes(ok) {
-		t.Error("portal times of 15 Nov refused")
+// Times an admin saved before a restart are back in use after it.
+func TestWatchMealTimesLoadsSaved(t *testing.T) {
+	cfg := config.Default()
+	cfg.StateDir = t.TempDir()
+	if err := os.WriteFile(mealTimesFile(cfg), []byte(`{"breakfast":{"starts":"06:30","ends":"10:30"}}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	for _, bad := range []map[string]config.MealTime{
-		nil,
-		{"lunch": {Starts: "11:30", Ends: "15:30"}, "snacks": {Starts: "15:00", Ends: "18:15"}},
-		{"lunch": {Starts: "15:30", Ends: "11:30"}},
-		{"lunch": {Starts: "noon", Ends: "15:30"}},
-	} {
-		if validMealTimes(bad) {
-			t.Errorf("validMealTimes(%v) took it", bad)
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	defer meals.SetShared(nil)
+	watchMealTimes(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if got := meals.Times(cfg); got[0].Starts != "06:30" || got[0].Ends != "10:30" {
+		t.Fatalf("breakfast = %+v", got[0])
 	}
 }

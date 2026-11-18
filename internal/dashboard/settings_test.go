@@ -9,6 +9,7 @@ import (
 	"messwa/internal/accounts"
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
+	"messwa/internal/meals"
 	"messwa/internal/wording"
 )
 
@@ -90,6 +91,55 @@ func TestSettingsAPI(t *testing.T) {
 	// An empty save puts everything back to config.toml.
 	if code, got, _ = put(map[string]any{}); code != 200 || len(got.Saved) != 0 || !cfg.Live().Sell.ShowPrice {
 		t.Fatalf("reset: %d %+v", code, got)
+	}
+}
+
+// An admin's meal times apply to every account at once; a member can't
+// change them, and a member's own save leaves them alone.
+func TestSettingsMealTimes(t *testing.T) {
+	defer meals.SetShared(nil)
+	st := newTestStore(t)
+	cfg := config.Default()
+	cfg.ApplySaved(nil)
+	d := startDashboard(t, cfg, st, mcpserver.New(cfg, st, nil), NewHub())
+	admin := d.as(t, accounts.Admin)
+	member := d.as(t, accounts.Member)
+	put := func(c *testClient, values map[string]any) int {
+		res := c.send(t, "PUT", "/api/settings", map[string]any{"values": values})
+		res.Body.Close()
+		return res.StatusCode
+	}
+	bf := map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "10:30"}}
+
+	if code := put(admin, map[string]any{"meals.times": bf}); code != 200 {
+		t.Fatalf("admin save = %d", code)
+	}
+	if ts := meals.Times(cfg); ts[0].Starts != "06:30" || ts[0].Ends != "10:30" {
+		t.Fatalf("breakfast = %+v", ts[0])
+	}
+	var got settingsState
+	admin.get(t, "/api/settings", &got)
+	if !slices.Contains(got.Saved, "meals.times") || slices.Contains(got.Restart, "meals.times") {
+		t.Fatalf("saved = %v, restart = %v", got.Saved, got.Restart)
+	}
+
+	overlap := map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "13:00"}}
+	if code := put(admin, map[string]any{"meals.times": overlap}); code != 400 {
+		t.Fatalf("overlapping save = %d, want 400", code)
+	}
+	if code := put(member, map[string]any{"meals.times": overlap}); code != 403 {
+		t.Fatalf("member save = %d, want 403", code)
+	}
+	if code := put(member, map[string]any{"sell.show_price": false}); code != 200 {
+		t.Fatalf("member's own save = %d", code)
+	}
+	if meals.Shared()["breakfast"] != bf["breakfast"] {
+		t.Fatalf("shared = %v", meals.Shared())
+	}
+
+	// Left out of an admin's save, they go back to config.toml.
+	if code := put(admin, map[string]any{}); code != 200 || meals.Shared() != nil {
+		t.Fatalf("reset = %d, shared = %v", code, meals.Shared())
 	}
 }
 

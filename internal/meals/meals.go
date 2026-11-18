@@ -2,7 +2,11 @@
 package meals
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"maps"
+	"os"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -15,45 +19,151 @@ type Schedule struct {
 	meals []meal // from config.toml, sorted by end time
 }
 
-// portal holds the meal windows the mess portal last gave, which win over
-// config.toml's. They are the same for every account, so one copy serves
-// every Schedule.
-var portal atomic.Pointer[map[string]config.MealTime]
+// shared holds the meal windows an admin set on the settings page, which
+// win over config.toml's. They are the same for every account, so one copy
+// serves every Schedule.
+var shared atomic.Pointer[map[string]config.MealTime]
 
-// SetPortalTimes makes times, by meal name, the windows every Schedule
-// uses from now on. Meals it leaves out keep config.toml's window; nil
-// goes back to config.toml for all of them.
-func SetPortalTimes(times map[string]config.MealTime) {
-	if times == nil {
-		portal.Store(nil)
+// SetShared makes times, by meal name, the windows every Schedule uses
+// from now on. Meals it leaves out keep config.toml's window; nil goes
+// back to config.toml for all of them.
+func SetShared(times map[string]config.MealTime) {
+	if len(times) == 0 {
+		shared.Store(nil)
 		return
 	}
 	m := maps.Clone(times)
-	portal.Store(&m)
+	shared.Store(&m)
 }
 
-// PortalTimes returns the windows set by SetPortalTimes, or nil.
-func PortalTimes() map[string]config.MealTime {
-	if p := portal.Load(); p != nil {
+// Shared returns the windows set by SetShared, or nil.
+func Shared() map[string]config.MealTime {
+	if p := shared.Load(); p != nil {
 		return maps.Clone(*p)
 	}
 	return nil
 }
 
-// Times returns each of cfg's meals with the window in use: the portal's
-// when it has one, else config.toml's.
+// Times returns each of cfg's meals with the window in use: the shared
+// one when an admin set it, else config.toml's.
 func Times(cfg *config.Config) []config.Meal {
-	p := portal.Load()
-	out := make([]config.Meal, 0, len(cfg.Meals))
-	for _, m := range cfg.Meals {
-		if p != nil {
-			if t, ok := (*p)[m.Name]; ok {
-				m.Starts, m.Ends = t.Starts, t.Ends
-			}
+	return merge(cfg.Meals, Shared())
+}
+
+func merge(ms []config.Meal, times map[string]config.MealTime) []config.Meal {
+	out := make([]config.Meal, 0, len(ms))
+	for _, m := range ms {
+		if t, ok := times[m.Name]; ok {
+			m.Starts, m.Ends = t.Starts, t.Ends
 		}
 		out = append(out, m)
 	}
 	return out
+}
+
+// Check reports why times can't be cfg's shared meal windows: a meal
+// config.toml doesn't list, a clock that doesn't parse, a meal that ends
+// before it starts, or two meals that overlap once times is laid over
+// config.toml, so a slot can only ever be one meal.
+func Check(cfg *config.Config, times map[string]config.MealTime) error {
+	known := map[string]bool{}
+	for _, m := range cfg.Meals {
+		known[m.Name] = true
+	}
+	for name := range times {
+		if !known[name] {
+			return fmt.Errorf("no meal called %q", name)
+		}
+	}
+	type span struct {
+		name   string
+		st, en int
+	}
+	var spans []span
+	for _, m := range merge(cfg.Meals, times) {
+		st, err := config.ParseClock(m.Starts)
+		if err != nil {
+			return fmt.Errorf("%s starts: %w", m.Name, err)
+		}
+		en, err := config.ParseClock(m.Ends)
+		if err != nil {
+			return fmt.Errorf("%s ends: %w", m.Name, err)
+		}
+		if en <= st {
+			return fmt.Errorf("%s must end after it starts", m.Name)
+		}
+		for _, o := range spans {
+			if st < o.en && o.st < en {
+				return fmt.Errorf("%s and %s overlap", o.name, m.Name)
+			}
+		}
+		spans = append(spans, span{m.Name, st, en})
+	}
+	return nil
+}
+
+// file is where the shared windows are kept, so the run and dashboard
+// processes and every restart see the same ones. Set by UseFile.
+var file atomic.Pointer[string]
+
+// UseFile keeps the shared windows in path from now on and loads them.
+func UseFile(path string) error {
+	file.Store(&path)
+	return Reload()
+}
+
+// Reload loads the shared windows from the file again, to pick up a save
+// made by another process. A missing file means config.toml's windows.
+func Reload() error {
+	p := file.Load()
+	if p == nil {
+		return nil
+	}
+	b, err := os.ReadFile(*p)
+	if errors.Is(err, os.ErrNotExist) {
+		SetShared(nil)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var times map[string]config.MealTime
+	if err := json.Unmarshal(b, &times); err != nil {
+		return fmt.Errorf("%s: %w", *p, err)
+	}
+	SetShared(times)
+	return nil
+}
+
+// Save makes times the shared windows for every account and writes them
+// to the file, if UseFile gave one. Empty times goes back to config.toml's
+// windows. Callers check times with Check first.
+func Save(times map[string]config.MealTime) error {
+	p := file.Load()
+	if p == nil {
+		SetShared(times)
+		return nil
+	}
+	if len(times) == 0 {
+		if err := os.Remove(*p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		SetShared(nil)
+		return nil
+	}
+	b, err := json.Marshal(times)
+	if err != nil {
+		return err
+	}
+	tmp := *p + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, *p); err != nil {
+		return err
+	}
+	SetShared(times)
+	return nil
 }
 
 type meal struct {
@@ -84,9 +194,9 @@ func sortMeals(ms []meal) {
 	sort.Slice(ms, func(i, j int) bool { return ms[i].end < ms[j].end })
 }
 
-// current is s's meals with the portal's windows over config.toml's.
+// current is s's meals with the shared windows over config.toml's.
 func (s *Schedule) current() []meal {
-	p := portal.Load()
+	p := shared.Load()
 	if p == nil {
 		return s.meals
 	}
