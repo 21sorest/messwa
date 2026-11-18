@@ -142,6 +142,8 @@ func TestParseBuyer(t *testing.T) {
 		{"alr fine", intentOK, 0, false},
 		{"Ok wait", intentOK, 0, false},
 		{"Ok just a sec", intentOK, 0, false},
+		{"Sorry, late reply, okay", intentOK, 0, false},
+		{"Okay sorry, I'll take it", intentAccept, 0, false},
 		{"Bolo!!!", intentOK, 0, false},
 		{"Tell fast!!!!!!", intentOK, 0, false},
 
@@ -166,6 +168,9 @@ func TestParseBuyer(t *testing.T) {
 		{"Not needed bro", intentPass, 0, false},
 		{"I'll pass", intentPass, 0, false},
 		{"Oh.. no sorry", intentPass, 0, false},
+		{"Okay sorry then.", intentPass, 0, false},
+		{"ok sry then", intentPass, 0, false},
+		{"Sorry then bro", intentPass, 0, false},
 		{"Lite", intentPass, 0, false},
 		{"Sorry bought just now", intentPass, 0, false},
 		{"sry got from other", intentPass, 0, false},
@@ -262,6 +267,7 @@ func TestCombineIntents(t *testing.T) {
 		{[]string{"ok", "same number?"}, intentAccept, 0},
 		{[]string{"too much", "30"}, intentOffer, 30},
 		{[]string{"40", "nvm"}, intentPass, 0},
+		{[]string{"okay", "sorry then"}, intentPass, 0},
 	}
 	for _, c := range cases {
 		if got := combineIntents(c.texts); got.kind != c.kind || got.offer != c.offer {
