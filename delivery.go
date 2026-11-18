@@ -42,7 +42,6 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	user := fs.String("user", "", "with -portal-qr, whose mess API key to use; defaults to the first admin")
 	offer := fs.String("offer-text", "", "group post, posted as written, or optional private offer with -peer")
 	diagnostics := fs.Bool("diagnostics", false, "log delivery checks for the selected buyer without message contents")
-	assumeUnreadable := fs.Bool("assume-unreadable-payment", false, "send the QR when a payment's amount stays unreadable after recovery, assuming the agreed price")
 	readSellFlags := addSellFlags(fs)
 	handoffFlag := fs.String("handoff", "", "for a group offer, overrides [sell] handoff for this run: never or on_reply")
 	if err := fs.Parse(args); err != nil {
@@ -70,10 +69,14 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 			return errors.New("choose -peer, or -group/-group-count, or set groups or group_count under [sell] in the config")
 		}
 	} else {
-		// A -peer sale takes only this one [sell] setting.
+		// A -peer sale takes only the two payment settings.
 		sell.AcceptPaymentImages = cfg.Sell.AcceptPaymentImages
 		if overrides.paymentImages != nil {
 			sell.AcceptPaymentImages = *overrides.paymentImages
+		}
+		sell.AcceptUnreadablePayments = cfg.Sell.AcceptUnreadablePayments
+		if overrides.unreadable != nil {
+			sell.AcceptUnreadablePayments = *overrides.unreadable
 		}
 	}
 	groupMode := len(sell.Groups) > 0
@@ -124,10 +127,13 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 	s := &sale{
 		log: log, loc: cfg.Location(), date: *date, meal: *meal, end: slot.End, cfg: cfg,
 		image: data, testImage: *qr == "", imageHash: fmt.Sprintf("%x", sha256.Sum256(data)),
-		diagnostics: *diagnostics, assumeUnreadable: *assumeUnreadable, acceptImages: sell.AcceptPaymentImages,
+		diagnostics: *diagnostics, assumeUnreadable: sell.AcceptUnreadablePayments, acceptImages: sell.AcceptPaymentImages,
 	}
 	if s.acceptImages {
 		fmt.Fprintln(os.Stderr, "accept_payment_images is on: an image the buyer sends after the payment prompt counts as payment. Nothing verifies it; check your UPI app before trusting the sale.")
+	}
+	if s.assumeUnreadable {
+		fmt.Fprintln(os.Stderr, "accept_unreadable_payments is on: a WhatsApp Pay message with no readable amount counts as payment of the agreed price. Check your UPI app before trusting the sale.")
 	}
 	var extras []string
 	if *portalQR {

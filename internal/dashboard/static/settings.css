@@ -245,3 +245,7 @@ button.var:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent
 @media (max-width: 520px) {
   .var-help td.ex { display: none; }
 }
+
+/* A row's ? sits after its name and opens the description. */
+.lbl > .keybtn.qhelp { width: 20px; height: 20px; margin: 0 6px 0 6px; border-radius: 6px; font: 700 12px/1 var(--sans); vertical-align: 2px; }
+.keypop { line-height: 1.45; }

@@ -13,7 +13,7 @@ By default the `run` service and MCP tools are read-only: no messages, read rece
 | The configured mess groups | Posts that look like a listing (a sell/buy phrase or a meal name), reactions, edits, deletes. Pruned after 14 days |
 | Ended listings, kept for good | One row each in `listing_facts`: seller's number and name, mess, meal, date, diet, price, when it was posted and sold. No message text |
 | DMs with saved contacts | Name and last-message times only |
-| DMs with unsaved numbers | Name, times, and message text (deleted after `dms.retention`, default 72h) |
+| DMs with unsaved numbers | Name, times, and message text (deleted after `dms.retention`, default 24h) |
 | Sell tasks' buyers | What the bot read from each message (an offer of ₹15, a question, a picture, "not buying"), the bot's own replies, and payment steps. Never the buyer's words, saved contact or not |
 | Every other group, status, channel, notes-to-self | Nothing |
 
@@ -152,7 +152,7 @@ The MCP tools are `mark_sell_task_sold`, `add_sell_task_buyer`, `mute_sell_task_
 
 ### Settings page
 
-Everyone edits their own selling settings on the OFFER, REPOST, BUYERS and MESSAGES tabs: the sell-task switch, offer groups, prices in posts, repost rules, buyer policy, handoff, image payments, unsaved chat retention, the monthly target and what the bot says to buyers. These settings are stored in that user's database and apply to their next actions and supported live task settings. New users start with conservative selling defaults, including image payments off. Their sell-task switch starts at `[mcp] new_user_sell_tasks`, off unless the operator sets it. File values remain the fallback for the migrated admin. There is no configured phone number or UPI address to migrate: sender identity comes from the user's device and payment prompts use WhatsApp Pay.
+Everyone edits their own selling settings on the OFFER, REPOST, BUYERS and MESSAGES tabs: the sell-task switch, offer groups, prices in posts, repost rules, buyer policy, handoff, image payments, unsaved chat retention, the monthly target and what the bot says to buyers. These settings are stored in that user's database and apply to their next actions and supported live task settings. New users start with conservative selling defaults, including image payments off and blank WhatsApp Pay payments accepted. Their sell-task switch starts at `[mcp] new_user_sell_tasks`, off unless the operator sets it. File values remain the fallback for the migrated admin. There is no configured phone number or UPI address to migrate: sender identity comes from the user's device and payment prompts use WhatsApp Pay.
 
 `settings.html` has YOU, OFFER, REPOST, BUYERS and MESSAGES tabs for everyone. The MARKET and CALENDAR tabs change messwa for everyone, so only admins get them:
 
@@ -161,7 +161,7 @@ Everyone edits their own selling settings on the OFFER, REPOST, BUYERS and MESSA
 | YOU | messaging app (this browser only), `hide_snacks` |
 | OFFER | `[mcp] sell_tasks`, `[sell] groups` or `group_count`, `post_gap`, `show_price`, `mention_extras`, `[sales] monthly_fee`, `[sell] list_at`, `nudge`, with a preview of the group post |
 | REPOST | `[sell] repost`, `repost_messages`, `repost_listings`, `max_reposts` |
-| BUYERS | `[sell] buyers`, `handoff`, `accept_plain_dms`, `message_buy_posts`, `accept_payment_images`, `[dms] retention` |
+| BUYERS | `[sell] buyers`, `handoff`, `accept_plain_dms`, `message_buy_posts`, `accept_payment_images`, `accept_unreadable_payments`, `[dms] retention` |
 | MESSAGES | `[sell] own_wording`, `messages`: every DM the bot sends a buyer, see [Bot wording](#bot-wording) |
 | MARKET | `[sold]` emojis, closed emojis, words and `admins_count`, `[dedupe] window` |
 | CALENDAR | meal times, `[[seasons]]`, each mess's `veg_only` |
@@ -183,7 +183,7 @@ Some things stay in `config.toml`: the listen addresses, `state_dir`, `timezone`
 - **Sales ledger.** Days across, meals down, for the last four weeks (arrow keys page by week). A sold slot shows the price, the mess, and the buyer's pixel head. Each buyer always gets the same head. An armed slot drains like a listing until the meal ends. ATE means you used the registration yourself. WASTED means the meal ended unsold and unused. Dashed slots are registered meals that haven't ended. Hovering shows the buyer, their number, when they paid, how fast the QR went out, and the median ask for that meal.
 - **Selling from the ledger.** With sell tasks on, the meal being served and the next one are outlined in gold. Click one to pick a lowest and an opening price on a two-handle slider (the tick is the median ask) and confirm. That starts a sell task, the same as `start_sell_task`. Equal handles sell at a fixed price. A meal with a task running shows SELLING and its range. Click it for the buyers so far and three buttons: MARK SOLD (you sold it yourself; `mark_sell_task_sold`), EDIT PRICES (`set_sell_task_prices`) and STOP SELLING (`cancel_sell_task`, which deletes the offer posts).
 - **Selling ahead.** Sell a meal before it starts and the offer waits: it goes up at `[sell] list_at` (default 15 minutes before the meal, -30m to 1h30m, under Settings, Offer) and sells till the meal ends. START NOW posts it straight away instead. Your registration and the groups are checked when you click and again when it goes up. A waiting sale shows the time it goes up; click it to start it now, change its prices or unschedule it. It also gets a dashed card on the board, beside your running sales, with its price range, a countdown, START NOW and the autopilot switch. Schedules survive a restart; one that came due while `run` was down starts on the next start if its meal hasn't ended. Selling a scheduled meal by hand drops the schedule. MCP's `start_sell_task` still posts straight away.
-- **Autopilot.** A scheduled sale has an AUTOPILOT switch beside START NOW, off by default. On autopilot the task never waits on you: a buyer it would park for you (paying some other way, going below your lowest, replies it can't read, saying they paid when no payment came, the message limit) is skipped instead, even one offering more than the rest. A skipped buyer holding the payment turn loses it at once and hears `wait dont pay` / `cant do this one sorry`, and the next buyer is asked to pay. Only WhatsApp Pay counts, whatever `accept_payment_images` says; nothing is handed off; and the task never pools with another, so another task's rules can't reach it. A WhatsApp Pay payment that matches a price the bot quoted still gets the meal. A payment it can't honour is still listed for you to refund, since only you can send money back. Skips show as `auto_skipped` in the task's events.
+- **Autopilot.** A scheduled sale has an AUTOPILOT switch beside START NOW, off by default. On autopilot the task never waits on you: a buyer it would park for you (paying some other way, going below your lowest, replies it can't read, saying they paid when no payment came, the message limit) is skipped instead, even one offering more than the rest. A skipped buyer holding the payment turn loses it at once and hears `wait dont pay` / `cant do this one sorry`, and the next buyer is asked to pay. Only WhatsApp Pay with a readable amount counts, whatever `accept_payment_images` and `accept_unreadable_payments` say; nothing is handed off; and the task never pools with another, so another task's rules can't reach it. A WhatsApp Pay payment that matches a price the bot quoted still gets the meal. A payment it can't honour is still listed for you to refund, since only you can send money back. Skips show as `auto_skipped` in the task's events.
 - **Up next.** Once today's last meal is over, tomorrow's first one shows above the ledger as UP NEXT, so you can sell or schedule it the night before. The board's sell card offers it too. It stays out of the grid and the totals.
 - **Friends' meals.** SELL A FRIEND'S MEAL sells someone else's meal through your WhatsApp. Pick the meal, their mess, veg, egg or non-veg, the price range and any extras they registered, and attach their QR (PNG or JPEG, up to 5 MB). The offer reads like yours, extras included, and the buyer gets the friend's QR. Each friend's meal gets its own slot, like `dinner#f1`, so it never touches your own registration, and its sale stays out of the ledger, the regulars and every total. The list shows what became of each one; click a running one to mark it sold, edit its prices or stop it. The meal and QR are kept in the `friend_meals` table. `proxy-meal.json` still works for the same thing from the command line.
 - **Saved this month.** The green bar is what your sales earned back against this month's mess bill. The striped part after it is what the month's wasted meals would have fetched at the median ask. The bill comes from the portal's `/registrations/bill`, the same read as IIITH-mess-MCP's `get_bill`: availed meals plus the projected cost of meals you're registered for, so it grows as you register. When the portal can't be read, the page uses `sales.monthly_fee` from `config.toml` instead.
@@ -506,6 +506,7 @@ isn't today's.
 | `repost_listings` | `-repost-listings` | `3` | Repost once this many other sellers listed the same meal at the same mess after a copy. 0 turns it off |
 | `max_reposts` | `-max-reposts` | `6` | Most fresh copies per group for one offer, 0 to 12 |
 | `accept_payment_images` | `-accept-payment-images` | `false` | Count an image from the paying buyer as their payment, unverified, see below |
+| `accept_unreadable_payments` | `-assume-unreadable-payment` | `true` | Count a WhatsApp Pay message whose amount stays unreadable after recovery as the agreed price, unverified, see [One-meal QR delivery](#one-meal-qr-delivery) |
 
 With `groups` or `group_count` set, `deliver-qr` without `-peer` posts to
 those groups, so `-group` is no longer needed:
@@ -817,15 +818,19 @@ for separate people. The portal can still invalidate an image after it is sent.
 Delivery requires a new incoming WhatsApp Pay `sendPaymentMessage` from the
 selected buyer, after arming and before the meal ends. If the amount is
 missing, the bot requests the full message from the primary device, up to six
-times within 40 seconds. If the amount is still unreadable after that, it
-logs a warning and sends nothing. In a group sale the buyer's two minutes then
-run out as usual. Check the buyer's chat and deliver by hand if they paid.
+times within 40 seconds. If the amount is still unreadable after that, the
+bot assumes the agreed amount and sends the QR if the sale is still open, and
+logs the assumption with the triggering message ID. This is `[sell]
+accept_unreadable_payments`, on by default (BLANK WHATSAPP PAY COUNTS AS PAID
+on the settings page's Buyers tab), and it applies to sell tasks too, except
+on autopilot. Anyone who can make WhatsApp deliver a payment message without a
+readable amount gets the QR without paying, so check payments yourself
+afterwards.
 
-`-assume-unreadable-payment` changes that: the bot assumes the agreed amount
-and sends the QR if the sale is still open, and logs the assumption with the
-triggering message ID. Anyone who can make WhatsApp deliver a payment message
-without a readable amount then gets the QR without paying, so leave it off
-unless you check payments yourself afterwards.
+With the setting off, or `-assume-unreadable-payment=false` for one run, the
+bot logs a warning and sends nothing. In a group sale the buyer's two minutes
+then run out as usual. Check the buyer's chat and deliver by hand if they
+paid.
 
 Normal text, screenshots (unless `accept_payment_images` is on, see [Offer
 settings](#offer-settings)), other buyers, expired messages, mismatched

@@ -29,6 +29,10 @@ type sellSettings struct {
 	// AcceptPaymentImages counts an image from the paying buyer as their
 	// payment; see sale.acceptImages.
 	AcceptPaymentImages bool
+	// AcceptUnreadablePayments counts a WhatsApp Pay payment whose amount
+	// stays unreadable after recovery as the agreed price; see
+	// sale.assumeUnreadable.
+	AcceptUnreadablePayments bool
 }
 
 // sellFlags are the deliver-qr flags that override [sell] for one run. A
@@ -46,6 +50,7 @@ type sellFlags struct {
 	repostListings *int
 	maxReposts     *int
 	paymentImages  *bool
+	unreadable     *bool
 }
 
 // pickGroups reports whether any flag picks offer groups.
@@ -79,6 +84,7 @@ func addSellFlags(fs *flag.FlagSet) func() sellFlags {
 	listings := fs.Int("repost-listings", 0, "repost once this many other sellers listed the same meal at the same mess after a copy; 0 turns this off (overrides [sell] repost_listings)")
 	maxReposts := fs.Int("max-reposts", 0, "most fresh copies per group (overrides [sell] max_reposts)")
 	images := fs.Bool("accept-payment-images", false, "count an image from the paying buyer, sent after the payment prompt, as their payment; nothing verifies it (overrides [sell] accept_payment_images)")
+	unreadable := fs.Bool("assume-unreadable-payment", false, "send the QR when a WhatsApp Pay payment's amount stays unreadable after recovery, assuming the agreed price (overrides [sell] accept_unreadable_payments)")
 	return func() sellFlags {
 		f := sellFlags{groups: groups}
 		fs.Visit(func(fl *flag.Flag) {
@@ -105,6 +111,8 @@ func addSellFlags(fs *flag.FlagSet) func() sellFlags {
 				f.maxReposts = maxReposts
 			case "accept-payment-images":
 				f.paymentImages = images
+			case "assume-unreadable-payment":
+				f.unreadable = unreadable
 			}
 		})
 		return f
@@ -116,13 +124,14 @@ func addSellFlags(fs *flag.FlagSet) func() sellFlags {
 func resolveSellSettings(cfg *config.Config, f sellFlags) (sellSettings, error) {
 	cfg = cfg.Live()
 	s := sellSettings{
-		PostGap:             cfg.Sell.PostGap.Duration,
-		ShowPrice:           cfg.Sell.ShowPrice,
-		MentionExtras:       cfg.Sell.MentionExtras,
-		AcceptPlainDMs:      cfg.Sell.AcceptPlainDMs,
-		Buyers:              cfg.Sell.Buyers,
-		Repost:              repost.FromConfig(cfg.Sell),
-		AcceptPaymentImages: cfg.Sell.AcceptPaymentImages,
+		PostGap:                  cfg.Sell.PostGap.Duration,
+		ShowPrice:                cfg.Sell.ShowPrice,
+		MentionExtras:            cfg.Sell.MentionExtras,
+		AcceptPlainDMs:           cfg.Sell.AcceptPlainDMs,
+		Buyers:                   cfg.Sell.Buyers,
+		Repost:                   repost.FromConfig(cfg.Sell),
+		AcceptPaymentImages:      cfg.Sell.AcceptPaymentImages,
+		AcceptUnreadablePayments: cfg.Sell.AcceptUnreadablePayments,
 	}
 	firstN := func(n int, name string) ([]string, error) {
 		if n < 1 || n > len(cfg.Groups) {
@@ -172,6 +181,9 @@ func resolveSellSettings(cfg *config.Config, f sellFlags) (sellSettings, error) 
 	}
 	if f.paymentImages != nil {
 		s.AcceptPaymentImages = *f.paymentImages
+	}
+	if f.unreadable != nil {
+		s.AcceptUnreadablePayments = *f.unreadable
 	}
 	if f.buyers != nil {
 		if s.Buyers, err = config.ParseBuyers(*f.buyers); err != nil {

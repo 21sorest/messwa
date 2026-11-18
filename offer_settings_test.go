@@ -136,6 +136,16 @@ func TestResolveSellSettings(t *testing.T) {
 	if s, err = resolveSellSettings(testSellConfig(t, nil), parseSellFlags(t, "-accept-payment-images")); err != nil || !s.AcceptPaymentImages {
 		t.Fatalf("-accept-payment-images = %+v, %v", s, err)
 	}
+	if s, err = resolveSellSettings(testSellConfig(t, nil), sellFlags{}); err != nil || !s.AcceptUnreadablePayments {
+		t.Fatalf("unreadable payments refused by default: %+v, %v", s, err)
+	}
+	if s, err = resolveSellSettings(testSellConfig(t, nil), parseSellFlags(t, "-assume-unreadable-payment=false")); err != nil || s.AcceptUnreadablePayments {
+		t.Fatalf("-assume-unreadable-payment=false over the setting = %+v, %v", s, err)
+	}
+	refuse := func(c *config.Config) { c.Sell.AcceptUnreadablePayments = false }
+	if s, err = resolveSellSettings(testSellConfig(t, refuse), parseSellFlags(t, "-assume-unreadable-payment")); err != nil || !s.AcceptUnreadablePayments {
+		t.Fatalf("-assume-unreadable-payment = %+v, %v", s, err)
+	}
 	s, err = resolveSellSettings(testSellConfig(t, nil), parseSellFlags(t, "-group", "Mess A"))
 	if err != nil || !reflect.DeepEqual(s.Groups, []string{"Mess A"}) {
 		t.Fatalf("one -group = %+v, %v", s, err)

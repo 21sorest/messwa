@@ -63,6 +63,10 @@ type Sell struct {
 	// by default: a screenshot proves nothing, and a QR can't be taken
 	// back once sent.
 	AcceptPaymentImages bool `toml:"accept_payment_images"`
+	// AcceptUnreadablePayments counts a WhatsApp Pay message whose amount
+	// stays unreadable after recovery as a payment of the agreed price.
+	// On by default, though the bot can't tell what, if anything, was paid.
+	AcceptUnreadablePayments bool `toml:"accept_unreadable_payments"`
 	// NegotiationSilence is how long a sell task waits for a buyer to
 	// answer its last message before it stops negotiating with them. A
 	// buyer who writes later, while the meal is unsold, picks up again.

@@ -175,7 +175,7 @@ func Default() *Config {
 			AdminsCount:  false,
 			Words:        []string{"sold", "done", "gone"},
 		},
-		DMs: DMs{Retention: duration{72 * time.Hour}},
+		DMs: DMs{Retention: duration{24 * time.Hour}},
 		MCP: MCP{Listen: "127.0.0.1:8766", TokenEnv: "MESSWA_MCP_TOKEN"},
 		Sell: Sell{
 			PostGap:   duration{15 * time.Second},
@@ -194,6 +194,9 @@ func Default() *Config {
 			// meal went to one who wrote just after.
 			NegotiationSilence: duration{10 * time.Minute},
 			OwnWording:         true,
+			// Linked devices sometimes get a WhatsApp Pay message with no
+			// amount; the 17 Nov dinner buyer paid and got no QR.
+			AcceptUnreadablePayments: true,
 		},
 	}
 }
