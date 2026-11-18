@@ -1197,14 +1197,14 @@ function renderNudge() {
 // nudge loaded. After an action both the ledger and the board refetch.
 const SELL = sellSheet({ data: () => N, now, toast, close: closeModal, reload: () => { loadNudge(true); load(); } });
 
-// openSellHere opens the sell sheet for one of your meals. It returns
-// false when the ledger doesn't have that meal, so the caller's link to
-// the sales page can do the job instead.
-function openSellHere(date, meal) {
+// openSellHere opens the sell sheet for one of your meals, on view (see
+// SELL.open). It returns false when the ledger doesn't have that meal, so
+// the caller's link to the sales page can do the job instead.
+function openSellHere(date, meal, view) {
   const c = ledgerCell(date, meal);
   if (!c || !N.owner) return false;
   sheet.className = 'sheet sell-sheet';
-  SELL.open(date, c);
+  SELL.open(date, c, view);
   return true;
 }
 

@@ -14,8 +14,9 @@ import (
 // dashboard's MY SALE box offers the same actions.
 type SellOperator interface {
 	// MarkSold records that you sold the meal yourself, to who (a phone
-	// number or JID) or name, for priceRupees.
-	MarkSold(ctx context.Context, id int64, who, name string, priceRupees int, note string) error
+	// number or JID) or name, for priceRupees. sendQR also sends who the
+	// meal QR.
+	MarkSold(ctx context.Context, id int64, who, name string, priceRupees int, note string, sendQR bool) error
 	// AddBuyer queues who as if they had replied privately to the offer.
 	AddBuyer(ctx context.Context, id int64, who, name string) error
 	// MuteBuyer stops or restarts the bot messaging one of the task's buyers.
@@ -71,7 +72,7 @@ func (s *Server) SellOperator() (SellOperator, error) {
 
 func (s *Server) addSellActionTools(srv *mcp.Server, write *mcp.ToolAnnotations) {
 	mcp.AddTool(srv, &mcp.Tool{Name: "mark_sell_task_sold", Annotations: write,
-		Description: "Record that the user sold a running sell task's meal themselves, outside the bot. The task stops, the sale goes in the ledger as paid and sent now (payment kind manual), buyers still in the running get the usual \"sold\" message, and the offer posts get a ✅. The buyer gets no message from the bot. Use it only when the user says they sold the meal, with the buyer and price they gave. Uses your own linked account."}, s.markSellTaskSold)
+		Description: "Record that the user sold a running sell task's meal themselves, outside the bot. The task stops, the sale goes in the ledger as paid and sent now (payment kind manual), buyers still in the running get the usual \"sold\" message, and the offer posts get a ✅. The buyer gets no message from the bot unless send_qr is set, which sends them the meal QR and needs their phone number or JID. Use it only when the user says they sold the meal, with the buyer and price they gave. Uses your own linked account."}, s.markSellTaskSold)
 	mcp.AddTool(srv, &mcp.Tool{Name: "add_sell_task_buyer", Annotations: write,
 		Description: "Add someone to a running sell task's buyers as if they had replied privately to its offer. The bot then sends them the opening price (or, without a price range, asks them to pay) like anyone who replied. Fails for someone already a buyer, and for saved contacts when [sell] buyers is \"unsaved_only\". Uses your own linked account."}, s.addSellTaskBuyer)
 	mcp.AddTool(srv, &mcp.Tool{Name: "mute_sell_task_buyer", Annotations: write,
@@ -83,11 +84,12 @@ func (s *Server) addSellActionTools(srv *mcp.Server, write *mcp.ToolAnnotations)
 }
 
 type MarkSoldIn struct {
-	ID    int64  `json:"id" jsonschema:"sell task id"`
-	Buyer string `json:"buyer,omitempty" jsonschema:"the buyer's phone number with country code, or WhatsApp JID; one of the task's buyers or anyone else. Omit to give only a name"`
-	Name  string `json:"name,omitempty" jsonschema:"the buyer's name; required when buyer is omitted"`
-	Price int    `json:"price" jsonschema:"price in whole rupees"`
-	Note  string `json:"note,omitempty" jsonschema:"anything worth keeping, like how they paid"`
+	ID     int64  `json:"id" jsonschema:"sell task id"`
+	Buyer  string `json:"buyer,omitempty" jsonschema:"the buyer's phone number with country code, or WhatsApp JID; one of the task's buyers or anyone else. Omit to give only a name"`
+	Name   string `json:"name,omitempty" jsonschema:"the buyer's name; required when buyer is omitted"`
+	Price  int    `json:"price" jsonschema:"price in whole rupees"`
+	Note   string `json:"note,omitempty" jsonschema:"anything worth keeping, like how they paid"`
+	SendQR bool   `json:"send_qr,omitempty" jsonschema:"send the buyer the meal QR; needs buyer"`
 }
 
 type AddBuyerIn struct {
@@ -123,7 +125,7 @@ func (s *Server) sellAction(ctx context.Context, req *mcp.CallToolRequest, id in
 
 func (s *Server) markSellTaskSold(ctx context.Context, req *mcp.CallToolRequest, in MarkSoldIn) (*mcp.CallToolResult, SellTaskOut, error) {
 	return s.sellAction(ctx, req, in.ID, func(op SellOperator) error {
-		return op.MarkSold(ctx, in.ID, in.Buyer, in.Name, in.Price, in.Note)
+		return op.MarkSold(ctx, in.ID, in.Buyer, in.Name, in.Price, in.Note, in.SendQR)
 	})
 }
 
