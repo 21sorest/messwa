@@ -1,0 +1,211 @@
+/* The home page's widgets, their edit mode and the tray of widgets to add (home.js). */
+
+.widgets { display: flex; flex-direction: column; gap: 18px; }
+.widget { position: relative; min-width: 0; }
+.w-content { min-width: 0; }
+
+/* A widget panel built by home.js. */
+.w-chest .chest-head { flex-wrap: nowrap; }
+.w-chest .head-meta { color: var(--muted); }
+.w-body { min-width: 0; }
+.w-body.sales-box { gap: 8px; }
+.w-link { color: var(--gold); text-decoration: none; font-size: 12.5px; white-space: nowrap; }
+.w-link:hover { text-decoration: underline; }
+.head-link { margin-left: auto; font-size: 12px; color: var(--muted); }
+.head-link:hover { color: var(--gold); text-decoration: none; }
+.w-foot { display: flex; justify-content: flex-end; padding-top: 10px; }
+
+/* Alerts keep their own banner look and vanish while nothing needs you. */
+.w-quiet-note { display: none; }
+.widget[data-w="alerts"].w-empty { display: none; }
+.home-editing .widget[data-w="alerts"].w-empty { display: block; }
+.home-editing .widget[data-w="alerts"].w-empty .w-quiet-note {
+  display: block; padding: 14px 16px; border-radius: 12px; border: 1px dashed var(--line); color: var(--dim); font-size: 13px;
+}
+.w-alerts .attn { margin: 0; }
+
+/* The board's footer of keys moves into the Market widget. */
+.widget[data-w="market"] .hint { margin-top: 12px; }
+
+/* ---------- Today ---------- */
+
+/* auto-fit, so today's few cards share the row instead of leaving empty columns. */
+.today-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.mysale.tile { gap: 8px; }
+.tile .ms-meal { min-width: 0; }
+.tile-tag { margin-left: auto; color: var(--muted); border-color: var(--line); }
+.tile-body { display: flex; flex-direction: column; gap: 3px; }
+.tile-when { font-size: 12px; color: var(--dim); }
+.tile-line { font-size: 13px; color: var(--muted); }
+.tile .ms-acts .tile-go { flex: 1; justify-content: center; padding: 9px 10px; }
+.mysale.tile.can-sell { border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.mysale.tile.can-sell .tile-tag { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+/* Not registered: an empty slot. */
+.mysale.tile.is-none { background: transparent; border-style: dashed; box-shadow: none; }
+.mysale.tile.is-none .ms-meal, .mysale.tile.is-none .tile-line { color: var(--dim); }
+.mysale.tile.is-none .ms-mess, .mysale.tile.is-none .ms-diet { opacity: .3; }
+.mysale.tile.is-ate .tile-tag { color: var(--veg); border-color: color-mix(in srgb, var(--veg) 45%, transparent); }
+.mysale.tile.is-wasted .tile-tag { color: #ff6b5b; border-color: color-mix(in srgb, #ff6b5b 45%, transparent); }
+.mysale.tile.is-sold .tile-tag, .mysale.tile.is-sending .tile-tag { color: var(--veg); border-color: color-mix(in srgb, var(--veg) 45%, transparent); }
+
+/* ---------- Sales ledger ---------- */
+
+.widget[data-w="ledger"] .w-body { container-type: inline-size; }
+/* Cells grow with the widget, leaving the summary about 380px. */
+.widget .w-ledger-body { --s: clamp(54px, calc((100cqi - 22px - 6 * var(--gap) - 16px - 380px) / 7), 88px); --gap: 6px; align-items: stretch; }
+.w-ledger-body .lgrid { grid-template-columns: 22px repeat(7, var(--s)); }
+.w-ledger-body .mh svg { width: 16px; height: 16px; }
+.w-ledger-body .slot.item { cursor: default; }
+.w-ledger-body .slot.item.sellable { cursor: pointer; }
+.w-ledger-body .price { font-size: clamp(12px, calc(var(--s) * .22), 20px); }
+.w-ledger-body .price.wide { font-size: clamp(10px, calc(var(--s) * .19), 17px); }
+.w-ledger-body .price.range { font-size: clamp(8px, calc(var(--s) * .13), 12px); }
+.w-ledger-body .stamp { font-size: clamp(6.5px, calc(var(--s) * .1), 9px); }
+.w-ledger-body .sell-tag { font-size: clamp(7px, calc(var(--s) * .1), 9px); }
+.w-week { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 10px; padding: 2px 0; }
+.w-week-tiles { flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+.w-week-tiles .w-stat:first-child { grid-column: 1 / -1; }
+.w-stat { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--slot); border: 1px solid #1e2431; }
+.w-stat b { font: 400 22px/1 Pixel; color: var(--text); }
+.w-stat b.g { color: #80ff20; }
+.w-stat b.gold { color: var(--gold); }
+.w-stat b.r { color: #ff6b5b; }
+.w-stat span { font: 700 7px Pixel; letter-spacing: .4px; color: var(--muted); }
+.w-stat small { font-size: 11.5px; color: var(--dim); }
+.w-week .w-link { margin-top: auto; padding-top: 4px; }
+
+/* ---------- Regulars ---------- */
+
+.widget .w-reg { --s: 54px; margin-top: 0; }
+.w-reg .heads { flex: 1; min-width: 0; align-self: stretch; }
+.w-reg .panel { flex: 0 1 300px; }
+
+/* ---------- edit mode ---------- */
+
+.home-bar { display: flex; }
+.home-editbar {
+  position: sticky; top: 8px; z-index: 40; flex: 1;
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--gold) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+}
+.home-editing .home-bar { position: sticky; top: 8px; z-index: 40; }
+.home-edit-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.home-edit-text b { color: var(--gold); font-weight: 600; }
+.home-btn {
+  padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--slot); color: var(--text);
+  font: 700 9px Pixel; letter-spacing: .4px; cursor: pointer; white-space: nowrap;
+}
+.home-btn:hover { background: var(--slot-hi); }
+.home-btn.gold { background: var(--gold); border-color: var(--gold); color: #121620; }
+.home-btn.gold:hover { filter: brightness(1.08); }
+
+.home-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 46px 16px; border-radius: 20px;
+  border: 1px dashed var(--line); color: var(--muted); text-align: center;
+}
+.home-empty b { color: var(--text); font-size: 15px; }
+.home-empty .home-btn { margin-top: 6px; }
+
+/* Each widget's bar, shown only while editing. */
+.w-edit { display: none; }
+.home-editing .w-edit {
+  display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 10px; margin-bottom: 6px; border-radius: 10px;
+  background: var(--slot); border: 1px solid var(--line); cursor: grab; touch-action: none; user-select: none;
+}
+.home-editing .w-edit:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.w-grip { color: var(--dim); font-size: 16px; line-height: 1; }
+.w-name { flex: 1; font: 700 10px Pixel; letter-spacing: .5px; color: var(--text); text-transform: uppercase; }
+.w-mv, .w-x {
+  width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  font: 600 13px/1 var(--sans); cursor: pointer;
+}
+.w-mv:hover { color: var(--text); background: var(--slot-hi); }
+.w-x:hover { color: #ff6b5b; border-color: color-mix(in srgb, #ff6b5b 55%, transparent); }
+
+/* While editing, a widget is a still tile: cut short so a long page stays draggable. */
+.home-editing .w-content {
+  max-height: 240px; overflow: hidden; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+  mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+.home-editing .widgets { padding-bottom: 300px; }
+.w-dragging { display: none; }
+.w-ph {
+  border-radius: 16px; border: 2px dashed color-mix(in srgb, var(--gold) 70%, transparent);
+  background: color-mix(in srgb, var(--gold) 6%, transparent);
+}
+.w-new { animation: w-new .9s ease-out; }
+@keyframes w-new { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 70%, transparent); border-radius: 16px; } to { box-shadow: 0 0 0 3px transparent; } }
+.home-dragging, .home-dragging * { cursor: grabbing !important; user-select: none; }
+
+.drag-ghost {
+  position: fixed; left: 0; top: 0; z-index: 100; pointer-events: none;
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--gold); color: var(--text); font: 700 10px Pixel; letter-spacing: .4px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .6);
+}
+.drag-ghost span svg { width: 16px; height: 16px; display: block; }
+.drag-ghost.out { border-color: #ff6b5b; color: #ff6b5b; }
+.drag-ghost.out::after { content: "✕ take off"; font: 600 11px var(--sans); }
+
+/* ---------- the tray ---------- */
+
+.tray {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  padding: 10px 0 calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(20, 24, 33, .97), #0e1118);
+  border-top: 1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  box-shadow: 0 -20px 50px rgba(0, 0, 0, .55);
+}
+.tray.drop-out { border-top-color: #ff6b5b; background: linear-gradient(180deg, rgba(48, 20, 22, .97), #170e10); }
+.tray-head { display: flex; align-items: baseline; gap: 10px; padding: 0 20px 8px; }
+.tray-title { font: 700 10px Pixel; letter-spacing: .6px; color: var(--gold); }
+.tray-meta { font-size: 12px; color: var(--muted); }
+.tray-list {
+  display: flex; gap: 12px; overflow-x: auto; padding: 2px 20px 6px; scroll-padding-inline: 20px; scroll-snap-type: x proximity;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.tray-card {
+  position: relative; flex: none; width: 250px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden;
+  background: var(--slot); border: 1px solid var(--line); cursor: grab; scroll-snap-align: start; user-select: none;
+  -webkit-touch-callout: none;
+}
+.tray-card:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.tray-card.w-lifted { opacity: .4; }
+.tray-prev { position: relative; height: 130px; overflow: hidden; background: var(--bg); border-bottom: 1px solid var(--line); }
+/* Previews render at a normal page width, then shrink to the card. */
+.tray-zoom { width: 640px; zoom: .39; pointer-events: none; padding: 12px; }
+.tray-zoom .chest { box-shadow: none; }
+.tray-zoom .w-mini-board { --s: 56px; --gap: 5px; }
+.tray-zoom .w-mini-board .grid { grid-template-columns: repeat(8, var(--s)); grid-template-rows: none; }
+.tray-zoom .w-mini-board .tabs { grid-template-rows: none; }
+.tray-info { display: flex; flex-direction: column; gap: 2px; padding: 8px 40px 10px 10px; }
+.tray-info b { font: 700 9px Pixel; letter-spacing: .4px; color: var(--text); text-transform: uppercase; }
+.tray-info span { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+.tray-add {
+  position: absolute; right: 8px; bottom: 10px; width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+  background: var(--gold); border: 0; color: #121620; font: 700 16px/1 var(--sans);
+}
+.tray-add:hover { filter: brightness(1.1); }
+
+@media (max-width: 640px) {
+  .home-editbar { flex-wrap: wrap; }
+  .home-edit-text { flex: 1 0 100%; }
+  .home-editbar .home-btn { flex: 1; }
+  .tray-head, .tray-list { padding-left: 12px; padding-right: 12px; }
+  .tray-list { scroll-padding-inline: 12px; }
+  .tray-card { width: 210px; }
+  .tray-prev { height: 110px; }
+  .tray-zoom { zoom: .33; }
+  .widget .w-ledger-body { --s: min(46px, calc((100cqi - 18px - 24px) / 7)); --gap: 4px; }
+  .w-ledger-body .lgrid { grid-template-columns: 18px repeat(7, var(--s)); }
+  .w-ledger-body .price { font-size: 10px; }
+  .w-ledger-body .price.wide { font-size: 9px; }
+  .w-week { width: 100%; }
+  .w-week-tiles { grid-auto-rows: auto; }
+  .w-stat { padding: 8px 10px; }
+  .widget .w-reg { --s: 46px; }
+  .w-reg .panel { flex: 1; }
+  .w-chest .head-meta { display: none; }
+}

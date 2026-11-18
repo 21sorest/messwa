@@ -341,10 +341,11 @@ function refreshRecurringRulesView() {
 
 function openRecurringHash() {
   if (recurringBusy) return;
-  const match = /^#recurring-rule=(\d+)$/.exec(location.hash);
+  const match = /^#recurring-rule=(\d+|new)$/.exec(location.hash);
   if (!match) return;
-  const rule = recurringRules.find((r) => r.id === Number(match[1]));
-  if (!rule) return;
+  // The home page's Recurring rules widget links here with "new".
+  const rule = match[1] === 'new' ? undefined : recurringRules.find((r) => r.id === Number(match[1]));
+  if (!rule && match[1] !== 'new') return;
   $('ruleSec').scrollIntoView({ block: 'start' });
   editRecurringRule(rule);
   history.replaceState(null, '', location.pathname + location.search);

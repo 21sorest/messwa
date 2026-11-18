@@ -13,8 +13,9 @@
 //   posted     ✓ / ✗ / … per group; red with ↓N once buried.
 //   market     the other listings for the meal, yours in gold.
 //
-// Sales waiting for their meal get a dashed card after the running ones
-// (scheduledCard). Finished sales fold to one line under ENDED.
+// The home page's Today widget shows a card per meal today (renderToday),
+// and its Scheduled widget the sales waiting for their meal, as dashed
+// cards (scheduledCard). Finished sales fold to one line under ENDED.
 //
 // Uses app.js's globals (D, now, hm, dur, sheet, modal, closeModal,
 // messagingApp, digits, toast, openListing). Buyer names are untrusted and
@@ -101,37 +102,59 @@ let saleSheet = null; // {id, key} or {id, meal: true} while a sale sheet is ope
 let rangeEdit = null;
 const showGone = new Set(); // sale ids whose finished buyers are listed
 const ENDED_SHOWN = 3; // ended sales listed before the rest fold away
-const CARDS_SHOWN = 3; // sale cards on the board, running first, then the soonest schedules
 let allEnded = false;
 
 const payingNow = (v) => (v.state === 'active' && v.buyers.some((b) => b.state === 'offered')) || (v.pay && LIVE_PAY.includes(v.pay.state) && v.pay.paid);
 const isOver = (v) => v.state !== 'active' && !payingNow(v);
 const rangeText = (lo, hi) => (lo === hi ? rup(lo) : `${rup(lo)}–${rup(hi)}`);
 
+// renderSales draws the home page's Today and Scheduled widgets, whichever
+// are on the page.
 function renderSales() {
-  const box = $('sales');
-  if (!box) return;
+  const list = (D && D.sales) || [];
+  const live = list.filter((v) => !isOver(v));
+  if (rangeEdit && !live.some((v) => v.id === rangeEdit.id && v.state === 'active')) rangeEdit = null;
+  const kept = rangeEdit && document.querySelector(`#todayBox .mysale[data-id="${rangeEdit.id}"] .ms-edit`)?.closest('.mysale');
+  if ($('todayBox')) renderToday($('todayBox'), kept);
+  if ($('schedBox')) renderScheduled($('schedBox'));
+  tickSales();
+  if (saleSheet && !saleSheet.editing && !modal.hidden) {
+    const v = list.find((x) => x.id === saleSheet.id);
+    if (v) (saleSheet.meal ? openMealSheet : openBuyerSheet)(v, saleSheet.key, true);
+  }
+}
+function saleClosed() { saleSheet = null; }
+
+// renderToday fills box with a card per meal on today's board: the sale
+// card while it sells or once it sold, the scheduled card while it waits,
+// and otherwise what the ledger says (eaten, wasted, not registered) with a
+// button to sell a meal still to come. Running sales for another day or a
+// friend follow, then sales that ended without selling.
+function renderToday(box, kept) {
   const list = (D && D.sales) || [];
   const waiting = (D && D.scheduled) || [];
-  box.hidden = !list.length && !waiting.length;
-  const live = list.filter((v) => !isOver(v)), over = list.filter(isOver);
-  if (rangeEdit && !live.some((v) => v.id === rangeEdit.id && v.state === 'active')) rangeEdit = null;
-  const kept = rangeEdit && box.querySelector(`.mysale[data-id="${rangeEdit.id}"] .ms-edit`)?.closest('.mysale');
-  const parts = [];
-  if (live.length || waiting.length) {
-    // Running sales always show. Schedules (soonest first) fill the rest of
-    // CARDS_SHOWN; the others are on the sales page.
-    const soon = waiting.slice(0, Math.max(0, CARDS_SHOWN - live.length));
-    const grid = el('div', 'ms-grid');
-    grid.append(...live.map((v) => (kept && v.id === rangeEdit.id ? kept : chest(v))), ...soon.map(scheduledCard));
-    parts.push(grid);
-    const hidden = waiting.length - soon.length;
-    if (hidden) {
-      const more = el('a', 'ms-more', `+${hidden} more scheduled in My sales`);
-      more.href = 'sales.html';
-      parts.push(more);
+  const date = ymd(now());
+  const used = new Set();
+  const cards = boardMeals().map((meal) => {
+    const v = list.find((x) => !x.for_friend && x.date === date && mealOf(x) === meal);
+    if (v && (!isOver(v) || won(v))) {
+      used.add(v.id);
+      return kept && v.id === rangeEdit.id ? kept : chest(v);
     }
+    const s = waiting.find((x) => !x.for_friend && x.date === date && x.meal === meal);
+    if (s) return scheduledCard(s);
+    if (v) used.add(v.id);
+    return mealTile(date, meal, v);
+  });
+  for (const v of list) {
+    if (used.has(v.id) || isOver(v)) continue;
+    used.add(v.id);
+    cards.push(kept && v.id === rangeEdit.id ? kept : chest(v));
   }
+  const grid = el('div', 'ms-grid today-grid');
+  grid.append(...cards);
+  const parts = [grid];
+  const over = list.filter((v) => isOver(v) && !used.has(v.id));
   if (over.length) {
     const shown = allEnded ? over : over.slice(0, ENDED_SHOWN);
     parts.push(el('div', 'ms-sec', 'ENDED'), ...shown.map(endedRow));
@@ -143,13 +166,84 @@ function renderSales() {
     }
   }
   box.replaceChildren(...parts);
-  tickSales();
-  if (saleSheet && !saleSheet.editing && !modal.hidden) {
-    const v = list.find((x) => x.id === saleSheet.id);
-    if (v) (saleSheet.meal ? openMealSheet : openBuyerSheet)(v, saleSheet.key, true);
-  }
 }
-function saleClosed() { saleSheet = null; }
+
+// TILE is how a meal with no sale card reads: its tag and a line under it.
+const TILE = {
+  none: ['NOT REGISTERED', ''],
+  unknown: ['UNKNOWN', 'The mess portal didn\'t answer, so this meal\'s state is unknown.'],
+  ate: ['ATE IT', ''],
+  wasted: ['WASTED', ''],
+  sold: ['SOLD', ''], sending: ['PAID', 'Sending the QR.'], armed: ['ARMED', 'Waiting for the buyer to pay.'], handoff: ['HANDED OFF', 'You took the chat over.'],
+  open: ['REGISTERED', ''], selling: ['SELLING', ''], scheduled: ['SCHEDULED', ''],
+  loading: ['', 'Loading'],
+};
+
+// mealTile is one of today's meals with no sale card: c is its ledger
+// cell, and v an ended sale for it, if any.
+function mealTile(date, meal, v) {
+  const c = ledgerCell(date, meal) || { meal, state: 'loading' };
+  const w = window_(meal) || c;
+  const n = now();
+  const t = el('section', `mysale tile is-${c.state}`);
+  t.setAttribute('aria-label', `Your ${meal} today`);
+  const top = el('div', 'ms-top');
+  top.append(...mealHead({ meal, mess: c.mess, diet: c.diet, date }, 'ms-meal'));
+  const [word, line] = TILE[c.state] || [c.state.toUpperCase(), ''];
+  if (word) top.append(el('span', 'ms-tag tile-tag', word));
+  t.append(top);
+
+  const body = el('div', 'tile-body');
+  const when = w.start ? `${hm(w.start)}–${hm(w.end)}` : '';
+  const state = n >= w.end ? 'over' : n >= w.start ? `serving, ${dur(w.end - n)} left` : `starts in ${dur(w.start - n)}`;
+  body.append(el('span', 'tile-when', [when, w.start ? state : ''].filter(Boolean).join(' · ')));
+  const s = c.sale != null && N && N.sales ? N.sales[c.sale] : null;
+  if (s) body.append(el('span', 'tile-line', `${rup(s.amount)} from ${s.name || s.phone || 'a buyer'}`));
+  else if (c.state === 'wasted' && c.ask) body.append(el('span', 'tile-line', `Would have fetched about ${rup(Math.round(c.ask / 5) * 5)}`));
+  else if (v) body.append(el('span', 'tile-line', `Your offer ended unsold, ${v.state.replace('_', ' ')}.`));
+  else if (c.state === 'none') body.append(el('span', 'tile-line', 'Nothing to sell.'));
+  else if (line) body.append(el('span', 'tile-line', line));
+  t.append(body);
+
+  // A meal still to come can start selling. The sell sheet opens here when
+  // the ledger has the meal; otherwise the sales page plans it.
+  if (c.state === 'open' && c.end > n && N && N.owner && !N.sell_off) {
+    if (c.ask) body.append(el('span', 'tile-line', `Goes for about ${rup(Math.round(c.ask / 5) * 5)} today`));
+    const a = el('div', 'ms-acts');
+    const key = `${date}|${meal}`;
+    const go = el('a', 'ms-btn gold tile-go', c.sellable ? '▶ SELL IT' : '⏰ SCHEDULE IT');
+    go.href = `sales.html#sell=${encodeURIComponent(key)}`;
+    go.addEventListener('click', (e) => { if (c.sellable && openSellHere(date, meal)) e.preventDefault(); });
+    a.append(go);
+    t.append(a);
+    t.classList.add('can-sell');
+  }
+  if (v) {
+    tapCard(t, () => openMealSheet(v));
+  }
+  return t;
+}
+
+// renderScheduled fills box with the sales waiting for their meal, soonest
+// first. The rest are on the sales page.
+const SCHED_SHOWN = 6;
+function renderScheduled(box) {
+  const waiting = (D && D.scheduled) || [];
+  if (!waiting.length) {
+    const none = el('div', 'empty-note', 'Nothing scheduled. Pick meals in the sales ledger, or make a recurring rule, and they wait here until it\'s time to post.');
+    box.replaceChildren(none);
+    return;
+  }
+  const grid = el('div', 'ms-grid');
+  grid.append(...waiting.slice(0, SCHED_SHOWN).map(scheduledCard));
+  const parts = [grid];
+  if (waiting.length > SCHED_SHOWN) {
+    const more = el('a', 'ms-more', `+${waiting.length - SCHED_SHOWN} more scheduled in My sales`);
+    more.href = 'sales.html';
+    parts.push(more);
+  }
+  box.replaceChildren(...parts);
+}
 
 function mealHead(v, cls) {
   const dot = el('span', 'ms-mess');
@@ -662,11 +756,11 @@ function endedRow(v) {
 function tickSales() {
   const n = now();
   const frac = (e) => Math.min(1, Math.max(0, (+e.dataset.until - n) / Math.max(1, +e.dataset.until - +e.dataset.from)));
-  for (const a of document.querySelectorAll('#sales circle[data-until], .sheet circle[data-until]')) {
+  for (const a of document.querySelectorAll('.sales-box circle[data-until], .sheet circle[data-until]')) {
     a.setAttribute('stroke-dashoffset', (+a.dataset.len * (1 - frac(a))).toFixed(1));
   }
   for (const b of document.querySelectorAll('.sheet [data-bar]')) b.style.setProperty('width', `${frac(b) * 100}%`);
-  for (const t of document.querySelectorAll('#sales [data-fmt], .sheet [data-fmt]')) {
+  for (const t of document.querySelectorAll('.sales-box [data-fmt], .sheet [data-fmt]')) {
     const left = Math.max(0, +t.dataset.until - n);
     if (t.dataset.fmt === 'mmss') {
       t.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;

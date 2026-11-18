@@ -97,7 +97,7 @@
 
 .heads { display: grid; grid-template-columns: repeat(auto-fill, var(--s)); gap: var(--gap); }
 .heads .slot > svg { position: absolute; left: 50%; top: 46%; width: 44%; height: 44%; transform: translate(-50%, -50%); filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .45)); }
-.pip { position: absolute; left: 6px; top: 6px; width: 6px; height: 6px; border-radius: 1px; background: var(--m); box-shadow: 0 0 6px var(--m); }
+.heads .pip { position: absolute; left: 6px; top: 6px; width: 6px; height: 6px; border-radius: 1px; background: var(--m); box-shadow: 0 0 6px var(--m); }
 .heads .slot.tiered { border-color: color-mix(in srgb, var(--m) 45%, transparent); }
 .rbody { display: flex; gap: 16px; margin-top: 14px; align-items: flex-start; }
 .rbody .panel { flex: 1; min-width: 0; }
@@ -114,12 +114,12 @@
 .pleg .b { width: 14px; height: 10px; border-radius: 3px; background: rgba(232, 236, 243, .16); }
 .pleg .t { width: 2px; height: 11px; background: var(--text); opacity: .8; }
 .pleg .d { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
-#pplot svg { width: 100%; height: auto; overflow: visible; }
-#pplot text { font-family: var(--sans); }
-#pplot .px { font: 700 9px Pixel; }
-#pplot .pill { font-size: 8px; }
-#pplot .dot { cursor: default; }
-#pplot .dot:hover circle + circle { stroke: var(--text); }
+.pplot svg { width: 100%; height: auto; overflow: visible; }
+.pplot text { font-family: var(--sans); }
+.pplot .px { font: 700 9px Pixel; }
+.pplot .pill { font-size: 8px; }
+.pplot .dot { cursor: default; }
+.pplot .dot:hover circle + circle { stroke: var(--text); }
 
 /* ---------- earnings ---------- */
 
@@ -128,8 +128,8 @@
 .ecards .spark { grid-template-columns: repeat(var(--n), minmax(0, 1fr)); }
 .ecards .bk i { left: 12%; right: 12%; background: var(--m); }
 .ecards .bk:hover i { filter: brightness(1.25); }
-.card-diet { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; font: 600 11px var(--sans); letter-spacing: 0; color: var(--muted); vertical-align: middle; }
-.card-head .card-diet svg { width: 12px; height: 12px; }
+.ecards .card-diet { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; font: 600 11px var(--sans); letter-spacing: 0; color: var(--muted); vertical-align: middle; }
+.ecards .card-head .card-diet svg { width: 12px; height: 12px; }
 
 @media (max-width: 760px) {
   /* Seven columns plus the meal icons must fit the phone's width. */
@@ -140,7 +140,7 @@
   .ledger, .rbody { flex-direction: column; }
   .lside, .tiers { width: 100%; }
   .ecards { grid-template-columns: minmax(0, 1fr); }
-  .price { font-size: 16px; }
+  .app.sales .price, .lgrid .price { font-size: 16px; }
 }
 
 /* ---------- selling from the ledger ---------- */
