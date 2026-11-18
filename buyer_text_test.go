@@ -42,8 +42,8 @@ func TestBuyerTextStyle(t *testing.T) {
 		for _, r := range []reply{
 			l.opening(60), tmrw.opening(60), l.counter(50, 60, 1), l.counter(45, 50, 2), l.lowest(40, 45),
 			l.which(60), l.otherMeal(60, false), l.otherMeal(60, true), l.restate(60), l.queued(50), l.queuedHandoff(50), l.outbid(false), l.outbid(true),
-			l.dropped(), l.nudge(60), l.quietDrop(50, 60), l.have(60), l.payOther(), l.noScreenshots(),
-			l.sold(), l.payPrompt("30.00", false), l.payPrompt("1.00", true),
+			l.dropped(), l.nudge(60), l.quietDrop(50, 60), l.have(60), l.payOther(), l.noScreenshots(), l.payNumber(), l.askScreenshot(),
+			l.sold(), l.payPrompt("30.00", false, false), l.payPrompt("1.00", true, false), l.payPrompt("30.00", false, true),
 		} {
 			if len(r) == 0 || len(r) > 3 {
 				t.Errorf("%q: want one to three messages", r)
@@ -57,7 +57,7 @@ func TestBuyerTextStyle(t *testing.T) {
 			}
 		}
 	}
-	if got := (lines{}).payPrompt("30.00", false); got[0] != "ok 30" {
+	if got := (lines{}).payPrompt("30.00", false, false); got[0] != "ok 30" {
 		t.Errorf("prompt starts %q", got[0])
 	}
 	if got := testLines("veg", "tmrw").opening(30); len(got) != 1 || !strings.HasSuffix(got[0], ", its for tmrw") {
@@ -71,7 +71,7 @@ func TestBuyerTextStyle(t *testing.T) {
 // testLines are the built-in lines for a kadamba lunch on day.
 func testLines(diet, day string) lines {
 	l := saleLines(nil, "kadamba", diet, "lunch", "", time.Time{}, nil)
-	l.vals["day"] = day
+	l.day = func() string { return day }
 	return l
 }
 
@@ -109,5 +109,24 @@ func TestOwnWording(t *testing.T) {
 	}
 	if got := l.opening(40); got[0] != "40" {
 		t.Errorf("own_wording off should send the built-in line, got %q", got)
+	}
+}
+
+// A sale started the evening before keeps its lines past midnight. Its
+// replies must stop saying "tmrw" once the meal is today's.
+func TestDayLabelPastMidnight(t *testing.T) {
+	day := "tmrw"
+	l := saleLines(nil, "kadamba", "veg", "breakfast", "", time.Time{}, nil)
+	l.day = func() string { return day }
+	h := newHaggle(20, 25, 0, false, false, time.Now().Add(time.Hour), l)
+	if got := h.l.opening(25); !strings.HasSuffix(got[0], ", its for tmrw") {
+		t.Fatalf("opening before midnight = %q", got)
+	}
+	day = ""
+	if got := h.l.opening(25); strings.Contains(strings.Join(got, "\n"), "tmrw") {
+		t.Errorf("opening after midnight = %q", got)
+	}
+	if got := h.decide(haggleState{}, intent{kind: intentOffer, offer: 20}, time.Now(), false).reply; strings.Contains(strings.Join(got, "\n"), "tmrw") {
+		t.Errorf("counter after midnight = %q", got)
 	}
 }

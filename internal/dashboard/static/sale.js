@@ -207,8 +207,18 @@ function chest(v) {
   if (mk) c.append(mk);
   const acts = cardActions(v);
   if (acts) c.append(acts);
-  tapCard(c, () => openMealSheet(v));
+  tapCard(c, () => openTaskMenu(v) || openMealSheet(v));
   return c;
+}
+
+// openTaskMenu opens the sell menu for one of your running sales, the same
+// one the sales page shows. It returns false for a friend's sale, or when
+// the ledger the nudge loaded doesn't have this task yet.
+function openTaskMenu(v, view) {
+  if (v.for_friend || v.state !== 'active') return false;
+  const cell = ledgerCell(v.date, v.meal);
+  if (!cell || !cell.task || cell.task.id !== v.id) return false;
+  return openSellHere(v.date, v.meal, view);
 }
 
 // scheduledCard is a sale waiting for its meal: nothing is posted yet. It
@@ -626,7 +636,7 @@ function cardActions(v) {
     a.append(b);
   };
   if (v.state === 'active') {
-    btn('grn', '✓ Mark sold', () => saleActionForm(v, 'sold'));
+    btn('grn', '✓ Sold + QR', () => openTaskMenu(v, 'sold') || saleActionForm(v, 'sold'), 'Mark sold and send the buyer the QR');
     btn('', '+ Add buyer', () => saleActionForm(v, 'add'));
     btn('red', '✕ Stop', () => saleActionForm(v, 'stop'), 'Stop selling and delete the offer posts');
   }
@@ -739,7 +749,7 @@ function openBuyerSheet(v, key, keep) {
   }
   acts.append(chat);
   if (v.state === 'active') {
-    acts.append(saleActionButton('✓', 'MARK SOLD', () => saleActionForm(v, 'sold', b)));
+    acts.append(saleActionButton('✓', 'SOLD + SEND QR', () => saleActionForm(v, 'sold', b)));
     acts.append(saleActionButton(b.muted ? '🔈' : '🔇', b.muted ? 'UNMUTE' : 'MUTE', () => saleActionForm(v, b.muted ? 'unmute' : 'mute', b)));
   }
   sheet.append(acts);
@@ -1018,7 +1028,7 @@ function saleActionButton(glyph, label, action) {
 }
 function saleTaskActions(v) {
   const acts = el('div', 'sb-acts');
-  acts.append(saleActionButton('✓', 'MARK SOLD', () => saleActionForm(v, 'sold')),
+  acts.append(saleActionButton('✓', 'SOLD + SEND QR', () => saleActionForm(v, 'sold')),
     saleActionButton('+', 'ADD BUYER', () => saleActionForm(v, 'add')));
   const stop = saleActionButton('✕', 'STOP SELLING', () => saleActionForm(v, 'stop'));
   stop.classList.add('red');
@@ -1028,7 +1038,7 @@ function saleTaskActions(v) {
 function saleActionForm(v, action, buyer) {
   saleSheet = { id: v.id, editing: true };
   sheetFor(v, false);
-  const titles = { sold: 'MARK SOLD MANUALLY', add: 'ADD BUYER', mute: 'MUTE BUYER', unmute: 'UNMUTE BUYER', stop: 'STOP SELLING' };
+  const titles = { sold: 'MARK SOLD AND SEND QR', add: 'ADD BUYER', mute: 'MUTE BUYER', unmute: 'UNMUTE BUYER', stop: 'STOP SELLING' };
   sheet.append(el('div', 'sb-name', titles[action]));
   const form = el('form', 'sale-action-form');
   const fields = {};
@@ -1046,7 +1056,7 @@ function saleActionForm(v, action, buyer) {
   if (action === 'sold') {
     const wrap = el('label', '', 'Buyer');
     pick = el('select');
-    pick.append(new Option('Other buyer (phone or name below)', ''));
+    pick.append(new Option('Other buyer (phone below)', ''));
     for (const b of v.buyers) pick.append(new Option(b.name || b.phone || b.key, b.key));
     pick.value = buyer ? buyer.key : '';
     wrap.append(pick);
@@ -1060,7 +1070,7 @@ function saleActionForm(v, action, buyer) {
     const price = field('price', 'Sale price (₹)', buyer ? buyer.agreed || buyer.asked || buyer.offer || '' : '', 'number');
     price.min = '1'; price.max = '10000'; price.step = '1'; price.required = true;
     field('note', 'Note (optional)');
-    form.append(el('p', 'sb-note', 'Confirm only after you sold the meal. This stops negotiation and records it as paid and sent. The buyer receives no message. Other buyers get the usual sold notice.'));
+    form.append(el('p', 'sb-note', 'Confirm only after you sold the meal. This stops negotiation, records it as paid and sends the buyer the meal QR. Other buyers get the usual sold notice.'));
   } else if (action === 'add') {
     form.append(el('p', 'sb-note', 'The bot will send this buyer its opening quote.'));
   } else if (action === 'stop') {
@@ -1084,14 +1094,15 @@ function saleActionForm(v, action, buyer) {
     if (buyer && (action === 'mute' || action === 'unmute')) data.buyer = buyer.key;
     if (action === 'sold') {
       data.price = Number(data.price);
-      if (!data.buyer && !data.name) { error.textContent = 'Enter a buyer phone or name.'; return; }
+      data.send_qr = true;
+      if (!data.buyer) { error.textContent = 'Enter the buyer\'s phone, so the bot can send the QR.'; return; }
     }
     submit.disabled = true;
     error.textContent = '';
     try {
       await send('POST', 'api/sell-action', data);
       closeModal();
-      toast(action === 'stop' ? 'Stopped. The offer posts are being deleted.' : 'Action saved');
+      toast(action === 'stop' ? 'Stopped. The offer posts are being deleted.' : action === 'sold' ? 'Sold. The QR is on its way.' : 'Action saved');
       await load();
     } catch (err) { error.textContent = err.message; submit.disabled = false; }
   });

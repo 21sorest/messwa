@@ -56,7 +56,7 @@ commands:
                                 post once and answer the first private text reply to that post
   deliver-qr -date DATE -meal MEAL (-peer JID | [-group NAME_OR_JID ... | -group-count N]) -amount INR
              [-offer-text TEXT] [-qr IMAGE | -portal-qr [-user NAME]]
-             [-show-price=false] [-mention-extras] [-post-gap 15s] [-handoff never|on_reply]
+             [-show-price=false] [-mention-extras] [-post-gap 3s] [-handoff never|on_reply]
              [-buyers anyone|unsaved_only]
                                 arm one meal's QR delivery after a matching payment message;
                                 without -peer it posts an offer to the [sell] groups
@@ -398,7 +398,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 
-	go syncMealTimes(ctx, cfg, log)
+	watchMealTimes(ctx, cfg, log)
 	hub := dashboard.NewHub()
 	manager := &deviceAccounts{ctx: ctx, cfg: cfg, log: log, st: st, acc: acc, hub: hub, users: map[int64]*deviceAccount{}}
 	defer manager.close()
@@ -530,7 +530,7 @@ func dashboardCmd(ctx context.Context, cfg *config.Config, log *slog.Logger, arg
 		ms.SetClock(func() time.Time { return time.Now().Add(offset) })
 	}
 	fmt.Printf("dashboard on http://%s/\n", *listen)
-	go syncMealTimes(ctx, cfg, log)
+	watchMealTimes(ctx, cfg, log)
 	hub := dashboard.NewHub()
 	manager := &deviceAccounts{ctx: ctx, cfg: cfg, log: log, st: st, acc: acc, hub: hub, users: map[int64]*deviceAccount{}, readOnly: true, clock: ms.Now}
 	defer manager.close()

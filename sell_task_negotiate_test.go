@@ -899,7 +899,7 @@ func TestNegotiationHandsOffOnAgreement(t *testing.T) {
 		}
 
 		// C pays you; you mark it sold. Everyone else hears it sold.
-		if err := m.MarkSold(ctx, id, buyerC.String(), "", 55, ""); err != nil {
+		if err := m.MarkSold(ctx, id, buyerC.String(), "", 55, "", false); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()

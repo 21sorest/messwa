@@ -52,7 +52,7 @@ func TestMarkSoldByYou(t *testing.T) {
 		}
 		before := len(f.conn.messages())
 
-		if err := m.MarkSold(ctx, id, "+91 11111 11111", "Utkarsh", 55, "paid by UPI screenshot"); err != nil {
+		if err := m.MarkSold(ctx, id, "+91 11111 11111", "Utkarsh", 55, "paid by UPI screenshot", false); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
@@ -94,7 +94,7 @@ func TestMarkSoldByYou(t *testing.T) {
 		if ev := taskEvents(t, f, id, buyerA); !slices.Contains(ev, store.EventSoldByYou) {
 			t.Fatalf("A's events = %q", ev)
 		}
-		if err := m.MarkSold(ctx, id, "", "x", 50, ""); err == nil {
+		if err := m.MarkSold(ctx, id, "", "x", 50, "", false); err == nil {
 			t.Fatal("sold twice")
 		}
 	})
@@ -120,7 +120,7 @@ func TestMarkSoldStopsPaymentTurn(t *testing.T) {
 		}
 
 		// Sold to a friend by name: A, mid-turn, and B, queued, hear it sold.
-		if err := m.MarkSold(ctx, id, "", "a friend", 1, ""); err != nil {
+		if err := m.MarkSold(ctx, id, "", "a friend", 1, "", false); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
@@ -146,6 +146,60 @@ func TestMarkSoldStopsPaymentTurn(t *testing.T) {
 	})
 }
 
+// TestMarkSoldSendsQR: you sold it yourself and ask the bot to send the QR.
+// Your buyer gets the QR, the other buyer hears it sold, and the delivery
+// ends up sent.
+func TestMarkSoldSendsQR(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.manager(ctx)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 1, 1, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		f.conn.emit(f.reply(buyerA, "available?"))
+		f.conn.emit(f.reply(buyerB, "available?"))
+		synctest.Wait()
+
+		// A name alone has nowhere to send the QR; the task keeps going.
+		if err := m.MarkSold(ctx, id, "", "a friend", 1, "", true); err == nil {
+			t.Fatal("sent a QR to a name")
+		}
+		if task := f.task(id); task.State != store.TaskActive {
+			t.Fatalf("task is %s (%s)", task.State, task.Detail)
+		}
+
+		before := len(f.conn.messages())
+		if err := m.MarkSold(ctx, id, stranger.String(), "Cash buyer", 40, "paid cash", true); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		after := f.conn.messages()[before:]
+		toStranger := sentTo(after, stranger)
+		if len(toStranger) != 1 || !toStranger[0].qr {
+			t.Fatalf("your buyer got %+v", toStranger)
+		}
+		if got := texts(sentTo(after, buyerB)); len(got) == 0 || got[len(got)-1] != "sold sorry" {
+			t.Fatalf("B got %q", got)
+		}
+		d, state, _ := f.st.TaskDelivery(ctx, id)
+		if state != "sent" || d.Amount != "40.00" || d.Peer != stranger.String() {
+			t.Fatalf("delivery = %+v %q", d, state)
+		}
+		task := f.task(id)
+		if task.State != store.TaskSold || !strings.Contains(task.Detail, "the bot sent them the QR") {
+			t.Fatalf("task is %s (%s)", task.State, task.Detail)
+		}
+		if ev := taskEvents(t, f, id, stranger); !slices.Contains(ev, store.EventQRSent) {
+			t.Fatalf("events = %q", ev)
+		}
+	})
+}
+
 func TestMarkSoldAfterBotSale(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.db")
 	synctest.Test(t, func(t *testing.T) {
@@ -163,7 +217,7 @@ func TestMarkSoldAfterBotSale(t *testing.T) {
 		time.Sleep(time.Second)
 		f.conn.emit(payment(buyerA, "pay-1"))
 		synctest.Wait()
-		if err := m.MarkSold(ctx, id, "", "a friend", 1, ""); err == nil {
+		if err := m.MarkSold(ctx, id, "", "a friend", 1, "", false); err == nil {
 			t.Fatal("recorded a manual sale over the bot's")
 		}
 		if d, _, _ := f.st.TaskDelivery(ctx, id); d.Peer != buyerA.String() {

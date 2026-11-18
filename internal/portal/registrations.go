@@ -62,10 +62,6 @@ func New(key string) (*Client, error) {
 	return newClient(key)
 }
 
-// Public returns a client without an API key, for the endpoints anyone
-// may read, such as MealTimings.
-func Public() (*Client, error) { return newClient("") }
-
 func newClient(key string) (*Client, error) {
 	base := os.Getenv("MESS_API_URL")
 	if base == "" {

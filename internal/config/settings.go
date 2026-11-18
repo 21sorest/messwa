@@ -142,6 +142,7 @@ var settings = []setting{
 	secondsSetting("sell.negotiation_silence", MinNegotiationSilence, false, func(c *Config) *duration { return &c.Sell.NegotiationSilence }),
 	boolSetting("sell.smart_haggle", func(c *Config) *bool { return &c.Sell.SmartHaggle }),
 	boolSetting("sell.accept_payment_images", func(c *Config) *bool { return &c.Sell.AcceptPaymentImages }),
+	boolSetting("sell.accept_unreadable_payments", func(c *Config) *bool { return &c.Sell.AcceptUnreadablePayments }),
 	boolSetting("sell.own_wording", func(c *Config) *bool { return &c.Sell.OwnWording }),
 	{key: "sell.messages",
 		get: func(c *Config) any {
@@ -184,43 +185,9 @@ var settings = []setting{
 			c.Seasons = ss
 			return nil
 		}},
-	// Meals and messes keep their names, keywords and aliases from
-	// config.toml; the page changes only their times and veg_only.
-	{key: "meals.times", restart: true,
-		get: func(c *Config) any {
-			m := map[string]MealTime{}
-			for _, x := range c.Meals {
-				m[x.Name] = MealTime{x.Starts, x.Ends}
-			}
-			return m
-		},
-		set: func(c *Config, v json.RawMessage) error {
-			var m map[string]MealTime
-			if err := strictJSON(v, &m); err != nil {
-				return err
-			}
-			meals := append([]Meal(nil), c.Meals...)
-			for i, x := range meals {
-				t, ok := m[x.Name]
-				if !ok {
-					continue
-				}
-				st, err := ParseClock(t.Starts)
-				if err != nil {
-					return fmt.Errorf("%s starts: %w", x.Name, err)
-				}
-				en, err := ParseClock(t.Ends)
-				if err != nil {
-					return fmt.Errorf("%s ends: %w", x.Name, err)
-				}
-				if en <= st {
-					return fmt.Errorf("%s must end after it starts", x.Name)
-				}
-				meals[i].Starts, meals[i].Ends = t.Starts, t.Ends
-			}
-			c.Meals = meals
-			return nil
-		}},
+	// Messes keep their names, keywords and aliases from config.toml; the
+	// page changes only veg_only. Meal times aren't a setting: they are the
+	// same for every account, so the meals package keeps them.
 	{key: "messes.veg_only", restart: true,
 		get: func(c *Config) any {
 			m := map[string]bool{}
@@ -291,7 +258,7 @@ func SameValue(key string, a, b *Config) bool {
 
 // retired are settings messwa no longer has. A saved value for one is
 // ignored, so an older save doesn't stop messwa starting or saving.
-var retired = map[string]bool{"sell.repost_after": true}
+var retired = map[string]bool{"sell.repost_after": true, "meals.times": true}
 
 // WithSettings returns a copy of c with saved applied, checked like
 // config.toml. c itself is left alone.

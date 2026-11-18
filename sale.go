@@ -516,7 +516,7 @@ func (s *sale) takeTurn(ctx context.Context, buyer types.JID, d store.Delivery, 
 						finish(e, true, "", false)
 						return
 					}
-					s.log.Warn("payment amount unreadable after recovery; not sending the meal image. Check the buyer's chat, or rerun with -assume-unreadable-payment",
+					s.log.Warn("payment amount unreadable after recovery; not sending the meal image. Check the buyer's chat, or turn on [sell] accept_unreadable_payments",
 						"date", d.Date, "meal", d.Meal, "payment_id", e.Info.ID)
 				}()
 			}
@@ -759,7 +759,7 @@ func (s *sale) sellToQueue(ctx, notifyCtx context.Context, q *offerQueue, j sale
 			}
 			t = turn{
 				arm:      j.arm,
-				prompt:   s.lines(buyer).payPrompt(amount, s.testImage),
+				prompt:   s.lines(buyer).payPrompt(amount, s.testImage, s.acceptImages),
 				payUntil: payUntil,
 				prompting: func(ctx context.Context) (bool, error) {
 					return j.prompting(ctx, buyer, amount, payUntil)
@@ -875,6 +875,8 @@ func (s *sale) tellSold(notifyCtx context.Context, j saleJournal, buyers []types
 const (
 	lineNoScreenshots = "screenshot"
 	linePayOther      = "pay_other"
+	linePayNumber     = "pay_number"
+	lineAskScreenshot = "ask_screenshot"
 )
 
 // lineJournal claims once-per-buyer lines across restarts.

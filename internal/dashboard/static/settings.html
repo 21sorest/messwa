@@ -122,7 +122,7 @@
     </div>
   </section>
 
-  <section class="pane" id="buyers">
+  <section class="pane" id="buyers" data-help>
     <div class="box">
       <div class="h">Who can buy</div>
       <div class="pick" data-key="sell.buyers" role="radiogroup" aria-label="Who can buy"></div>
@@ -136,6 +136,7 @@
       <div class="row"><div class="lbl">💬 Buyers who DM without replying<small>"price?", "kadamba lunch available?"</small></div><button class="tg" type="button" data-key="sell.accept_plain_dms" aria-label="Buyers who DM without replying"></button></div>
       <div class="row"><div class="lbl">📣 Message people with buy posts<small>Sell tasks DM whoever posted "need bakul lunch"</small></div><button class="tg" type="button" data-key="sell.message_buy_posts" aria-label="Message people with buy posts"></button></div>
       <div class="row"><div class="lbl">🖼️ Screenshot counts as paid <span class="tag warn">Unverified</span><small>QR goes out on any image. Check UPI after.</small></div><button class="tg danger" type="button" data-key="sell.accept_payment_images" aria-label="Screenshot counts as paid"></button></div>
+      <div class="row"><div class="lbl">🫥 Blank WhatsApp Pay counts as paid <span class="tag warn">Unverified</span><small>WhatsApp sometimes sends a payment confirmation without the amount paid. With this on, the bot trusts that the buyer paid the right amount and sends the QR without checking.</small></div><button class="tg danger" type="button" data-key="sell.accept_unreadable_payments" aria-label="Blank WhatsApp Pay counts as paid"></button></div>
       <div class="row"><div class="lbl">🧹 Forget unsaved DMs after</div><div class="step" data-key="dms.retention" data-unit="h"></div></div>
     </div>
   </section>
@@ -170,7 +171,7 @@
 
   <section class="pane" id="calendar">
     <div class="box">
-      <div class="h">Meals<span class="sp"></span><span class="tag ok" id="mealsPortal" hidden>From the mess portal</span><span class="tag" id="mealsRestart" hidden>Applies on restart</span></div>
+      <div class="h">Meals<span class="sp"></span><span class="tag ok">For everyone</span></div>
       <div class="daybar" id="day"></div>
       <div class="times" id="mealTimes"></div>
     </div>

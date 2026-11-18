@@ -63,6 +63,10 @@ type Sell struct {
 	// by default: a screenshot proves nothing, and a QR can't be taken
 	// back once sent.
 	AcceptPaymentImages bool `toml:"accept_payment_images"`
+	// AcceptUnreadablePayments counts a WhatsApp Pay message whose amount
+	// stays unreadable after recovery as a payment of the agreed price.
+	// On by default, though the bot can't tell what, if anything, was paid.
+	AcceptUnreadablePayments bool `toml:"accept_unreadable_payments"`
 	// SmartHaggle has a negotiating sell task hold out for the meal's
 	// usual price (the market's median ask) and come down to min_price
 	// only near the meal's end or while few buyers are interested. Off by
@@ -90,7 +94,7 @@ const MinRepostGap = 5 * time.Minute
 const RepostCutoff = 15 * time.Minute
 
 // MaxRepostsLimit is the most max_reposts may be.
-const MaxRepostsLimit = 12
+const MaxRepostsLimit = 20
 
 // MinNegotiationSilence and MaxNegotiationSilence bound
 // negotiation_silence. Under a minute cuts off a buyer who is typing; past
