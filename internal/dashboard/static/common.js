@@ -17,6 +17,32 @@ function svgEl(markup) {
 }
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 
+// keepScroll runs fn, a live re-render, without moving what's on screen.
+// Browsers pin the scroll to an element in view so content growing above it
+// doesn't shove the page, but a re-render replaces that element and the pin
+// is lost. Safari has no pin at all. So this notes where the elements with
+// an id at the top of the screen sit, runs fn, and scrolls by however far
+// the deepest one still on the page moved. At the very top it does nothing,
+// so a banner appearing there stays in view.
+function keepScroll(fn) {
+  if (window.scrollY <= 0) return fn();
+  const fixed = (n) => { for (; n; n = n.parentElement) if (getComputedStyle(n).position === 'fixed') return true; return false; };
+  const hit = document.elementsFromPoint(innerWidth / 2, 1).find((n) => !fixed(n));
+  const pins = [];
+  for (let n = hit; n && n !== document.body; n = n.parentElement) {
+    if (n.id) pins.push([n, n.getBoundingClientRect().top]);
+  }
+  const out = fn();
+  for (const [n, top] of pins) {
+    if (!n.isConnected || !n.getClientRects().length) continue;
+    // Chrome's own pin may already have done most of it; skip its rounding.
+    const moved = n.getBoundingClientRect().top - top;
+    if (Math.abs(moved) >= 1) window.scrollBy(0, moved);
+    break;
+  }
+  return out;
+}
+
 // ---------- pixel art ----------
 
 function pix(rows, pal) {

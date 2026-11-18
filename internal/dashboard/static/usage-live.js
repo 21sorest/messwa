@@ -33,7 +33,7 @@ async function lvLoad() {
     if (r.ok) {
       LV.data = await r.json();
       LV.at = Date.now();
-      lvRender();
+      keepScroll(lvRender);
     }
   } catch { /* the stream's error handler shows it */ }
   LV.busy = false;

@@ -325,7 +325,7 @@ async function loadRecurringRules() {
     recurringRules = await response.json();
     recurringLoadedAt = Date.now();
     $('ruleListError').textContent = '';
-    renderRecurringRules();
+    keepScroll(renderRecurringRules);
     if (!recurringInitialized && D) editRecurringRule(undefined, false);
     openRecurringHash();
   } catch (e) { $('ruleListError').textContent = e.message; }

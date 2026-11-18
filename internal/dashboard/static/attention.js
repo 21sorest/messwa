@@ -173,7 +173,7 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
       if (!r.ok) throw new Error('Couldn\'t refresh this list.');
       items = await r.json();
       note.textContent = '';
-      draw();
+      keepScroll(draw);
       alertNew();
       const m = /^#attention-sale=(\d+)$/.exec(location.hash);
       if (m && typeof openMealSheet === 'function' && typeof D !== 'undefined' && D) {

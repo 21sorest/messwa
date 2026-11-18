@@ -68,7 +68,7 @@ async function load() {
     skew = D.now - Date.now() / 1000;
     failed = false;
     lastOK = Date.now();
-    render();
+    keepScroll(render);
     openFromHash();
   } catch (e) {
     failed = true;
