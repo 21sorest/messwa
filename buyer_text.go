@@ -49,21 +49,25 @@ type lines struct {
 	// extras lists the meal's extras; it may call the portal, so it runs
 	// only for a template that uses {extras}.
 	extras func() []string
+	// day labels the meal's day as of now, for {day}. A sale that starts
+	// the evening before keeps its lines past midnight, so this runs per
+	// message. Nil means today's meal.
+	day func() string
 }
 
 // saleLines are the lines for one meal. diet is "veg", "nonveg", "egg" or
 // empty; meal may carry a "#" suffix.
 func saleLines(cfg *config.Config, mess, diet, meal, date string, end time.Time, extras func() []string) lines {
-	day := ""
+	var day func() string
 	if cfg != nil {
-		day = offerDay(cfg, date)
+		day = func() string { return offerDay(cfg, date) }
 	}
 	shown := diet
 	if shown == "nonveg" {
 		shown = "non-veg"
 	}
-	return lines{cfg: cfg, end: end, extras: extras, vals: wording.Values{
-		"meal": portalMealLabel(mess, diet, meal), "mess": mess, "diet": shown, "mealtime": baseMeal(meal), "day": day,
+	return lines{cfg: cfg, end: end, extras: extras, day: day, vals: wording.Values{
+		"meal": portalMealLabel(mess, diet, meal), "mess": mess, "diet": shown, "mealtime": baseMeal(meal),
 		"wait": durationWords(payTurn),
 	}}
 }
@@ -79,6 +83,15 @@ func (l lines) with(kv ...string) lines {
 	}
 	l.vals = vals
 	return l
+}
+
+// today is the meal's day label right now: "" for today, "tmrw" or
+// "13 nov".
+func (l lines) today() string {
+	if l.day == nil {
+		return ""
+	}
+	return l.day()
 }
 
 // forBuyer adds the buyer's WhatsApp name.
@@ -109,6 +122,7 @@ func (l lines) say(slot string, kv ...string) reply {
 
 func (l lines) fill(parts []string, kv []string) reply {
 	vals := l.with(kv...).vals
+	vals["day"] = l.today()
 	joined := strings.Join(parts, "\n")
 	if strings.Contains(joined, "{ends}") || strings.Contains(joined, "{left}") {
 		if !l.end.IsZero() {
