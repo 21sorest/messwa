@@ -19,7 +19,9 @@ func TestSaleViews(t *testing.T) {
 	}
 	defer st.Close()
 	now := time.Date(2026, 11, 12, 13, 52, 0, 0, time.UTC)
-	s := New(config.Default(), st, nil)
+	cfg := config.Default()
+	cfg.Sell.SmartHaggle = true
+	s := New(cfg, st, nil)
 	s.SetClock(func() time.Time { return now })
 
 	// An earlier try for the same meal, cancelled.
@@ -84,8 +86,8 @@ func TestSaleViews(t *testing.T) {
 	if v.ID != id || v.Min != 10 || v.Max != 40 || v.Target != 30 || !v.Negotiates {
 		t.Fatalf("view = %+v", v)
 	}
-	// 38 minutes left of the 3-hour slide from ₹30 to ₹10, in ₹5 steps.
-	if v.Lowest != 15 || v.Held {
+	// 38 minutes left of the 2-hour slide from ₹30 to ₹10, in ₹5 steps.
+	if v.Lowest != 20 || v.Held || !v.Smart {
 		t.Fatalf("lowest = %v held = %v", v.Lowest, v.Held)
 	}
 	if len(v.Posts) != 2 || v.Posts[0].After != 23 || v.Posts[1].State != "failed" || v.Posts[1].Error != "server returned error 479" {
@@ -102,14 +104,21 @@ func TestSaleViews(t *testing.T) {
 		t.Fatalf("history = %+v", v.History)
 	}
 
-	// A second active buyer holds the price at the target.
-	st.AddSellTaskBuyer(ctx, id, "922222222222@s.whatsapp.net", "", now)
-	st.ClaimNegotiationMessage(ctx, id, "922222222222@s.whatsapp.net", 0, store.Negotiation{Ask: 4000, BotMsgs: 1, StartedAt: now})
-	st.AddSellTaskBuyer(ctx, id, "933333333333@s.whatsapp.net", "", now)
-	st.ClaimNegotiationMessage(ctx, id, "933333333333@s.whatsapp.net", 0, store.Negotiation{Ask: 4000, BotMsgs: 1, StartedAt: now})
+	// Two active buyers don't hold the price; a third does.
+	for i, peer := range []string{"922222222222@s.whatsapp.net", "933333333333@s.whatsapp.net", "944444444444@s.whatsapp.net"} {
+		st.AddSellTaskBuyer(ctx, id, peer, "", now)
+		st.ClaimNegotiationMessage(ctx, id, peer, 0, store.Negotiation{Ask: 4000, BotMsgs: 1, StartedAt: now})
+		vs, _ = s.SaleViews(ctx)
+		if held := i == 2; vs[0].Held != held || (held && vs[0].Lowest != 30) || (!held && vs[0].Lowest != 20) {
+			t.Fatalf("%d active: lowest = %v held = %v", i+1, vs[0].Lowest, vs[0].Held)
+		}
+	}
+
+	// Without smart haggle the bot takes the floor, whoever is active.
+	cfg.Sell.SmartHaggle = false
 	vs, _ = s.SaleViews(ctx)
-	if vs[0].Lowest != 30 || !vs[0].Held {
-		t.Fatalf("lowest = %v held = %v", vs[0].Lowest, vs[0].Held)
+	if v := vs[0]; v.Lowest != 10 || v.Target != 10 || v.Held || v.Smart {
+		t.Fatalf("plain: %+v", v)
 	}
 }
 

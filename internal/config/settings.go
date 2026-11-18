@@ -140,6 +140,7 @@ var settings = []setting{
 	intSetting("sell.repost_listings", 0, func(c *Config) *int { return &c.Sell.RepostListings }),
 	intSetting("sell.max_reposts", 0, func(c *Config) *int { return &c.Sell.MaxReposts }),
 	secondsSetting("sell.negotiation_silence", MinNegotiationSilence, false, func(c *Config) *duration { return &c.Sell.NegotiationSilence }),
+	boolSetting("sell.smart_haggle", func(c *Config) *bool { return &c.Sell.SmartHaggle }),
 	boolSetting("sell.accept_payment_images", func(c *Config) *bool { return &c.Sell.AcceptPaymentImages }),
 	boolSetting("sell.own_wording", func(c *Config) *bool { return &c.Sell.OwnWording }),
 	{key: "sell.messages",

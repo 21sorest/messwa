@@ -9,15 +9,16 @@ import (
 
 func TestHaggleWalk(t *testing.T) {
 	end := time.Date(2026, 11, 11, 14, 30, 0, 0, time.UTC)
-	h := newHaggle(30, 60, 50, true, end, testLines("veg", ""))
+	h := newHaggle(30, 60, 50, true, true, end, testLines("veg", ""))
 	cases := []struct {
 		left      time.Duration
 		competing bool
 		want      int
 	}{
 		{4 * time.Hour, false, 50},
-		{3 * time.Hour, false, 50},
-		{90 * time.Minute, false, 40},
+		{2 * time.Hour, false, 50},
+		{90 * time.Minute, false, 45},
+		{time.Hour, false, 40},
 		{10 * time.Minute, false, 35},
 		{0, false, 30},
 		{10 * time.Minute, true, 50},
@@ -28,19 +29,50 @@ func TestHaggleWalk(t *testing.T) {
 		}
 	}
 	// No market data: hold at max until time runs short.
-	if h := newHaggle(30, 60, 0, false, end, testLines("veg", "")); h.target != 60 || h.walk(end.Add(-4*time.Hour), false) != 60 {
+	if h := newHaggle(30, 60, 0, false, true, end, testLines("veg", "")); h.target != 60 || h.walk(end.Add(-4*time.Hour), false) != 60 {
 		t.Fatalf("target = %d", h.target)
 	}
 	// A median outside the range is clamped to it.
-	if h := newHaggle(30, 60, 80, true, end, testLines("veg", "")); h.target != 60 {
+	if h := newHaggle(30, 60, 80, true, true, end, testLines("veg", "")); h.target != 60 {
 		t.Fatalf("target = %d", h.target)
 	}
-	if h := newHaggle(30, 60, 20, true, end, testLines("veg", "")); h.target != 30 {
+	if h := newHaggle(30, 60, 20, true, true, end, testLines("veg", "")); h.target != 30 {
 		t.Fatalf("target = %d", h.target)
+	}
+	// Without smart haggle the floor is open all day and the median is
+	// ignored.
+	plain := newHaggle(30, 60, 50, true, false, end, testLines("veg", ""))
+	if plain.target != 60 || plain.walk(end.Add(-4*time.Hour), false) != 30 || plain.walk(end.Add(-4*time.Hour), true) != 30 {
+		t.Fatalf("plain target = %d, walk = %d", plain.target, plain.walk(end.Add(-4*time.Hour), false))
+	}
+	if got := plain.withSmart(true); got.target != 50 || got.walk(end.Add(-4*time.Hour), false) != 50 {
+		t.Fatalf("smart target = %d", got.target)
 	}
 	// Tiny prices concede by ₹1.
-	if h := newHaggle(1, 3, 0, false, end, testLines("veg", "")); h.unit != 1 {
+	if h := newHaggle(1, 3, 0, false, true, end, testLines("veg", "")); h.unit != 1 {
 		t.Fatalf("unit = %d", h.unit)
+	}
+}
+
+// The chat that started smart_haggle: range 85 to 115, a buyer offers 80
+// four hours before lunch ends. Smart haggle held at the market's 115;
+// plain haggling counters and goes as low as the floor.
+func TestPlainHaggleUsesTheWholeRange(t *testing.T) {
+	end := time.Date(2026, 11, 18, 15, 30, 0, 0, time.UTC)
+	now := end.Add(-4 * time.Hour)
+	smart := newHaggle(85, 115, 120, true, true, end, testLines("nonveg", ""))
+	if got := strings.Join(replay(smart, now, "Available?", "80?"), " | "); !strings.Contains(got, "115") || strings.Contains(got, "100") {
+		t.Errorf("smart haggle said %q, want it to hold at 115", got)
+	}
+	plain := newHaggle(85, 115, 120, true, false, end, testLines("nonveg", ""))
+	if got := replay(plain, now, "Available?", "80?"); !strings.Contains(got[len(got)-1], "100") {
+		t.Errorf("plain haggle said %q, want a counter of 100", got)
+	}
+	if got := replay(plain, now, "Available?", "80?", "85"); got[len(got)-1] != "AGREE 85" {
+		t.Errorf("plain haggle said %q, want to agree at the floor", got)
+	}
+	if got := replay(plain, now, "Available?", "Okay sorry then"); got[len(got)-1] != "PASS" && !strings.Contains(got[len(got)-1], "100") {
+		t.Errorf("plain haggle said %q to a polite no, want a pass or one lower price", got)
 	}
 }
 
@@ -133,7 +165,7 @@ func TestHaggleDecide(t *testing.T) {
 			[]string{"60", "PARK"}},
 	}
 	for _, c := range cases {
-		h := newHaggle(c.min, c.max, c.median, true, end, testLines("veg", ""))
+		h := newHaggle(c.min, c.max, c.median, true, true, end, testLines("veg", ""))
 		got := replay(h, early, c.msgs...)
 		if len(got) != len(c.want) {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
@@ -150,7 +182,7 @@ func TestHaggleDecide(t *testing.T) {
 
 func TestHaggleSoftensNearTheEnd(t *testing.T) {
 	end := time.Date(2026, 11, 11, 14, 30, 0, 0, time.UTC)
-	h := newHaggle(30, 60, 50, true, end, testLines("veg", ""))
+	h := newHaggle(30, 60, 50, true, true, end, testLines("veg", ""))
 	// Four hours out ₹35 is too low; ten minutes out it's fine.
 	if got := replay(h, end.Add(-4*time.Hour), "price?", "35"); got[len(got)-1] == "AGREE 35" {
 		t.Fatalf("early: %q", got)
@@ -164,7 +196,7 @@ func TestHaggleSoftensNearTheEnd(t *testing.T) {
 // carries it.
 func TestHaggleNamesTheDay(t *testing.T) {
 	end := time.Date(2026, 11, 12, 14, 30, 0, 0, time.UTC)
-	h := newHaggle(30, 60, 50, true, end, testLines("veg", "tmrw"))
+	h := newHaggle(30, 60, 50, true, true, end, testLines("veg", "tmrw"))
 	early := end.Add(-4 * time.Hour)
 	if got := replay(h, early, "price?", "nv?"); strings.Join(got, "|") != "60, its for tmrw|kadamba veg lunch for 60" {
 		t.Fatalf("opening: %q", got)
@@ -183,7 +215,7 @@ func TestHaggleNamesTheDay(t *testing.T) {
 func TestHagglePassGetsOneCounter(t *testing.T) {
 	end := time.Date(2026, 11, 12, 21, 30, 0, 0, time.UTC)
 	early := end.Add(-90 * time.Minute)
-	h := newHaggle(60, 70, 0, false, end, testLines("nonveg", ""))
+	h := newHaggle(60, 70, 0, false, true, end, testLines("nonveg", ""))
 
 	// At the target: halfway to the floor.
 	if got := strings.Join(replay(h, early, "price?", "nvm", "nvm"), "|"); got != "70|how about 65|PASS" {
@@ -191,7 +223,7 @@ func TestHagglePassGetsOneCounter(t *testing.T) {
 	}
 
 	// Above the target: the target.
-	h2 := newHaggle(50, 70, 60, true, end, testLines("nonveg", ""))
+	h2 := newHaggle(50, 70, 60, true, true, end, testLines("nonveg", ""))
 	if got := strings.Join(replay(h2, early, "price?", "no"), "|"); got != "70|how about 60" {
 		t.Fatalf("pass above the target: %q", got)
 	}
@@ -203,7 +235,7 @@ func TestHagglePassGetsOneCounter(t *testing.T) {
 	}
 
 	// Halfway that rounds back to the ask still comes down one unit.
-	h3 := newHaggle(50, 55, 0, false, end, testLines("nonveg", ""))
+	h3 := newHaggle(50, 55, 0, false, true, end, testLines("nonveg", ""))
 	if got := strings.Join(replay(h3, early, "price?", "nvm"), "|"); got != "55|how about 50" {
 		t.Fatalf("one unit above the floor: %q", got)
 	}
@@ -219,7 +251,7 @@ func TestHagglePassGetsOneCounter(t *testing.T) {
 // was for breakfast.
 func TestHaggleOtherMeal(t *testing.T) {
 	end := time.Date(2026, 11, 15, 15, 30, 0, 0, time.UTC)
-	h := newHaggle(100, 140, 0, false, end, testLines("nonveg", "")).forMeal("lunch")
+	h := newHaggle(100, 140, 0, false, true, end, testLines("nonveg", "")).forMeal("lunch")
 	cases := []struct {
 		name string
 		msgs []string
@@ -241,7 +273,7 @@ func TestHaggleOtherMeal(t *testing.T) {
 	}
 	// The 15 Nov dinner chat: the buyer read the post as lunch. The bot
 	// quoted 30 four times and never said dinner.
-	dinner := newHaggle(25, 30, 0, false, end.Add(7*time.Hour), saleLines(nil, "kadamba", "veg", "dinner", "", time.Time{}, nil)).forMeal("dinner")
+	dinner := newHaggle(25, 30, 0, false, true, end.Add(7*time.Hour), saleLines(nil, "kadamba", "veg", "dinner", "", time.Time{}, nil)).forMeal("dinner")
 	if got := replay(dinner, end, "Lunch?", "I thought u mistyped\nDont need dinner"); strings.Join(got, "|") != "its dinner, 30|PASS" {
 		t.Errorf("dinner chat: got %q", got)
 	}
@@ -252,7 +284,7 @@ func TestHaggleOtherMeal(t *testing.T) {
 		t.Errorf("which: got %q", got)
 	}
 	// A haggle that doesn't know its meal reads meals as before.
-	if got := replay(newHaggle(100, 140, 0, false, end, testLines("nonveg", "")), end.Add(-4*time.Hour), "price?", "breakfast?"); len(got) != 2 || got[1] == "PASS" {
+	if got := replay(newHaggle(100, 140, 0, false, true, end, testLines("nonveg", "")), end.Add(-4*time.Hour), "price?", "breakfast?"); len(got) != 2 || got[1] == "PASS" {
 		t.Errorf("no meal: got %q", got)
 	}
 }

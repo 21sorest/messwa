@@ -110,6 +110,32 @@ func buyerState(t *testing.T, f *sellFixture, id int64, peer types.JID) store.Se
 	return store.SellBuyer{}
 }
 
+// Without smart haggle the market's ₹40 is ignored: an offer anywhere at
+// or above the floor is taken, and a lower one gets a counter halfway.
+func TestPlainNegotiationTakesAnythingAboveTheFloor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.Sell.SmartHaggle = false
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 40)
+		if _, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, ""); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		f.conn.emit(f.reply(buyerA, "20?"))
+		f.conn.emit(f.reply(buyerB, "35?"))
+		settle()
+		if got := texts(sentTo(f.conn.messages(), buyerA)); len(got) != 1 || got[0] != "how about 40" {
+			t.Fatalf("A got %q", got)
+		}
+		if got := texts(sentTo(f.conn.messages(), buyerB)); len(got) == 0 || got[0] != "ok 35" {
+			t.Fatalf("B got %q", got)
+		}
+	})
+}
+
 func TestNegotiationCountersAgreesAndSells(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.db")
 	synctest.Test(t, func(t *testing.T) {

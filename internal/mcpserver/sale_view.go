@@ -36,12 +36,15 @@ type SaleView struct {
 	Handoff   string `json:"handoff"`
 	// Min is the floor and Max the opening price. Target is what the
 	// negotiation aims for. Lowest is what the bot accepts right now; Held
-	// says it is held at Target because two or more buyers are active.
+	// says it is held at Target because more than two buyers are active.
+	// Smart is [sell] smart_haggle; without it Target and Lowest are both
+	// the floor.
 	Min        float64 `json:"min"`
 	Max        float64 `json:"max"`
 	Target     float64 `json:"target"`
 	Lowest     float64 `json:"lowest"`
 	Held       bool    `json:"held,omitempty"`
+	Smart      bool    `json:"smart,omitempty"`
 	Negotiates bool    `json:"negotiates"`
 	Started    int64   `json:"started"`
 	Ends       int64   `json:"ends"`
@@ -249,15 +252,18 @@ func (s *Server) saleView(ctx context.Context, t store.SellTask, now time.Time) 
 	maxR, minR := int(t.MaxPaise/100), int(t.MinPaise/100)
 	v.Negotiates = t.MaxPaise > t.MinPaise && t.Handoff != "on_reply"
 	v.Target, v.Lowest = v.Max, v.Max
-	if v.Negotiates {
+	v.Smart = s.cfg.Live().Sell.SmartHaggle
+	if v.Negotiates && !v.Smart {
+		v.Target, v.Lowest = float64(minR), float64(minR)
+	} else if v.Negotiates {
 		target := maxR
 		if t.TargetPaise > 0 {
 			target = int(t.TargetPaise / 100)
 		}
 		unit := market.PriceUnit(maxR)
 		v.Target = float64(target)
-		v.Lowest = float64(market.Walk(minR, target, unit, t.EndsAt, now, active >= 2))
-		v.Held = active >= 2 && market.Walk(minR, target, unit, t.EndsAt, now, false) < target
+		v.Lowest = float64(market.Walk(minR, target, unit, t.EndsAt, now, market.Competing(active)))
+		v.Held = market.Competing(active) && market.Walk(minR, target, unit, t.EndsAt, now, false) < target
 	}
 
 	d, dstate, err := s.st.TaskDelivery(ctx, t.ID)
