@@ -35,13 +35,16 @@ import (
 // agree or arm below the task's floor.
 
 const (
-	maxSessions    = 10              // buyers negotiating at once
-	maxCounters    = 2               // counter-offers before "the lowest I can do"
-	maxBotMsgs     = 6               // replies a session sends one buyer; a two-message reply counts once
-	replyDebounce  = 2 * time.Second // a burst of messages gets one reply
-	sessionLimit   = config.NegotiationLimit
-	paidGrace      = 60 * time.Second // "paid" with no WhatsApp Pay payment yet
-	maxOfferFactor = 3                // an offer above 3x max_price goes to you instead of being agreed
+	maxSessions   = 10              // buyers negotiating at once
+	maxCounters   = 2               // counter-offers before "the lowest I can do"
+	maxBotMsgs    = 6               // replies a session sends one buyer; a two-message reply counts once
+	replyDebounce = 2 * time.Second // a burst of messages gets one reply
+	sessionLimit  = config.NegotiationLimit
+	paidGrace     = 60 * time.Second // "paid" with no WhatsApp Pay payment yet
+	// screenshotGrace replaces paidGrace when screenshots count as payment,
+	// so a buyer asked for one has time to take and send it.
+	screenshotGrace = 3 * time.Minute
+	maxOfferFactor  = 3 // an offer above 3x max_price goes to you instead of being agreed
 )
 
 // nudgeAfter is how long a buyer may stay quiet after the bot's first
@@ -333,6 +336,9 @@ type session struct {
 	joined  time.Time
 	started time.Time // first bot message
 	revived time.Time // last time a late reply revived them; zero if never
+	// imaged is set when the buyer sends an image after agreeing; the
+	// payment turn judges it, so "sent" with it needs no screenshot ask.
+	imaged bool
 }
 
 // negotiation runs the sessions for one task and feeds agreed buyers to the
@@ -711,6 +717,13 @@ func (n *negotiation) handle(evt any) {
 	if e.Message.GetSendPaymentMessage() != nil {
 		go n.payment(peer, e)
 		return
+	}
+	if e.Message.GetImageMessage() != nil {
+		n.mu.Lock()
+		if ss := n.sessions[peer]; ss != nil && ss.state == sessionAgreed {
+			ss.imaged = true
+		}
+		n.mu.Unlock()
 	}
 	text := messageText(e.Message)
 	// Reactions, protocol updates and media have no negotiation text.
@@ -1198,7 +1211,11 @@ func (ss *session) run(first string, slot bool) {
 				}
 			case handledPaidClaim:
 				if paidWait == nil {
-					paidWait = time.After(paidGrace)
+					grace := paidGrace
+					if n.s.acceptImages {
+						grace = screenshotGrace
+					}
+					paidWait = time.After(grace)
 				}
 			}
 		case <-ss.repriced:
@@ -1238,7 +1255,11 @@ func (ss *session) run(first string, slot bool) {
 			sold := n.sold
 			n.mu.Unlock()
 			if !sold {
-				n.park(context.WithoutCancel(n.talk), ss, "says they paid, but no WhatsApp Pay payment reached the bot; check the chat")
+				note := "says they paid, but no WhatsApp Pay payment reached the bot; check the chat"
+				if n.s.acceptImages {
+					note = "says they paid, but sent no WhatsApp Pay payment or screenshot; check the chat"
+				}
+				n.park(context.WithoutCancel(n.talk), ss, note)
 				if ss.current() == sessionEnded {
 					return
 				}
@@ -1362,7 +1383,18 @@ func (ss *session) handle(texts []string) handled {
 		// dropping out matters now.
 		switch {
 		case in.kind == intentPaid || in.kind == intentOK && in.done:
+			ss.askScreenshot()
 			return handledPaidClaim
+		case in.upi && (in.kind == intentPayOther || in.kind == intentAccept) && n.s.acceptImages:
+			// Screenshots count, so a UPI payment to the number works. A
+			// buyer waiting for their turn hears it once the prompt is out.
+			if !ss.holding() {
+				return handledNothing
+			}
+			if !ss.sayOnce(linePayNumber, n.lines(ss.buyer).payNumber()) && in.kind == intentPayOther {
+				n.park(context.WithoutCancel(ctx), ss, "has no WhatsApp Pay and was told to pay the number; check the chat")
+			}
+			return handledNothing
 		case in.kind == intentPayOther:
 			if !ss.sayPayOther() {
 				n.park(context.WithoutCancel(ctx), ss, "wants to pay some way other than WhatsApp Pay")
@@ -1383,6 +1415,12 @@ func (ss *session) handle(texts []string) handled {
 		return handledEnded
 	}
 
+	if in.kind == intentPayOther && in.upi && n.s.acceptImages {
+		// Screenshots count, so paying by UPI is a yes: the pay prompt
+		// follows, and "send to my number" if they still have no
+		// WhatsApp Pay.
+		in.kind = intentAccept
+	}
 	if in.kind == intentPayOther && ss.sayPayOther() {
 		return handledReplied
 	}
@@ -1573,11 +1611,42 @@ func (ss *session) sayAgreed(text reply) {
 // WhatsApp Pay only. It reports false if they already heard it, so asking
 // again hands them to you.
 func (ss *session) sayPayOther() bool {
+	return ss.sayOnce(linePayOther, ss.n.lines(ss.buyer).payOther())
+}
+
+// holding reports whether the buyer holds the payment turn.
+func (ss *session) holding() bool {
+	ss.n.mu.Lock()
+	defer ss.n.mu.Unlock()
+	return ss.n.holder == ss.buyer
+}
+
+// askScreenshot asks the paying buyer for a screenshot after they say they
+// paid, when screenshots count as payment, the meal is unsold and they
+// sent no image since agreeing. Their next image gets the QR. It asks once
+// per buyer.
+func (ss *session) askScreenshot() {
 	n := ss.n
-	if ok, err := n.m.st.ClaimBuyerLine(n.talk, n.t.ID, ss.buyer.String(), linePayOther); err != nil || !ok {
+	if !n.s.acceptImages {
+		return
+	}
+	n.mu.Lock()
+	skip := n.sold || n.holder != ss.buyer || ss.imaged
+	n.mu.Unlock()
+	if skip {
+		return
+	}
+	ss.sayOnce(lineAskScreenshot, n.lines(ss.buyer).askScreenshot())
+}
+
+// sayOnce sends r unless the buyer already heard line. It reports false
+// if they had.
+func (ss *session) sayOnce(line string, r reply) bool {
+	n := ss.n
+	if ok, err := n.m.st.ClaimBuyerLine(n.talk, n.t.ID, ss.buyer.String(), line); err != nil || !ok {
 		return false
 	}
-	if err := n.send(n.talk, ss.buyer, n.lines(ss.buyer).payOther()); err != nil {
+	if err := n.send(n.talk, ss.buyer, r); err != nil {
 		n.log.Warn("negotiation message failed or is uncertain", "buyer", ss.buyer, "err", err)
 	}
 	return true
