@@ -1,7 +1,7 @@
 'use strict';
 
-// The home page is a column of widgets the user picks and orders. EDIT
-// turns every widget into a tile with a grip and a ✕, and opens a tray of
+// The home page is a column of widgets the user picks and orders. Edit
+// mode, opened from Settings › You (./#edit-home), turns every widget into a tile with a grip and a ✕, and opens a tray of
 // the widgets not on the page, each with a preview drawn from made-up data
 // (widget-demo.js). Drag a tile to reorder it, drag a tray card onto the
 // page to add it, drag a tile onto the tray to take it off. Tapping + or ✕
@@ -249,8 +249,7 @@ function homeMove(id, d) {
 function homeEdit(on) {
   homeEditing = on;
   document.body.classList.toggle('home-editing', on);
-  $('homeEdit').hidden = on;
-  $('homeEditBar').hidden = !on;
+  $('homeBar').hidden = !on;
   $('tray').hidden = !on;
   // Tiles can't be clicked into while editing; the grip and ✕ can.
   for (const sec of homeSecs.values()) {
@@ -266,7 +265,6 @@ function homeEdit(on) {
   }
 }
 
-$('homeEdit').addEventListener('click', () => homeEdit(true));
 $('homeDone').addEventListener('click', () => homeEdit(false));
 $('homeReset').addEventListener('click', () => homeSet(HOME_DEFAULT.slice()));
 $('homeEmptyEdit').addEventListener('click', () => homeEdit(true));
@@ -547,6 +545,15 @@ function dragEnd(ev) {
   }
 }
 
+// Settings › You links here with #edit-home to open edit mode.
+function homeEditFromHash() {
+  if (location.hash !== '#edit-home') return;
+  history.replaceState(null, '', location.pathname + location.search);
+  homeEdit(true);
+}
+addEventListener('hashchange', homeEditFromHash);
+
 // ---------- boot ----------
 
 homeApply();
+homeEditFromHash();
