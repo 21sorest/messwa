@@ -86,7 +86,7 @@ monthly_fee = 0
 # group_count = 2
 # Pause between copies of one offer, at least 3s. The sale starts after the
 # first copy; a sold or handed-off offer posts no more copies.
-post_gap = "15s"
+post_gap = "3s"
 # Put the price in the group post. The payment request DM always states it.
 show_price = true
 # List the extras you registered for that meal in the post, read from the

@@ -492,7 +492,7 @@ isn't today's.
 | --- | --- | --- | --- |
 | `groups` | `-group`, repeatable | none | Groups to post to, by exact name or JID, in order |
 | `group_count` | `-group-count` | 0 | Post to the first N of the top-level `groups` instead. Set this or `groups`, not both |
-| `post_gap` | `-post-gap` | `15s` | Pause between copies, at least 3s |
+| `post_gap` | `-post-gap` | `3s` | Pause between copies, at least 3s |
 | `show_price` | `-show-price` | `true` | Put the price in the group post |
 | `mention_extras` | `-mention-extras` | `false` | List the extras registered for that meal |
 | `handoff` | `-handoff` | `never` | When to hand the buyer's chat to you, see below |

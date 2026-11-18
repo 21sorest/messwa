@@ -36,7 +36,7 @@ func TestSellSettings(t *testing.T) {
 	if err := c.validate(); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Sell.Groups) != 0 || c.Sell.GroupCount != 0 || !c.Sell.ShowPrice || c.Sell.MentionExtras || c.Sell.PostGap.Seconds() != 15 {
+	if len(c.Sell.Groups) != 0 || c.Sell.GroupCount != 0 || !c.Sell.ShowPrice || c.Sell.MentionExtras || c.Sell.PostGap.Seconds() != 3 {
 		t.Errorf("defaults changed today's offer: %+v", c.Sell)
 	}
 	load := func(body string) (*Config, error) {
