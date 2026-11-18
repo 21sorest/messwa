@@ -381,8 +381,9 @@ function heroTip(v) {
   else lines.push([{ t: `${cap(v.state.replace('_', ' '))}${v.detail ? ': ' + v.detail : ''}`, c: won(v) ? 'ca' : 'c8' }]);
   lines.push(0, [{ t: `Opens ${rup(v.max)}, floor ${rup(v.min)}`, c: 'c7' }]);
   if (v.negotiates) {
-    lines.push([{ t: `Aims for ${rup(v.target)}, takes ${rup(v.lowest)} now`, c: 'ca' }]);
-    if (v.held) lines.push([{ t: 'Held at the target: two buyers are active.', c: 'c6' }]);
+    if (!v.smart) lines.push([{ t: `Takes anything from ${rup(v.min)} up`, c: 'ca' }]);
+    else lines.push([{ t: `Aims for ${rup(v.target)}, takes ${rup(v.lowest)} now`, c: 'ca' }]);
+    if (v.held) lines.push([{ t: 'Held at the target: three buyers are active.', c: 'c6' }]);
   }
   return lines;
 }
@@ -978,21 +979,21 @@ function openMealSheet(v, _key, keep) {
 // is interested.
 function walk(v, t) {
   const unit = v.max < 20 ? 1 : 5;
-  const frac = Math.min(1, Math.max(0, (v.ends - t) / (3 * 3600)));
+  const frac = Math.min(1, Math.max(0, (v.ends - t) / (2 * 3600)));
   const w = v.min + Math.ceil(frac * (v.target - v.min) / unit) * unit;
   return Math.min(Math.max(w, v.min), v.target);
 }
 
 // priceChart: the bot's lowest over the task, offers as dots, now marked.
 function priceChart(v) {
-  const t0 = Math.min(v.started, v.ends - 3 * 3600), t1 = v.ends;
+  const t0 = Math.min(v.started, v.ends - 2 * 3600), t1 = v.ends;
   const offers = v.buyers.flatMap((b) => b.events.filter((e) => e.kind === 'read' && e.n).map((e) => ({ at: e.at, n: e.n, b })));
   const lo = Math.floor(Math.min(v.min, ...offers.map((o) => o.n)) / 5) * 5, hi = v.max;
   const W = 316, H = 118, X0 = 8, X1 = 308, Y0 = 10, Y1 = 100;
   const x = (t) => X0 + (t - t0) / Math.max(1, t1 - t0) * (X1 - X0);
   const y = (p) => Y1 - (p - lo) / Math.max(1, hi - lo) * (Y1 - Y0);
   const s = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', class: 'chart' });
-  for (const [p, col] of [[v.target, C.gold], [v.min, C.red]]) {
+  for (const [p, col] of v.target > v.min ? [[v.target, C.gold], [v.min, C.red]] : [[v.min, C.red]]) {
     s.append(sv('line', { x1: X0, x2: X1, y1: y(p), y2: y(p), stroke: col, 'stroke-opacity': 0.6, 'stroke-dasharray': '3 3' }));
     s.append(sv('text', { x: X1, y: y(p) - 3, 'text-anchor': 'end', fill: col, class: 'tug-i' }, String(p)));
   }

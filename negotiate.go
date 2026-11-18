@@ -64,23 +64,36 @@ type haggle struct {
 	// it again; haveMedian is false when the market had none.
 	median     float64
 	haveMedian bool
-	unit       int // concessions round to this: ₹5, or ₹1 for tiny prices
-	end        time.Time
-	meal       string // "lunch"; a buyer who names only other meals is out
+	// smart is [sell] smart_haggle. Off, the target is max_price and the
+	// bot takes anything down to min at any time.
+	smart bool
+	unit  int // concessions round to this: ₹5, or ₹1 for tiny prices
+	end   time.Time
+	meal  string // "lunch"; a buyer who names only other meals is out
 	// l says the replies. The session adds the buyer's name before decide.
 	l lines
 }
 
-func newHaggle(minRupees, maxRupees int, median float64, haveMedian bool, end time.Time, l lines) haggle {
-	h := haggle{end: end, l: l, median: median, haveMedian: haveMedian}
+func newHaggle(minRupees, maxRupees int, median float64, haveMedian bool, smart bool, end time.Time, l lines) haggle {
+	h := haggle{end: end, l: l, median: median, haveMedian: haveMedian, smart: smart}
 	return h.withRange(minRupees, maxRupees)
+}
+
+// withSmart is h with smart haggle on or off, and the target worked out
+// again for it.
+func (h haggle) withSmart(on bool) haggle {
+	if h.smart == on {
+		return h
+	}
+	h.smart = on
+	return h.withRange(h.min, h.max)
 }
 
 // withRange is h with a new floor and opening price, and the target and
 // price unit worked out again for them.
 func (h haggle) withRange(minRupees, maxRupees int) haggle {
 	h.min, h.max, h.target, h.unit = minRupees, maxRupees, maxRupees, market.PriceUnit(maxRupees)
-	if h.haveMedian {
+	if h.smart && h.haveMedian {
 		h.target = min(max(int(math.Round(h.median)), minRupees), maxRupees)
 	}
 	return h
@@ -96,8 +109,12 @@ func (h haggle) round(x float64) int {
 	return int(math.Round(x/float64(h.unit))) * h.unit
 }
 
-// walk is the lowest price the bot accepts at now; see market.Walk.
+// walk is the lowest price the bot accepts at now; see market.Walk. Without
+// smart haggle it is the floor.
 func (h haggle) walk(now time.Time, competing bool) int {
+	if !h.smart {
+		return h.min
+	}
 	return market.Walk(h.min, h.target, h.unit, h.end, now, competing)
 }
 
@@ -409,7 +426,7 @@ func newNegotiation(ctx context.Context, m *sellManager, t store.SellTask, s *sa
 	}
 	n := &negotiation{
 		m: m, t: t, s: s, gate: gate, log: m.log.With("task", t.ID), join: join, pay: newOfferQueue(),
-		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, t.EndsAt, s.lines(types.EmptyJID)).forMeal(baseMeal(t.Meal)),
+		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, m.cfg.Live().Sell.SmartHaggle, t.EndsAt, s.lines(types.EmptyJID)).forMeal(baseMeal(t.Meal)),
 		slots: make(chan struct{}, maxSessions), sessions: map[types.JID]*session{}, direct: make(chan error, 1),
 		silence: m.cfg.Live().Sell.NegotiationSilence.Duration, revived: make(chan *session, maxSessions),
 		ownMin: int(t.MinPaise / 100), moved: map[types.JID]bool{},
@@ -419,7 +436,7 @@ func newNegotiation(ctx context.Context, m *sellManager, t store.SellTask, s *sa
 	}
 	n.ctx, n.cancel = context.WithCancelCause(ctx)
 	n.talk, n.hush = context.WithCancel(n.ctx)
-	n.log.Info("negotiating", "min", n.h.min, "max", n.h.max, "target", n.h.target, "median_known", have)
+	n.log.Info("negotiating", "min", n.h.min, "max", n.h.max, "target", n.h.target, "median_known", have, "smart", n.h.smart)
 	if err := m.st.SetSellTaskTarget(ctx, t.ID, int64(n.h.target)*100); err != nil {
 		n.log.Warn("could not record the target price", "err", err)
 	}
@@ -431,11 +448,14 @@ func (n *negotiation) lines(buyer types.JID) lines {
 	return n.prices().l.forBuyer(n.join.name(buyer))
 }
 
-// prices returns the haggle as it stands now. A range edit can change it
-// while sessions run, so they read it once per turn.
+// prices returns the haggle as it stands now. A range edit or the smart
+// haggle setting can change it while sessions run, so they read it once
+// per turn.
 func (n *negotiation) prices() haggle {
+	smart := n.m.cfg.Live().Sell.SmartHaggle
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	n.h = n.h.withSmart(smart)
 	return n.h
 }
 
@@ -761,7 +781,7 @@ func (n *negotiation) competing() bool {
 			active++
 		}
 	}
-	return active >= 2
+	return market.Competing(active)
 }
 
 // others are everyone besides the buyer who should hear "sorry sold". The

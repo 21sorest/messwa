@@ -245,6 +245,9 @@ func newSellFixture(t *testing.T, path string) *sellFixture {
 	cfg := config.Default()
 	group := types.NewJID("120363000000000001", types.GroupServer)
 	cfg.Groups = []string{group.String()}
+	// Most negotiation tests were written against smart haggle; the ones
+	// for plain haggling turn it off.
+	cfg.Sell.SmartHaggle = true
 	st, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)

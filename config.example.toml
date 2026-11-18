@@ -162,6 +162,12 @@ accept_payment_images = false
 # offers, sell tasks and deliver-qr -peer; -assume-unreadable-payment
 # overrides it for one run.
 accept_unreadable_payments = true
+# Smart haggle: a negotiating sell task holds out for the meal's usual price
+# (the median ask at that mess) and only comes down toward min_price in the
+# meal's last 2 hours, staying at the usual price while more than two buyers
+# are active. Off by default: the bot meets buyers anywhere between min_price
+# and max_price, countering halfway each round.
+smart_haggle = false
 # How long a negotiating sell task waits for a buyer to answer before it
 # stops talking to them, 1m to 30m. A quiet buyer holds one of 10
 # negotiation slots and counts as competition, which slows the price drop;

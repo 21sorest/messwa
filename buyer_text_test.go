@@ -118,7 +118,7 @@ func TestDayLabelPastMidnight(t *testing.T) {
 	day := "tmrw"
 	l := saleLines(nil, "kadamba", "veg", "breakfast", "", time.Time{}, nil)
 	l.day = func() string { return day }
-	h := newHaggle(20, 25, 0, false, time.Now().Add(time.Hour), l)
+	h := newHaggle(20, 25, 0, false, false, time.Now().Add(time.Hour), l)
 	if got := h.l.opening(25); !strings.HasSuffix(got[0], ", its for tmrw") {
 		t.Fatalf("opening before midnight = %q", got)
 	}

@@ -67,6 +67,11 @@ type Sell struct {
 	// stays unreadable after recovery as a payment of the agreed price.
 	// On by default, though the bot can't tell what, if anything, was paid.
 	AcceptUnreadablePayments bool `toml:"accept_unreadable_payments"`
+	// SmartHaggle has a negotiating sell task hold out for the meal's
+	// usual price (the market's median ask) and come down to min_price
+	// only near the meal's end or while few buyers are interested. Off by
+	// default: the bot haggles anywhere between min_price and max_price.
+	SmartHaggle bool `toml:"smart_haggle"`
 	// NegotiationSilence is how long a sell task waits for a buyer to
 	// answer its last message before it stops negotiating with them. A
 	// buyer who writes later, while the meal is unsold, picks up again.

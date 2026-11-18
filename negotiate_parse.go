@@ -187,8 +187,13 @@ var (
 	// counts only here: on its own it is "understood".
 	boughtWords = newVocab("bought", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
 		"got it", "already got", "mil gaya", "mil gya", "milgaya", "mil gayi")
-	refuseFirst   = newVocab("no", "nope", "nah", "na", "nahi", "nhi")
-	payOtherWords = newVocab("upi id", "upi qr", "qr code", "scanner", "scan", "send qr", "send your qr", "send the qr", "your qr", "payment qr",
+	refuseFirst = newVocab("no", "nope", "nah", "na", "nahi", "nhi")
+	// An apology with nothing else to say is a no: "okay sorry then" after
+	// "cant go below 115". One that excuses something isn't: "sorry for the
+	// late reply, ok".
+	apology        = newVocab("sorry", "sry", "sorri", "soz")
+	apologyExcuses = newVocab("sorry for", "sry for", "sorry late", "sry late", "sorry was", "sry was")
+	payOtherWords  = newVocab("upi id", "upi qr", "qr code", "scanner", "scan", "send qr", "send your qr", "send the qr", "your qr", "payment qr",
 		"cant pay", "can't pay", "cannot pay", "not working", "cash", "pay later", "later", "tomorrow", "tmrw", "tmr", "account number",
 		"bank", "send upi", "send number", "number send", "upi not", "other way", "other ways", "another way", "different way", "other method",
 		"other mode", "some other way", "dont have whatsapp pay", "don't have whatsapp pay", "do not have whatsapp pay", "no whatsapp pay",
@@ -358,6 +363,8 @@ func parseKind(text string) intent {
 		return intent{kind: intentOpener}
 	case questionWords.in(m):
 		return intent{kind: intentQuestion}
+	case apology.in(m) && !apologyExcuses.in(m):
+		return intent{kind: intentPass}
 	case okWords.in(m):
 		return intent{kind: intentOK, done: strings.Contains(m.joined, " done ") || strings.Contains(m.joined, " dn ")}
 	case len(m.words) == 0 && !strings.ContainsAny(raw, "0123456789"):
