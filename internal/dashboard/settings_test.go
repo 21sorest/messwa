@@ -68,7 +68,7 @@ func TestSettingsAPI(t *testing.T) {
 	if code != 400 || msg == "" {
 		t.Fatalf("bad post_gap: %d %q", code, msg)
 	}
-	if cfg.Live().Sell.PostGap.Seconds() != 15 {
+	if cfg.Live().Sell.PostGap.Seconds() != 3 {
 		t.Fatal("a refused save changed the live config")
 	}
 
