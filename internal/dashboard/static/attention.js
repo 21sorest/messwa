@@ -1,8 +1,10 @@
 'use strict';
 
-// The "needs you" banner above the board and the sales page: problems the
-// seller has to act on, from /api/attention. It stays hidden while there are
-// none. Browser alerts only fire while a dashboard tab is open.
+// The "needs you" banner: problems the seller has to act on, from
+// /api/attention. On the home page it's the Alerts widget (#attnHost); on
+// the sales page it sits under the header. It stays hidden while there are
+// none, and says how many there are with an "attention" event on document.
+// Browser alerts only fire while a dashboard tab is open.
 
 function attentionUnseen(items, seen) { return items.filter((x) => !seen.has(x.id)); }
 if (typeof module !== 'undefined') module.exports = { attentionUnseen };
@@ -47,7 +49,9 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
   const note = el('p', 'attn-note');
   note.setAttribute('role', 'status');
   box.append(head, list, more, note);
-  document.querySelector('.top').after(box);
+  const host = document.getElementById('attnHost');
+  if (host) host.append(box);
+  else document.querySelector('.top').after(box);
 
   let open = false; // the folded rows are showing
   more.onclick = () => { open = !open; draw(); };
@@ -132,6 +136,7 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
   let items = [];
   function draw() {
     box.hidden = !items.length;
+    document.dispatchEvent(new CustomEvent('attention', { detail: items.length }));
     if (!items.length) return;
     box.classList.toggle('red', items.some((x) => (ATTN_KIND[x.kind] || [])[1] === 'red'));
     line.textContent = items.length === 1 ? '1 THING NEEDS YOU' : `${items.length} THINGS NEED YOU`;

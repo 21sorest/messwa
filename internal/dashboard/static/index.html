@@ -10,12 +10,17 @@
 <link rel="preload" href="silkscreen-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="sale.css">
+<link rel="stylesheet" href="sales.css">
+<link rel="stylesheet" href="home.css">
 <script src="common.js" defer></script>
 <link rel="stylesheet" href="attention.css">
 <script src="attention.js" defer></script>
 <script src="sell.js" defer></script>
 <script src="sale.js" defer></script>
 <script src="app.js" defer></script>
+<script src="widget-demo.js" defer></script>
+<script src="widgets.js" defer></script>
+<script src="home.js" defer></script>
 </head>
 <body>
 <div class="app">
@@ -38,7 +43,7 @@
       <div class="day-label" id="dayLabel">&nbsp;</div>
       <div class="track" id="track"></div>
     </div>
-    <label class="search">
+    <label class="search" id="searchBox">
       <span class="search-key" aria-hidden="true">/</span>
       <input id="q" type="search" placeholder="Search seller, number, text" autocomplete="off" spellcheck="false">
     </label>
@@ -48,8 +53,25 @@
 
   <div class="sell-nudge" id="nudge" hidden></div>
 
-  <div class="sales-box" id="sales" hidden></div>
+  <div class="home-bar">
+    <button class="home-edit" id="homeEdit" type="button" title="Pick and order the widgets on this page"><span aria-hidden="true">✎</span> EDIT HOME</button>
+    <div class="home-editbar" id="homeEditBar" hidden>
+      <span class="home-edit-text"><b>Editing your home.</b></span>
+      <button class="home-btn" id="homeReset" type="button" title="Back to Alerts, Today, Sales ledger and Earnings">RESET</button>
+      <button class="home-btn gold" id="homeDone" type="button">DONE</button>
+    </div>
+  </div>
 
+  <div class="widgets" id="widgets"></div>
+
+  <div class="home-empty" id="homeEmpty" hidden>
+    <b>Nothing on your home yet.</b>
+    <span>Add the widgets you want to see here.</span>
+    <button class="home-btn gold" id="homeEmptyEdit" type="button">+ ADD WIDGETS</button>
+  </div>
+
+  <!-- The board's markup; home.js moves it into the Market and Market pulse widgets. -->
+  <div id="widgetParts" hidden>
   <main class="chest" id="chest">
     <div class="chest-head">
       <span class="head-icon" id="headIcon"></span>
@@ -94,7 +116,16 @@
     <span><kbd>W</kbd> wanted</span>
     <span><kbd>/</kbd> search</span>
   </footer>
+  </div>
 </div>
+
+<aside class="tray" id="tray" hidden aria-label="Widgets you can add">
+  <div class="tray-head">
+    <span class="tray-title">ADD WIDGETS</span>
+    <span class="tray-meta" id="trayMeta"></span>
+  </div>
+  <div class="tray-list" id="trayList"></div>
+</aside>
 
 <div class="tip" id="tip" hidden></div>
 <div class="modal" id="modal" hidden>

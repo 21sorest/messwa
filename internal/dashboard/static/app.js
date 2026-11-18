@@ -208,15 +208,15 @@ function render() {
   renderDay();
   $('noGroups').hidden = !D.no_groups;
   renderSales();
-  // The ledger feeds the nudge and the mess of a scheduled sale's card.
-  const ledger = D.nudge || (D.scheduled || []).length > 0;
-  if (!ledger) { N = null; nudgeAt = 0; }
+  // The sales ledger feeds the nudge, the Today widget, the mess of a
+  // scheduled sale's card and the widgets drawn from your sales.
   if (N || !D.nudge) renderNudge();
-  if (ledger) loadNudge();
+  loadNudge();
   renderTabs();
   renderGrid();
   renderControls();
   renderStats();
+  if (typeof homeRender === 'function') homeRender();
   keepTip();
   tickLive();
 }
@@ -762,17 +762,18 @@ function untagged(mess, win) {
   return D.market.posts.filter((p) => p.t > from && p.mess === mess && p.kind !== 'buy' && !marketDiet(p.diet)).length;
 }
 
-function renderStats() {
+// renderStats draws the market pulse into its widget, or into the boxes in
+// to, as the widget picker's preview does.
+function renderStats(to = { meta: $('pulseMeta'), wins: $('wins'), cards: $('cards') }) {
   if (!D || !D.market) return;
   const n = now();
   const win = WINS.includes(S.win) ? S.win : 30;
   const all = stats(null, win);
-  const meta = $('pulseMeta');
+  const meta = to.meta;
   meta.textContent = `All messes: ${rate(all.msgs / win)} msgs/min · ${rate(all.sales / win)} sales/min · ${pctText(all.demand)} demand`;
   meta.title = meta.textContent;
 
-  const wins = $('wins');
-  wins.replaceChildren(...WINS.map((m) => {
+  to.wins.replaceChildren(...WINS.map((m) => {
     const b = el('button', 'win' + (m === win ? ' on' : ''), winLabel(m));
     b.setAttribute('aria-pressed', String(m === win));
     b.setAttribute('aria-label', `Last ${winWords(m)}`);
@@ -787,7 +788,7 @@ function renderStats() {
   const series = new Map(ks.map((k) => [marketKey(k), buckets(k, start)]));
   const top = Math.max(1, ...[...series.values()].flat().map((b) => Math.max(b.msgs, b.sales)));
 
-  $('cards').replaceChildren(...ks.map((k) => {
+  to.cards.replaceChildren(...ks.map((k) => {
     const m = k.mess, key = marketKey(k);
     const s = stats(k, win);
     const v = verdict(s, all);
@@ -934,6 +935,9 @@ addEventListener('keydown', (e) => {
     return;
   }
   const k = e.key.toLowerCase();
+  // The keys drive the market board, so they do nothing while it's off the
+  // home page.
+  if (typeof homeHas === 'function' && !homeHas('market')) return;
   const names = D ? [...D.messes.map((m) => m.name), 'all'] : [];
   if (/^[1-9]$/.test(k) && names[+k - 1]) setTab(names[+k - 1]);
   else if (k === 'arrowleft') turn(-1);
@@ -1106,10 +1110,11 @@ function toast(msg) {
 
 // ---------- sell your next meal ----------
 
-// The nudge above the board points at your next registered meal nobody is
-// selling yet: the one being served now or the next one, the same meals
-// the sales ledger offers to sell. It reads api/sales, which asks the
-// portal, so it refreshes every few minutes rather than with the board.
+// The nudge above the widgets points at your next registered meal nobody
+// is selling yet: the one being served now or the next one, the same meals
+// the sales ledger offers to sell. It shows only while the Today widget is
+// off the page. It reads api/sales, which asks the portal, so it refreshes
+// every few minutes rather than with the board.
 let N = null;            // last /api/sales, or null
 let nudgeAt = 0;
 const NUDGE_EVERY = 3 * 60 * 1000;
@@ -1123,11 +1128,14 @@ async function loadNudge(force) {
     N = r.ok ? await r.json() : null;
   } catch { N = null; }
   renderNudge();
-  if (D && (D.scheduled || []).length) renderSales();
+  if (D) renderSales();
+  if (typeof homeSalesLoaded === 'function') homeSalesLoaded();
 }
 
 function nextSellable() {
   if (!D.nudge || !N || !N.owner || N.sell_off) return null;
+  // The Today widget offers the same meals, with more room.
+  if (typeof homeHas === 'function' && homeHas('today')) return null;
   const n = now();
   const out = [];
   // Tomorrow's first meal comes as ahead once today's last one is over.
@@ -1241,5 +1249,5 @@ addEventListener('resize', () => {
 load();
 connect();
 setInterval(tickLive, 1000);
-setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); renderStats(); keepTip(); } }, 30000);
+setInterval(() => { if (D && document.visibilityState === 'visible') { renderDay(); renderGrid(); renderStats(); renderSales(); keepTip(); } }, 30000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
