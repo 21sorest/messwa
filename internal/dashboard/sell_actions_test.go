@@ -23,7 +23,7 @@ type operatorCall struct {
 	buyer, name, note string
 	group             string
 	price             int
-	muted             bool
+	muted, sendQR     bool
 }
 type dashboardOperator struct {
 	calls []operatorCall
@@ -123,8 +123,8 @@ func (o *dashboardOperator) SetPrices(_ context.Context, id int64, min, max int)
 	o.tasks = append(o.tasks, fmt.Sprintf("prices %d %d-%d", id, min, max))
 	return nil
 }
-func (o *dashboardOperator) MarkSold(_ context.Context, id int64, buyer, name string, price int, note string) error {
-	o.calls = append(o.calls, operatorCall{id: id, buyer: buyer, name: name, price: price, note: note})
+func (o *dashboardOperator) MarkSold(_ context.Context, id int64, buyer, name string, price int, note string, sendQR bool) error {
+	o.calls = append(o.calls, operatorCall{id: id, buyer: buyer, name: name, price: price, note: note, sendQR: sendQR})
 	return nil
 }
 func (o *dashboardOperator) AddBuyer(_ context.Context, id int64, buyer, name string) error {
@@ -172,6 +172,12 @@ func TestSellActionsAPI(t *testing.T) {
 		if c.id != 7 || c.buyer != "+911111111111" {
 			t.Fatalf("call = %+v", c)
 		}
+	}
+	if res := admin.send(t, "POST", "/api/sell-action", map[string]any{"action": "sold", "id": 7, "buyer": "+911111111111", "price": 40, "send_qr": true}); res.StatusCode != 200 {
+		t.Fatalf("sold with QR = %d", res.StatusCode)
+	}
+	if c := op.calls[len(op.calls)-1]; !c.sendQR || op.calls[0].sendQR {
+		t.Fatalf("send_qr not passed on: %+v", op.calls)
 	}
 	if res := admin.send(t, "POST", "/api/sell-action", map[string]any{"action": "bad"}); res.StatusCode != 400 {
 		t.Fatalf("bad action = %d", res.StatusCode)

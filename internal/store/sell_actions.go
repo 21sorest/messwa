@@ -108,11 +108,16 @@ type TaskManualSale struct {
 	BuyerName string
 	Amount    string // INR, like "55.00"
 	At        time.Time
+	// QRMessageID, when set, means the bot sends Peer the meal QR as this
+	// message. The row is left 'sending' with no sent time, and
+	// FinishDelivery marks it sent once the QR goes out.
+	QRMessageID string
 }
 
 // RecordTaskManualSale writes a sale you made yourself to the delivery
 // ledger as sent, paid and sent at m.At, with payment kind PaidManual, and
-// ties it to the task. The task must still be active. A meal with no row
+// ties it to the task. With m.QRMessageID it is paid at m.At and left
+// 'sending' for that QR message instead. The task must still be active. A meal with no row
 // gets one; a reservation the task armed for a buyer becomes this sale. A
 // row that was paid, sent or handed off is left alone and the call fails.
 // When Peer is one of the task's buyers, they become bought.
@@ -124,6 +129,9 @@ func (s *Store) RecordTaskManualSale(ctx context.Context, taskID int64, m TaskMa
 	}
 	if m.Peer == "" && m.BuyerName == "" {
 		return errors.New("a sale needs a buyer: a phone number, a JID or a name")
+	}
+	if m.QRMessageID != "" && m.Peer == "" {
+		return errors.New("sending the QR needs the buyer's phone number or JID")
 	}
 	if m.At.IsZero() {
 		return errors.New("a sale needs a time")
@@ -144,18 +152,23 @@ func (s *Store) RecordTaskManualSale(ctx context.Context, taskID int64, m TaskMa
 	if state != TaskActive {
 		return fmt.Errorf("sell task %d is %s", taskID, state)
 	}
+	// A sale whose QR the bot still has to send waits in 'sending'.
+	dstateNew, sentAt, msgID := "sent", any(m.At.Unix()), ""
+	if m.QRMessageID != "" {
+		dstateNew, sentAt, msgID = "sending", nil, m.QRMessageID
+	}
 	var dstate string
 	var dtask sql.NullInt64
 	err = tx.QueryRowContext(ctx, `SELECT state,task_id FROM qr_deliveries WHERE date=? AND meal=?`, date, meal).Scan(&dstate, &dtask)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = tx.ExecContext(ctx, `INSERT INTO qr_deliveries(date,meal,peer,amount,image_hash,armed_at,state,mess,diet,buyer_name,paid_at,sent_at,payment_kind,task_id)
- VALUES(?,?,?,?,'manual',?,'sent',?,?,?,?,?,?,?)`, date, meal, m.Peer, m.Amount, m.At.Unix(), mess, diet, m.BuyerName, m.At.Unix(), m.At.Unix(), PaidManual, taskID)
+		_, err = tx.ExecContext(ctx, `INSERT INTO qr_deliveries(date,meal,peer,amount,image_hash,armed_at,state,mess,diet,buyer_name,paid_at,sent_at,payment_kind,task_id,message_id)
+ VALUES(?,?,?,?,'manual',?,?,?,?,?,?,?,?,?,?)`, date, meal, m.Peer, m.Amount, m.At.Unix(), dstateNew, mess, diet, m.BuyerName, m.At.Unix(), sentAt, PaidManual, taskID, msgID)
 	case err != nil:
 	case (dstate == "armed" || dstate == "handed_off") && dtask.Valid && dtask.Int64 == taskID:
 		var result sql.Result
-		result, err = tx.ExecContext(ctx, `UPDATE qr_deliveries SET state='sent',peer=?,amount=?,image_hash='manual',payment_kind=?,paid_at=?,sent_at=?,buyer_name=?
- WHERE date=? AND meal=? AND state IN ('armed','handed_off') AND payment_id IS NULL`, m.Peer, m.Amount, PaidManual, m.At.Unix(), m.At.Unix(), m.BuyerName, date, meal)
+		result, err = tx.ExecContext(ctx, `UPDATE qr_deliveries SET state=?,peer=?,amount=?,image_hash='manual',payment_kind=?,paid_at=?,sent_at=?,buyer_name=?,message_id=?
+ WHERE date=? AND meal=? AND state IN ('armed','handed_off') AND payment_id IS NULL`, dstateNew, m.Peer, m.Amount, PaidManual, m.At.Unix(), sentAt, m.BuyerName, msgID, date, meal)
 		if err == nil {
 			n, rowsErr := result.RowsAffected()
 			if rowsErr != nil {

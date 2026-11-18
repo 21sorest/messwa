@@ -61,7 +61,8 @@ func sellActionRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 			Name     string `json:"name"`
 			Price    int    `json:"price"`
 			Note     string `json:"note"`
-			Group    string `json:"group"` // resend: the group's JID
+			SendQR   bool   `json:"send_qr"` // sold: also send the buyer the meal QR
+			Group    string `json:"group"`   // resend: the group's JID
 			// start, prices: the meal and the price range in rupees.
 			Date string `json:"date"`
 			Meal string `json:"meal"`
@@ -192,7 +193,7 @@ func sellActionRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 		}
 		switch in.Action {
 		case "sold":
-			err = op.MarkSold(r.Context(), in.ID, in.Buyer, in.Name, in.Price, in.Note)
+			err = op.MarkSold(r.Context(), in.ID, in.Buyer, in.Name, in.Price, in.Note, in.SendQR)
 		case "add":
 			err = op.AddBuyer(r.Context(), in.ID, in.Buyer, in.Name)
 		case "mute", "unmute":

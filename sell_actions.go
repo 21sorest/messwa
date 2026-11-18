@@ -22,7 +22,8 @@ import (
 //   - MarkSold: you sold the meal yourself. The task stops, the sale goes
 //     in the ledger as manual, buyers still in the running hear "sorry
 //     sold" as after a bot sale, and the offer posts get their ✅. The
-//     buyer you sold to gets nothing from the bot.
+//     buyer you sold to gets the meal QR when you ask for it, and nothing
+//     otherwise.
 //   - AddBuyer: queue someone as if they had replied privately to the
 //     offer. The bot quotes them like any other buyer.
 //   - MuteBuyer: the bot sends a buyer nothing more for the task, not even
@@ -44,6 +45,11 @@ var (
 type manualSale struct {
 	peer, name, amount, note string
 	at                       time.Time
+	// qr is the meal QR to send to as message qrID, or nil to send the
+	// buyer nothing.
+	qr   *waE2E.Message
+	to   types.JID
+	qrID string
 	// recorded gets the ledger write's result, once.
 	recorded chan error
 }
@@ -110,9 +116,10 @@ func (m *sellManager) peerForms(ctx context.Context, jid types.JID) []string {
 
 // MarkSold records that you sold task id's meal yourself to who (a phone
 // number or JID, one of the task's buyers or not) or to name, for
-// priceRupees. It returns once the sale is in the ledger; "sorry sold"
-// notices and the ✅ follow in the background.
-func (m *sellManager) MarkSold(ctx context.Context, id int64, who, name string, priceRupees int, note string) error {
+// priceRupees. With sendQR it also sends who the meal QR; that needs a
+// phone number or JID. It returns once the sale is in the ledger and any
+// QR went out; "sorry sold" notices and the ✅ follow in the background.
+func (m *sellManager) MarkSold(ctx context.Context, id int64, who, name string, priceRupees int, note string, sendQR bool) error {
 	if priceRupees <= 0 || priceRupees > 10000 {
 		return errors.New("price must be between 1 and 10000 rupees")
 	}
@@ -132,6 +139,20 @@ func (m *sellManager) MarkSold(ctx context.Context, id int64, who, name string, 
 	}
 	ms := &manualSale{peer: peer, name: name, amount: store.FormatPaise(int64(priceRupees) * 100),
 		note: strings.TrimSpace(note), at: time.Now(), recorded: make(chan error, 1)}
+	if sendQR {
+		// Fetch and upload the QR while the task still runs, so a portal
+		// or upload failure leaves the sale untouched.
+		if peer == "" {
+			return errors.New("sending the QR needs their phone number, not only a name")
+		}
+		if ms.to, err = types.ParseJID(peer); err != nil {
+			return err
+		}
+		if ms.qr, err = m.manualQR(ctx, rt.task); err != nil {
+			return fmt.Errorf("could not get the meal QR, nothing changed: %w", err)
+		}
+		ms.qrID = m.conn.GenerateMessageID()
+	}
 	m.mu.Lock()
 	if rt.manual != nil {
 		m.mu.Unlock()
@@ -156,6 +177,20 @@ func (m *sellManager) MarkSold(ctx context.Context, id int64, who, name string, 
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// manualQR is task t's meal QR from the portal, uploaded and ready to send.
+func (m *sellManager) manualQR(ctx context.Context, t store.SellTask) (*waE2E.Message, error) {
+	p, err := m.portalFor(ctx, t.UserID)
+	if err != nil {
+		return nil, err
+	}
+	s := m.newSale(t.Date, t.Meal, t.EndsAt)
+	s.accountHash = t.AccountHash
+	if err := s.usePortal(ctx, p, m.cfg.VegOnly); err != nil {
+		return nil, err
+	}
+	return s.prepareQR(ctx, store.Delivery{Date: t.Date, Meal: t.Meal, Mess: s.mess}, false)
 }
 
 // runningActive is task id while it runs in this process.
@@ -188,14 +223,25 @@ func (m *sellManager) finishManualSale(ctx context.Context, t store.SellTask, ga
 	ms := m.running[t.ID].manual
 	m.mu.Unlock()
 	notifyCtx := context.WithoutCancel(ctx)
-	err := m.st.RecordTaskManualSale(notifyCtx, t.ID, store.TaskManualSale{Peer: ms.peer, BuyerName: ms.name, Amount: ms.amount, At: ms.at})
-	ms.recorded <- err
+	err := m.st.RecordTaskManualSale(notifyCtx, t.ID, store.TaskManualSale{Peer: ms.peer, BuyerName: ms.name, Amount: ms.amount, At: ms.at, QRMessageID: ms.qrID})
 	if err != nil {
+		ms.recorded <- err
 		m.log.Warn("could not record your sale", "task", t.ID, "err", err)
 		return fmt.Errorf("could not record your sale: %w", err)
 	}
 	who := describeBuyer(ms.peer, ms.name)
-	detail := fmt.Sprintf("sold by you to %s for INR %s; the bot sent them nothing", who, strings.TrimSuffix(ms.amount, ".00"))
+	sent := "the bot sent them nothing"
+	if ms.qr != nil {
+		if qerr := m.sendManualQR(notifyCtx, t, gate, ms); qerr != nil {
+			m.log.Error("QR for your sale failed", "task", t.ID, "buyer", ms.peer, "err", qerr)
+			sent = "the QR send failed or is uncertain, check their chat: " + qerr.Error()
+			err = fmt.Errorf("sale recorded, but the QR send failed or is uncertain; check their chat: %w", qerr)
+		} else {
+			sent = "the bot sent them the QR"
+		}
+	}
+	ms.recorded <- err
+	detail := fmt.Sprintf("sold by you to %s for INR %s; %s", who, strings.TrimSuffix(ms.amount, ".00"), sent)
 	if ms.note != "" {
 		detail += ". Note: " + ms.note
 	}
@@ -218,6 +264,40 @@ func (m *sellManager) finishManualSale(ctx context.Context, t store.SellTask, ga
 	s.send, s.event = gate.sendSoldNotice, m.saleEvents(t.ID)
 	s.tellSold(notifyCtx, &taskJournal{st: m.st, t: t}, waiting)
 	return manualSoldError{detail: detail}
+}
+
+// sendManualQR sends the QR MarkSold prepared and marks the delivery sent.
+// Like the bot's own deliveries, a failed send stays 'sending' and is never
+// retried.
+func (m *sellManager) sendManualQR(ctx context.Context, t store.SellTask, gate *taskGate, ms *manualSale) error {
+	sendCtx, stop := context.WithTimeout(ctx, time.Minute)
+	defer stop()
+	if _, err := gate.sendManualQR(sendCtx, ms.to, ms.qr, whatsmeow.SendRequestExtra{ID: ms.qrID}); err != nil {
+		return err
+	}
+	if err := m.st.FinishDelivery(sendCtx, store.Delivery{Date: t.Date, Meal: t.Meal}, ms.qrID); err != nil {
+		return fmt.Errorf("QR sent but completion could not be recorded: %w", err)
+	}
+	m.event(ctx, store.SellEvent{TaskID: t.ID, Peer: ms.peer, Kind: store.EventQRSent, N: paise(ms.amount)})
+	return nil
+}
+
+// sendManualQR sends the meal QR for a sale you recorded by hand. It skips
+// the checks on who may hear from the task, since you picked the buyer
+// yourself, but only sends an image to the delivery's own peer while the
+// delivery waits in 'sending'.
+func (g *taskGate) sendManualQR(ctx context.Context, to types.JID, msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (whatsmeow.SendResponse, error) {
+	if msg.GetImageMessage() == nil {
+		return whatsmeow.SendResponse{}, errors.New("only the meal QR can be sent for a sale you made")
+	}
+	d, state, err := g.m.st.TaskDelivery(ctx, g.id)
+	if err != nil {
+		return whatsmeow.SendResponse{}, err
+	}
+	if d == nil || state != "sending" || d.Peer != to.String() {
+		return whatsmeow.SendResponse{}, errors.New("no QR waiting to go to this buyer")
+	}
+	return g.m.send(ctx, to, msg, extra...)
 }
 
 func describeBuyer(peer, name string) string {
