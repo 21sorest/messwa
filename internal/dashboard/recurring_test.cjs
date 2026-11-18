@@ -17,7 +17,7 @@ async function fixture(){
  const $=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
  const ctx=vm.createContext({$,D:{owner:true,today:'2026-11-16',list_at:-900},el:tag=>new Element(tag),svgEl:()=>new Element(),icon:()=>'',cap:s=>s,
   meals:()=>['breakfast','lunch','snacks','dinner'],addDays:(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);},
-  location:{hash:'',pathname:'/sales.html',search:''},history:{replaceState(){}},addEventListener(){},load:async()=>{},
+  location:{hash:'',pathname:'/sales.html',search:''},history:{replaceState(){}},addEventListener(){},load:async()=>{},keepScroll:fn=>fn(),
   fetch:async()=>({ok:true,status:200,json:async()=>[]}),
   send:async(method,url,body)=>{calls.push(body);return body.action==='preview'?{new:5,starts_now:1,waiting:2,preserved_overrides:1,kept:1,existing:0}:{...body.rule,id:7,revision:2};},
  });
