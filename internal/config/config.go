@@ -188,7 +188,7 @@ func Default() *Config {
 			Repost:          true,
 			RepostMessages:  10,
 			RepostListings:  3,
-			MaxReposts:      6,
+			MaxReposts:      20,
 			// WhatsApp replies come in minutes, not seconds. In the
 			// 12 Nov dinner test 6 of 9 buyers timed out at 2m and the
 			// meal went to one who wrote just after.

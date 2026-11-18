@@ -497,7 +497,7 @@ isn't today's.
 | `repost` | `-repost` | `true` | Post a fresh copy in a group once the last one has dropped out of view, see below |
 | `repost_messages` | `-repost-messages` | `10` | Repost once this many messages came in after a copy. 0 turns it off |
 | `repost_listings` | `-repost-listings` | `3` | Repost once this many other sellers listed the same meal at the same mess after a copy. 0 turns it off |
-| `max_reposts` | `-max-reposts` | `6` | Most fresh copies per group for one offer, 0 to 12 |
+| `max_reposts` | `-max-reposts` | `20` | Most fresh copies per group for one offer, 0 to 20 |
 | `accept_payment_images` | `-accept-payment-images` | `false` | Count an image from the paying buyer as their payment, unverified, see below |
 
 With `groups` or `group_count` set, `deliver-qr` without `-peer` posts to
