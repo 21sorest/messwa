@@ -99,7 +99,7 @@ async function load() {
     failed = false;
     lastOK = Date.now();
     if (!D.messes.some((m) => m.name === S.tab) && S.tab !== 'all') S.tab = D.messes[0] ? D.messes[0].name : 'all';
-    render();
+    keepScroll(render);
   } catch (e) {
     failed = true;
     tickLive();
@@ -1122,8 +1122,10 @@ async function loadNudge(force) {
     const r = await fetch('api/sales', { cache: 'no-store' });
     N = r.ok ? await r.json() : null;
   } catch { N = null; }
-  renderNudge();
-  if (D && (D.scheduled || []).length) renderSales();
+  keepScroll(() => {
+    renderNudge();
+    if (D && (D.scheduled || []).length) renderSales();
+  });
 }
 
 function nextSellable() {
