@@ -21,7 +21,7 @@ func TestWithSettings(t *testing.T) {
 		"sell.group_count":   raw(2),
 		"sell.buyers":        raw("unsaved_only"),
 		"sold.words":         raw([]string{" sold ", "", "sold", "gone"}),
-		"meals.times":        raw(map[string]MealTime{"lunch": {"12:00", "15:00"}}),
+		"meals.times":        raw(map[string]MealTime{"lunch": {"12:00", "15:00"}}), // retired, ignored
 		"messes.veg_only":    raw(map[string]bool{"bakul": true}),
 		"sales.monthly_fee":  raw(3200),
 		"sell.repost_after":  raw(600), // retired, ignored
@@ -39,7 +39,7 @@ func TestWithSettings(t *testing.T) {
 	if strings.Join(n.Sold.Words, ",") != "sold,gone" {
 		t.Fatalf("words = %q", n.Sold.Words)
 	}
-	if n.Meals[1].Starts != "12:00" || n.Meals[1].Ends != "15:00" || n.Meals[1].Keywords[0] != "lunxh" {
+	if n.Meals[1].Starts == "12:00" || n.Meals[1].Ends == "15:00" || n.Meals[1].Keywords[0] != "lunxh" {
 		t.Fatalf("lunch = %+v", n.Meals[1])
 	}
 	if !n.VegOnly("bakul") || !n.VegOnly("palash") {
@@ -62,22 +62,20 @@ func TestWithSettingsRefuses(t *testing.T) {
 	c := Default()
 	c.Groups = []string{"a@g.us"}
 	for name, s := range map[string]Settings{
-		"unknown key":            {"sell.nope": raw(true)},
-		"wrong type":             {"sell.show_price": raw("yes")},
-		"post gap too short":     {"sell.post_gap": raw(1)},
-		"silence too short":      {"sell.negotiation_silence": raw(30)},
-		"silence too long":       {"sell.negotiation_silence": raw(31 * 60)},
-		"too many reposts":       {"sell.max_reposts": raw(13)},
-		"group count over":       {"sell.group_count": raw(2)},
-		"groups and count":       {"sell.group_count": raw(1), "sell.groups": raw([]string{"a@g.us"})},
-		"bad handoff":            {"sell.handoff": raw("on_agreement")},
-		"no sold emoji":          {"sold.emojis": raw([]string{" "})},
-		"short retention":        {"dms.retention": raw(60)},
-		"negative fee":           {"sales.monthly_fee": raw(-1)},
-		"meal ends before start": {"meals.times": raw(map[string]MealTime{"lunch": {"14:00", "13:00"}})},
-		"bad clock":              {"meals.times": raw(map[string]MealTime{"lunch": {"noon", "13:00"}})},
-		"seasons overlap":        {"seasons": raw([]Season{{Name: "A", Starts: "01-01", Ends: "02-01"}, {Name: "B", Starts: "01-15", Ends: "03-01"}})},
-		"season extra field":     {"seasons": raw([]map[string]any{{"name": "A", "starts": "01-01", "ends": "02-01", "colour": "red"}})},
+		"unknown key":        {"sell.nope": raw(true)},
+		"wrong type":         {"sell.show_price": raw("yes")},
+		"post gap too short": {"sell.post_gap": raw(1)},
+		"silence too short":  {"sell.negotiation_silence": raw(30)},
+		"silence too long":   {"sell.negotiation_silence": raw(31 * 60)},
+		"too many reposts":   {"sell.max_reposts": raw(13)},
+		"group count over":   {"sell.group_count": raw(2)},
+		"groups and count":   {"sell.group_count": raw(1), "sell.groups": raw([]string{"a@g.us"})},
+		"bad handoff":        {"sell.handoff": raw("on_agreement")},
+		"no sold emoji":      {"sold.emojis": raw([]string{" "})},
+		"short retention":    {"dms.retention": raw(60)},
+		"negative fee":       {"sales.monthly_fee": raw(-1)},
+		"seasons overlap":    {"seasons": raw([]Season{{Name: "A", Starts: "01-01", Ends: "02-01"}, {Name: "B", Starts: "01-15", Ends: "03-01"}})},
+		"season extra field": {"seasons": raw([]map[string]any{{"name": "A", "starts": "01-01", "ends": "02-01", "colour": "red"}})},
 	} {
 		if _, err := c.WithSettings(s); err == nil {
 			t.Errorf("%s: no error", name)
@@ -137,7 +135,7 @@ func TestNeedsRestart(t *testing.T) {
 	if !NeedsRestart("messes.veg_only") || NeedsRestart("sell.show_price") {
 		t.Fatal("restart keys")
 	}
-	if SameValue("messes.veg_only", a, b) || !SameValue("meals.times", a, b) {
+	if SameValue("messes.veg_only", a, b) || !SameValue("sell.show_price", a, b) {
 		t.Fatal("SameValue")
 	}
 }

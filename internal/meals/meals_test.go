@@ -1,6 +1,8 @@
 package meals
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -42,26 +44,74 @@ func TestNext(t *testing.T) {
 	}
 }
 
-// The 15 Nov post "buy kadamb" at 09:32 was for breakfast: the portal
+// The 15 Nov post "buy kadamb" at 09:32 was for breakfast: the mess
 // serves it until 10:30, though config.toml says 09:30.
-func TestPortalTimes(t *testing.T) {
+func TestSharedTimes(t *testing.T) {
 	cfg := config.Default()
 	s := New(cfg)
 	at, _ := time.ParseInLocation("2006-01-02 15:04", "2026-11-15 09:32", cfg.Location())
 	if got, _ := s.Next(at, ""); got.Meal != "lunch" {
-		t.Fatalf("before the portal, 09:32 = %s", got.Meal)
+		t.Fatalf("with config.toml's times, 09:32 = %s", got.Meal)
 	}
-	SetPortalTimes(map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "10:30"}, "lunch": {Starts: "11:30", Ends: "15:30"}})
-	defer SetPortalTimes(nil)
+	SetShared(map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "10:30"}, "lunch": {Starts: "11:30", Ends: "15:30"}})
+	defer SetShared(nil)
 	got, _ := s.Next(at, "")
 	if got.Meal != "breakfast" || got.End.Format("15:04") != "10:30" {
-		t.Errorf("with the portal, 09:32 = %+v", got)
+		t.Errorf("with shared times, 09:32 = %+v", got)
 	}
 	if w := s.Windows(at); w[1].Meal != "lunch" || w[1].Start.Format("15:04") != "11:30" || w[2].Meal != "snacks" || w[2].End.Format("15:04") != "18:15" {
 		t.Errorf("Windows = %+v", w)
 	}
 	if ts := Times(cfg); ts[0].Starts != "06:30" || ts[3].Ends != "21:30" {
 		t.Errorf("Times = %+v", ts)
+	}
+}
+
+func TestCheck(t *testing.T) {
+	cfg := config.Default()
+	ok := map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "10:30"}, "lunch": {Starts: "11:30", Ends: "15:30"},
+		"snacks": {Starts: "16:45", Ends: "18:15"}, "dinner": {Starts: "18:30", Ends: "22:30"}}
+	if err := Check(cfg, ok); err != nil {
+		t.Errorf("the mess's 15 Nov times: %v", err)
+	}
+	if err := Check(cfg, nil); err != nil {
+		t.Errorf("config.toml's own times: %v", err)
+	}
+	for name, bad := range map[string]map[string]config.MealTime{
+		"overlap":       {"lunch": {Starts: "11:30", Ends: "15:30"}, "snacks": {Starts: "15:00", Ends: "18:15"}},
+		"overlaps toml": {"breakfast": {Starts: "07:30", Ends: "13:00"}},
+		"backwards":     {"lunch": {Starts: "15:30", Ends: "11:30"}},
+		"bad clock":     {"lunch": {Starts: "noon", Ends: "15:30"}},
+		"unknown meal":  {"brunch": {Starts: "10:00", Ends: "11:00"}},
+	} {
+		if err := Check(cfg, bad); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+// A save reaches every Schedule at once and survives a reload, as when
+// run picks up a save made by messwa dashboard.
+func TestSaveAndReload(t *testing.T) {
+	defer file.Store(nil)
+	defer SetShared(nil)
+	path := filepath.Join(t.TempDir(), "meal-times.json")
+	if err := UseFile(path); err != nil || Shared() != nil {
+		t.Fatalf("no file yet: %v %v", Shared(), err)
+	}
+	times := map[string]config.MealTime{"breakfast": {Starts: "06:30", Ends: "10:30"}}
+	if err := Save(times); err != nil {
+		t.Fatal(err)
+	}
+	SetShared(nil)
+	if err := Reload(); err != nil || Shared()["breakfast"] != times["breakfast"] {
+		t.Fatalf("after reload = %v, %v", Shared(), err)
+	}
+	if err := Save(nil); err != nil || Shared() != nil {
+		t.Fatalf("reset = %v, %v", Shared(), err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("reset left the file: %v", err)
 	}
 }
 
