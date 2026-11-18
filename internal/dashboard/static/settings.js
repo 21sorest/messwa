@@ -326,7 +326,8 @@ for (const t of TRIGGERS) {
   });
 }
 
-const pips = Array.from({ length: 12 }, (_, i) => {
+// One pip per allowed repost, up to config.MaxRepostsLimit.
+const pips = Array.from({ length: 20 }, (_, i) => {
   const p = el('button', 'pip');
   p.type = 'button';
   p.setAttribute('aria-label', `${i + 1}`);

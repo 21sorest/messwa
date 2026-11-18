@@ -107,7 +107,7 @@ func TestResolveSellSettings(t *testing.T) {
 	// Defaults keep today's behaviour: no groups without -group, price shown,
 	// no extras.
 	s, err := resolveSellSettings(testSellConfig(t, nil), sellFlags{})
-	if err != nil || len(s.Groups) != 0 || !s.ShowPrice || s.MentionExtras || s.AcceptPlainDMs || s.PostGap != 15*time.Second || s.Buyers.UnsavedOnly() {
+	if err != nil || len(s.Groups) != 0 || !s.ShowPrice || s.MentionExtras || s.AcceptPlainDMs || s.PostGap != 3*time.Second || s.Buyers.UnsavedOnly() {
 		t.Fatalf("defaults = %+v, %v", s, err)
 	}
 	s, err = resolveSellSettings(testSellConfig(t, nil), parseSellFlags(t, "-accept-plain-dms"))
@@ -143,7 +143,7 @@ func TestResolveSellSettings(t *testing.T) {
 
 	// Reposting is on by default, with the thresholds picked from the
 	// groups' message rates; each flag overrides one setting.
-	if want := (repost.Rules{On: true, Messages: 10, Listings: 3, Max: 6}); s.Repost != want {
+	if want := (repost.Rules{On: true, Messages: 10, Listings: 3, Max: 20}); s.Repost != want {
 		t.Fatalf("repost defaults = %+v", s.Repost)
 	}
 	s, err = resolveSellSettings(testSellConfig(t, nil), parseSellFlags(t, "-repost-messages", "0", "-max-reposts", "2"))

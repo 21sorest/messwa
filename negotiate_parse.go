@@ -163,20 +163,23 @@ var (
 		"hi", "hey", "hello", "oh", "ohh", "ah", "um", "hm", "hmm", "lol", "na", "re", "and", "the", "it", "is", "its", "it's", "that", "this", "just", "a", "i", "im")
 
 	// Numbers next to these words are not offers: "sold at 60", "people
-	// are selling at 70", "i bought for 20 from someone else", "i paid 30".
-	notOfferContext = newVocab("sold", "bought", "buyed", "purchased", "paid", "sent", "sending", "transferred", "getting", "selling",
+	// are selling at 70", "i bought for 20 from someone else", "i paid 30",
+	// "got it for 50".
+	notOfferContext = newVocab("got it for", "got for", "got one for", "sold", "bought", "buyed", "purchased", "paid", "sent", "sending", "transferred", "getting", "selling",
 		"norm", "milra", "milrha", "mil", "people", "someone", "somebody", "others", "everyone", "group", "roll", "number", "no.", "phone")
 	paidWords = newVocab("paid", "payed", "sent", "transferred", "dn", "payment done", "money sent", "done paying", "sent money", "sending money",
 		"paid via", "paid using", "sent it")
 	passWords = newVocab("nvm", "nevermind", "never mind", "not needed", "not interested", "no thanks", "no thank you", "no thanx", "no thnx",
 		"no sorry", "leave it", "lite", "chodo", "chhodo", "rehne do", "rehne de", "rehnedo", "rehen do", "i'll pass", "ill pass", "pass",
-		"cancel", "bought", "purchased", "got from", "got another", "got one", "got other", "got elsewhere", "got it from", "already got",
+		"cancel", "bought", "purchased", "got it for", "got for", "got one for", "got from", "got another", "got one", "got other", "got elsewhere", "got it from", "already got",
 		"mil gaya", "mil gya", "milgaya", "mil gayi", "not required", "dont want", "don't want", "do not want", "no need", "skip",
 		"sorry got it", "sry got it", "sorry i got it", "sry i got it", "not req", "not reqd", "no req", "nt req", "not reqired",
-		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye")
+		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye",
+		// Polite withdrawals can start with "okay"; read the refusal first.
+		"sorry then", "sry then")
 	// Within a pass, these mean the buyer has a meal already. "got it"
 	// counts only here: on its own it is "understood".
-	boughtWords = newVocab("bought", "buyed", "purchased", "got from", "got another", "got one", "got other", "got elsewhere",
+	boughtWords = newVocab("bought", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
 		"got it", "already got", "mil gaya", "mil gya", "milgaya", "mil gayi")
 	refuseFirst   = newVocab("no", "nope", "nah", "na", "nahi", "nhi")
 	payOtherWords = newVocab("upi id", "upi qr", "qr code", "scanner", "scan", "send qr", "send your qr", "send the qr", "your qr", "payment qr",

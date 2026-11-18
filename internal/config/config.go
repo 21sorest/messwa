@@ -178,7 +178,7 @@ func Default() *Config {
 		DMs: DMs{Retention: duration{72 * time.Hour}},
 		MCP: MCP{Listen: "127.0.0.1:8766", TokenEnv: "MESSWA_MCP_TOKEN"},
 		Sell: Sell{
-			PostGap:   duration{15 * time.Second},
+			PostGap:   duration{3 * time.Second},
 			ShowPrice: true,
 			// Someone who posted that they want this meal is the likeliest
 			// buyer there is.
@@ -188,7 +188,7 @@ func Default() *Config {
 			Repost:          true,
 			RepostMessages:  10,
 			RepostListings:  3,
-			MaxReposts:      6,
+			MaxReposts:      20,
 			// WhatsApp replies come in minutes, not seconds. In the
 			// 12 Nov dinner test 6 of 9 buyers timed out at 2m and the
 			// meal went to one who wrote just after.

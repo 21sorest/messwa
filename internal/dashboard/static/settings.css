@@ -244,4 +244,6 @@ button.var:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent
 }
 @media (max-width: 520px) {
   .var-help td.ex { display: none; }
+  /* Twenty pips don't fit one row on a phone; wrap them ten and ten. */
+  .pips { max-width: 216px; }
 }

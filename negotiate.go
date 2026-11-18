@@ -192,7 +192,7 @@ func (h haggle) decide(st haggleState, in intent, now time.Time, competing bool)
 	next := st
 	next.quoted = slices.Clone(st.quoted)
 	say := func(price int, text reply) step {
-		if day := h.l.vals["day"]; !priced && day != "" && in.kind == intentOffer && !strings.Contains(strings.Join(text, "\n"), day) {
+		if day := h.l.today(); !priced && day != "" && in.kind == intentOffer && !strings.Contains(strings.Join(text, "\n"), day) {
 			// A counter as the first price: still say which day.
 			text = append(text[:len(text)-1:len(text)-1], text[len(text)-1]+", its for "+day)
 		}
