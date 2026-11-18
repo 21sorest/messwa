@@ -143,7 +143,7 @@ func TestResolveSellSettings(t *testing.T) {
 
 	// Reposting is on by default, with the thresholds picked from the
 	// groups' message rates; each flag overrides one setting.
-	if want := (repost.Rules{On: true, Messages: 10, Listings: 3, Max: 6}); s.Repost != want {
+	if want := (repost.Rules{On: true, Messages: 10, Listings: 3, Max: 20}); s.Repost != want {
 		t.Fatalf("repost defaults = %+v", s.Repost)
 	}
 	s, err = resolveSellSettings(testSellConfig(t, nil), parseSellFlags(t, "-repost-messages", "0", "-max-reposts", "2"))

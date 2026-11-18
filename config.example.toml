@@ -142,9 +142,9 @@ repost_messages = 10
 # after the copy. A listing tagged with a different diet doesn't count. 0
 # turns it off.
 repost_listings = 3
-# The most fresh copies one group gets for one offer, 0 to 12. A group whose
+# The most fresh copies one group gets for one offer, 0 to 20. A group whose
 # copy failed to send gets none.
-max_reposts = 6
+max_reposts = 20
 # Count an image from the buyer whose payment turn it is as their payment,
 # for buyers who pay by UPI outside WhatsApp Pay and send a screenshot. It
 # must arrive after the payment prompt and inside their pay window. Nothing
