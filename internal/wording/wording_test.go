@@ -111,7 +111,7 @@ func TestVariants(t *testing.T) {
 	if got := b.Variants("sold"); len(got) != 4 {
 		t.Errorf("a slot left out should keep its defaults, got %v", got)
 	}
-	if got := Book(nil).Variants("opening"); len(got) != 2 {
+	if got := Book(nil).Variants("opening"); len(got) != 3 {
 		t.Errorf("a nil book should give the defaults, got %v", got)
 	}
 }

@@ -224,6 +224,14 @@ func (l lines) payOther() reply { return l.say("pay_other") }
 // when [sell] accept_payment_images is off.
 func (l lines) noScreenshots() reply { return l.say("no_screenshots") }
 
+// payNumber tells a paying buyer without WhatsApp Pay to pay the number by
+// UPI, when [sell] accept_payment_images is on.
+func (l lines) payNumber() reply { return l.say("pay_number") }
+
+// askScreenshot asks a paying buyer who says they paid for a screenshot,
+// when [sell] accept_payment_images is on.
+func (l lines) askScreenshot() reply { return l.say("ask_screenshot") }
+
 // sold tells a buyer the meal went to someone else. A task that has ended
 // may send this and nothing else; see taskGate.sendSold.
 func (l lines) sold() reply { return l.say("sold") }
@@ -246,8 +254,15 @@ func isSold(cfg *config.Config, text string) bool {
 // the embedded placeholder. The built-in lines name WhatsApp Pay and rule
 // out the rest, because a GPay or UPI payment to the number never reaches
 // the bot.
-func (l lines) payPrompt(amount string, testImage bool) reply {
-	r := l.say("pay", "price", priceWords(amount))
+//
+// images is [sell] accept_payment_images: then the prompt leaves out "not
+// gpay/upi", since a screenshot of a UPI payment to the number counts.
+func (l lines) payPrompt(amount string, testImage, images bool) reply {
+	slot := "pay"
+	if images {
+		slot = "pay_images"
+	}
+	r := l.say(slot, "price", priceWords(amount))
 	if testImage {
 		return append(r, l.say("pay_test")...)
 	}

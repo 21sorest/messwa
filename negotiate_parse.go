@@ -39,6 +39,10 @@ type intent struct {
 	offer int  // rupees, for intentOffer
 	firm  bool // "45 final", "max 45", "last 45"
 	done  bool // intentOK from "done" or "dn", which also means "paid" once agreed
+	// upi marks a buyer who has no WhatsApp Pay or names a UPI app ("i
+	// can do upi", "dont have whatsapp pay"): a payment to the number they
+	// can screenshot.
+	upi bool
 	// bought marks an intentPass from a buyer who got a meal elsewhere
 	// ("bought already", "got from other"): no lower price brings them back.
 	bought bool
@@ -70,11 +74,12 @@ func (in intent) name() string {
 // message in the burst says so: "sorry bought" then "nvm" is still bought.
 func combineIntents(texts []string) intent {
 	var out intent
-	bought := false
+	bought, upi := false, false
 	var named []string
 	for _, t := range texts {
 		in := parseBuyer(t)
 		bought = bought || in.bought
+		upi = upi || in.upi
 		for _, m := range in.meals {
 			if !slices.Contains(named, m) {
 				named = append(named, m)
@@ -85,6 +90,7 @@ func combineIntents(texts []string) intent {
 		}
 	}
 	out.bought = out.kind == intentPass && bought
+	out.upi = upi
 	out.meals = named
 	return out
 }
@@ -182,7 +188,17 @@ var (
 	payOtherWords = newVocab("upi id", "upi qr", "qr code", "scanner", "scan", "send qr", "send your qr", "send the qr", "your qr", "payment qr",
 		"cant pay", "can't pay", "cannot pay", "not working", "cash", "pay later", "later", "tomorrow", "tmrw", "tmr", "account number",
 		"bank", "send upi", "send number", "number send", "upi not", "other way", "other ways", "another way", "different way", "other method",
-		"other mode", "some other way")
+		"other mode", "some other way", "dont have whatsapp pay", "don't have whatsapp pay", "do not have whatsapp pay", "no whatsapp pay",
+		"not have whatsapp pay", "dont use whatsapp pay", "don't use whatsapp pay", "whatsapp pay not", "whatsapp pay isnt",
+		"whatsapp pay isn't", "whatsapp pay doesnt", "whatsapp pay doesn't", "whatsapp pay nahi", "whatsapp pay nhi", "dont have wa pay",
+		"no wa pay", "dont have whatsapp payment", "don't have whatsapp payment")
+	// upiWords mean the buyer can pay the number by UPI, or has no
+	// WhatsApp Pay; see intent.upi.
+	upiWords = newVocab("upi", "upi?", "gpay", "g pay", "google pay", "phonepe", "phone pe", "paytm", "bhim", "scanner", "scan",
+		"qr code", "send number", "number send", "dont have whatsapp pay", "don't have whatsapp pay", "do not have whatsapp pay",
+		"no whatsapp pay", "not have whatsapp pay", "dont use whatsapp pay", "don't use whatsapp pay", "whatsapp pay not", "whatsapp pay isnt",
+		"whatsapp pay isn't", "whatsapp pay doesnt", "whatsapp pay doesn't", "whatsapp pay nahi", "whatsapp pay nhi", "dont have wa pay",
+		"no wa pay", "dont have whatsapp payment", "don't have whatsapp payment")
 	lowerWords = newVocab("too much", "to much", "too high", "too costly", "costly", "expensive", "mehenga", "mehnga", "mehanga", "kam", "kum",
 		"less", "lower", "reduce", "discount", "negotiable", "nego", "negotiate", "best price", "final price", "last price", "lowest",
 		"half", "fair", "cmon", "c'mon", "come on", "thoda", "cheaper", "cheap", "bargain", "selling at", "norm", "milra", "people",
@@ -280,6 +296,13 @@ func words(text string) msgWords {
 
 // parseIntent is parseBuyer without the meals.
 func parseIntent(text string) intent {
+	in := parseKind(text)
+	in.upi = upiWords.in(words(strings.ReplaceAll(text, "’", "'")))
+	return in
+}
+
+// parseKind is parseIntent without intent.upi.
+func parseKind(text string) intent {
 	raw := strings.ToLower(strings.TrimSpace(text))
 	paidMark := strings.ContainsAny(raw, "💸✅")
 	raw = strings.NewReplacer("₹", " rs ", "’", "'", "@", " @ ", "\n", " ").Replace(raw)
@@ -320,7 +343,7 @@ func parseIntent(text string) intent {
 		return intent{kind: intentPaid}
 	case passWords.in(m), notInterested(m.words):
 		return intent{kind: intentPass, bought: boughtWords.in(m)}
-	case len(m.words) > 0 && refuseFirst.words[m.words[0]] && !lowerWords.in(m) && !openerWords.in(m):
+	case len(m.words) > 0 && refuseFirst.words[m.words[0]] && !lowerWords.in(m) && !openerWords.in(m) && !payOtherWords.in(m):
 		return intent{kind: intentPass, bought: boughtWords.in(m)}
 	case payOtherWords.in(m):
 		return intent{kind: intentPayOther}
