@@ -121,6 +121,8 @@ func TestHaggleDecide(t *testing.T) {
 			[]string{"60", "how about 50", "PASS"}},
 		{"pass after hearing the lowest ends", 30, 60, 45, []string{"price?", "35 final", "nvm"},
 			[]string{"60", "45 / final offer", "PASS"}},
+		{"polite withdrawal after the lowest does not agree", 115, 120, 115, []string{"Available?", "80?", "Okay sorry then."},
+			[]string{"120", "115 / final offer", "PASS"}},
 		{"a pass with a price is an offer", 30, 60, 50, []string{"price?", "too much, 55?"},
 			[]string{"60", "AGREE 55"}},
 		{"an offer doesn't use up the pass counter", 30, 60, 40, []string{"price?", "too much, 35?", "nvm", "nvm"},

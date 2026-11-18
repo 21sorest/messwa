@@ -174,7 +174,9 @@ var (
 		"cancel", "bought", "purchased", "got it for", "got for", "got one for", "got from", "got another", "got one", "got other", "got elsewhere", "got it from", "already got",
 		"mil gaya", "mil gya", "milgaya", "mil gayi", "not required", "dont want", "don't want", "do not want", "no need", "skip",
 		"sorry got it", "sry got it", "sorry i got it", "sry i got it", "not req", "not reqd", "no req", "nt req", "not reqired",
-		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye")
+		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye",
+		// Polite withdrawals can start with "okay"; read the refusal first.
+		"sorry then", "sry then")
 	// Within a pass, these mean the buyer has a meal already. "got it"
 	// counts only here: on its own it is "understood".
 	boughtWords = newVocab("bought", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
