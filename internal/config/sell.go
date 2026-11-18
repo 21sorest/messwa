@@ -89,7 +89,7 @@ const MinRepostGap = 5 * time.Minute
 const RepostCutoff = 15 * time.Minute
 
 // MaxRepostsLimit is the most max_reposts may be.
-const MaxRepostsLimit = 12
+const MaxRepostsLimit = 20
 
 // MinNegotiationSilence and MaxNegotiationSilence bound
 // negotiation_silence. Under a minute cuts off a buyer who is typing; past

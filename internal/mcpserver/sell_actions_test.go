@@ -22,7 +22,7 @@ type actionSell struct {
 	err               error
 }
 
-func (f *actionSell) MarkSold(_ context.Context, id int64, buyer, name string, price int, note string) error {
+func (f *actionSell) MarkSold(_ context.Context, id int64, buyer, name string, price int, note string, _ bool) error {
 	f.action, f.id, f.buyer, f.name, f.price, f.note = "sold", id, buyer, name, price, note
 	return f.err
 }

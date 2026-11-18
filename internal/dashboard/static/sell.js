@@ -1,7 +1,7 @@
 'use strict';
 
-// The sell sheet: the popup that starts, schedules, reprices, marks sold or
-// stops the sale of one of your meals. The sales page and the board both
+// The sell sheet: the popup that starts, schedules, reprices, marks sold
+// (sending the buyer the QR) or stops the sale of one of your meals. The sales page and the board both
 // open it in their #modal/#sheet. Each page passes sellSheet its own
 // state, since the two keep different globals:
 //
@@ -177,7 +177,7 @@ function sellSheet(ctx) {
       x.append(el('b', '', glyph), el('span', '', label), el('small', '', hint));
       return x;
     };
-    const sold = tool('✓', 'MARK SOLD', 'You sold it yourself', 'grn', () => openSell(date, c, 'sold'));
+    const sold = tool('✓', 'SOLD + SEND QR', 'Sends them the QR', 'grn', () => openSell(date, c, 'sold'));
     sold.dataset.focus = '1';
     const stop = tool('✕', 'STOP SELLING', 'Deletes the offer posts', 'red', () => {
       if (stop.dataset.sure) return run({ action: 'cancel', id: t.id }, 'Stopped. The offer posts are being deleted.');
@@ -370,7 +370,7 @@ function sellSheet(ctx) {
     field('Buyer', pick);
     const phone = input('tel', { placeholder: '+91 98765 43210', autocomplete: 'off' });
     const name = input('text', { autocomplete: 'off' });
-    const other = [field('Their phone, with country code', phone), field('Or their name', name)];
+    const other = [field('Their phone, with country code', phone), field('Their name (optional)', name)];
     const price = input('number', { min: 1, max: 10000, step: 1, required: true });
     field('Sold for (₹)', price);
     const note = input('text', { placeholder: 'e.g. paid cash', autocomplete: 'off' });
@@ -384,19 +384,19 @@ function sellSheet(ctx) {
     pick.addEventListener('change', sync);
     sync();
 
-    form.append(el('p', 'sell-note', 'Only confirm once the meal is sold and paid for. The bot stops selling, records the sale, ticks the offer posts and tells other buyers it\'s sold. It sends your buyer nothing.'));
-    const submit = btn('CONFIRM SOLD', 'gold', () => {});
+    form.append(el('p', 'sell-note', 'Only confirm once the meal is sold and paid for. The bot stops selling, records the sale, sends your buyer the meal QR, ticks the offer posts and tells other buyers it\'s sold.'));
+    const submit = btn('CONFIRM + SEND QR', 'gold', () => {});
     submit.type = 'submit';
     acts.append(btn('BACK', '', () => openSell(date, c)), submit);
     form.append(error, acts);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const body = { action: 'sold', id: t.id, price: Number(price.value), note: note.value.trim() };
+      const body = { action: 'sold', id: t.id, price: Number(price.value), note: note.value.trim(), send_qr: true };
       if (pick.value) body.buyer = pick.value;
       else { body.buyer = phone.value.replace(/[^\d+]/g, ''); body.name = name.value.trim(); }
-      if (!body.buyer && !body.name) { error.textContent = 'Enter their phone number or name.'; return; }
+      if (!body.buyer) { error.textContent = 'Enter their phone number, so the bot can send the QR.'; return; }
       if (!(body.price >= 1)) { error.textContent = 'Enter the price it sold for.'; return; }
-      run(body, 'Marked sold');
+      run(body, 'Sold. The QR is on its way.');
     });
     sheet.append(form);
   }

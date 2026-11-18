@@ -39,6 +39,10 @@ type intent struct {
 	offer int  // rupees, for intentOffer
 	firm  bool // "45 final", "max 45", "last 45"
 	done  bool // intentOK from "done" or "dn", which also means "paid" once agreed
+	// upi marks a buyer who has no WhatsApp Pay or names a UPI app ("i
+	// can do upi", "dont have whatsapp pay"): a payment to the number they
+	// can screenshot.
+	upi bool
 	// bought marks an intentPass from a buyer who got a meal elsewhere
 	// ("bought already", "got from other"): no lower price brings them back.
 	bought bool
@@ -70,11 +74,12 @@ func (in intent) name() string {
 // message in the burst says so: "sorry bought" then "nvm" is still bought.
 func combineIntents(texts []string) intent {
 	var out intent
-	bought := false
+	bought, upi := false, false
 	var named []string
 	for _, t := range texts {
 		in := parseBuyer(t)
 		bought = bought || in.bought
+		upi = upi || in.upi
 		for _, m := range in.meals {
 			if !slices.Contains(named, m) {
 				named = append(named, m)
@@ -85,6 +90,7 @@ func combineIntents(texts []string) intent {
 		}
 	}
 	out.bought = out.kind == intentPass && bought
+	out.upi = upi
 	out.meals = named
 	return out
 }
@@ -163,26 +169,39 @@ var (
 		"hi", "hey", "hello", "oh", "ohh", "ah", "um", "hm", "hmm", "lol", "na", "re", "and", "the", "it", "is", "its", "it's", "that", "this", "just", "a", "i", "im")
 
 	// Numbers next to these words are not offers: "sold at 60", "people
-	// are selling at 70", "i bought for 20 from someone else", "i paid 30".
-	notOfferContext = newVocab("sold", "bought", "buyed", "purchased", "paid", "sent", "sending", "transferred", "getting", "selling",
+	// are selling at 70", "i bought for 20 from someone else", "i paid 30",
+	// "got it for 50".
+	notOfferContext = newVocab("got it for", "got for", "got one for", "sold", "bought", "buyed", "purchased", "paid", "sent", "sending", "transferred", "getting", "selling",
 		"norm", "milra", "milrha", "mil", "people", "someone", "somebody", "others", "everyone", "group", "roll", "number", "no.", "phone")
 	paidWords = newVocab("paid", "payed", "sent", "transferred", "dn", "payment done", "money sent", "done paying", "sent money", "sending money",
 		"paid via", "paid using", "sent it")
 	passWords = newVocab("nvm", "nevermind", "never mind", "not needed", "not interested", "no thanks", "no thank you", "no thanx", "no thnx",
 		"no sorry", "leave it", "lite", "chodo", "chhodo", "rehne do", "rehne de", "rehnedo", "rehen do", "i'll pass", "ill pass", "pass",
-		"cancel", "bought", "purchased", "got from", "got another", "got one", "got other", "got elsewhere", "got it from", "already got",
+		"cancel", "bought", "purchased", "got it for", "got for", "got one for", "got from", "got another", "got one", "got other", "got elsewhere", "got it from", "already got",
 		"mil gaya", "mil gya", "milgaya", "mil gayi", "not required", "dont want", "don't want", "do not want", "no need", "skip",
 		"sorry got it", "sry got it", "sorry i got it", "sry i got it", "not req", "not reqd", "no req", "nt req", "not reqired",
-		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye")
+		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye",
+		// Polite withdrawals can start with "okay"; read the refusal first.
+		"sorry then", "sry then")
 	// Within a pass, these mean the buyer has a meal already. "got it"
 	// counts only here: on its own it is "understood".
-	boughtWords = newVocab("bought", "buyed", "purchased", "got from", "got another", "got one", "got other", "got elsewhere",
+	boughtWords = newVocab("bought", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
 		"got it", "already got", "mil gaya", "mil gya", "milgaya", "mil gayi")
 	refuseFirst   = newVocab("no", "nope", "nah", "na", "nahi", "nhi")
 	payOtherWords = newVocab("upi id", "upi qr", "qr code", "scanner", "scan", "send qr", "send your qr", "send the qr", "your qr", "payment qr",
 		"cant pay", "can't pay", "cannot pay", "not working", "cash", "pay later", "later", "tomorrow", "tmrw", "tmr", "account number",
 		"bank", "send upi", "send number", "number send", "upi not", "other way", "other ways", "another way", "different way", "other method",
-		"other mode", "some other way")
+		"other mode", "some other way", "dont have whatsapp pay", "don't have whatsapp pay", "do not have whatsapp pay", "no whatsapp pay",
+		"not have whatsapp pay", "dont use whatsapp pay", "don't use whatsapp pay", "whatsapp pay not", "whatsapp pay isnt",
+		"whatsapp pay isn't", "whatsapp pay doesnt", "whatsapp pay doesn't", "whatsapp pay nahi", "whatsapp pay nhi", "dont have wa pay",
+		"no wa pay", "dont have whatsapp payment", "don't have whatsapp payment")
+	// upiWords mean the buyer can pay the number by UPI, or has no
+	// WhatsApp Pay; see intent.upi.
+	upiWords = newVocab("upi", "upi?", "gpay", "g pay", "google pay", "phonepe", "phone pe", "paytm", "bhim", "scanner", "scan",
+		"qr code", "send number", "number send", "dont have whatsapp pay", "don't have whatsapp pay", "do not have whatsapp pay",
+		"no whatsapp pay", "not have whatsapp pay", "dont use whatsapp pay", "don't use whatsapp pay", "whatsapp pay not", "whatsapp pay isnt",
+		"whatsapp pay isn't", "whatsapp pay doesnt", "whatsapp pay doesn't", "whatsapp pay nahi", "whatsapp pay nhi", "dont have wa pay",
+		"no wa pay", "dont have whatsapp payment", "don't have whatsapp payment")
 	lowerWords = newVocab("too much", "to much", "too high", "too costly", "costly", "expensive", "mehenga", "mehnga", "mehanga", "kam", "kum",
 		"less", "lower", "reduce", "discount", "negotiable", "nego", "negotiate", "best price", "final price", "last price", "lowest",
 		"half", "fair", "cmon", "c'mon", "come on", "thoda", "cheaper", "cheap", "bargain", "selling at", "norm", "milra", "people",
@@ -280,6 +299,13 @@ func words(text string) msgWords {
 
 // parseIntent is parseBuyer without the meals.
 func parseIntent(text string) intent {
+	in := parseKind(text)
+	in.upi = upiWords.in(words(strings.ReplaceAll(text, "’", "'")))
+	return in
+}
+
+// parseKind is parseIntent without intent.upi.
+func parseKind(text string) intent {
 	raw := strings.ToLower(strings.TrimSpace(text))
 	paidMark := strings.ContainsAny(raw, "💸✅")
 	raw = strings.NewReplacer("₹", " rs ", "’", "'", "@", " @ ", "\n", " ").Replace(raw)
@@ -320,7 +346,7 @@ func parseIntent(text string) intent {
 		return intent{kind: intentPaid}
 	case passWords.in(m), notInterested(m.words):
 		return intent{kind: intentPass, bought: boughtWords.in(m)}
-	case len(m.words) > 0 && refuseFirst.words[m.words[0]] && !lowerWords.in(m) && !openerWords.in(m):
+	case len(m.words) > 0 && refuseFirst.words[m.words[0]] && !lowerWords.in(m) && !openerWords.in(m) && !payOtherWords.in(m):
 		return intent{kind: intentPass, bought: boughtWords.in(m)}
 	case payOtherWords.in(m):
 		return intent{kind: intentPayOther}

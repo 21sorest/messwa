@@ -144,9 +144,9 @@ While a [sell task](#sell-tasks) runs, users get a MY SALE box above the board, 
 - **Squares, top right.** Every task for this meal, so a restart doesn't lose the story: grey crossed cancelled, green live or sold.
 - **Market.** Every open listing for the same meal and mess, cheapest first, yours in gold. Your listing also gets a gold outline on the board.
 
-Tap a buyer for the negotiation as a tug of war: each row is one round, their offer in red and the bot's answer in green, with the bot's lowest at the bottom and the gap between them in red. Below it, the payment steps (armed, paid, read, QR, ✅), with the attempts to read an unreadable payment from your phone. CHAT opens their chat in WhatsApp or Beeper. Tap the clock or the posts for the lowest price over time, each post, and the meal's tries.
+Tap the card itself for the same sell menu the sales page opens: price, active buyers, SOLD + SEND QR, EDIT PRICES and STOP SELLING. Tap a buyer for the negotiation as a tug of war: each row is one round, their offer in red and the bot's answer in green, with the bot's lowest at the bottom and the gap between them in red. Below it, the payment steps (armed, paid, read, QR, ✅), with the attempts to read an unreadable payment from your phone. CHAT opens their chat in WhatsApp or Beeper. Tap the clock or the posts for the lowest price over time, each post, and the meal's tries.
 
-Users can use **MARK SOLD** to record a sale made outside the bot (pick a buyer or enter a phone/name, price and optional note). Confirming stops negotiation, records paid/sent timestamps with payment kind `manual`, marks posts ✅ and gives other eligible buyers the usual sold handling; the chosen buyer gets no message. **ADD BUYER** queues a phone/JID with an optional name and sends the opening quote. Buyer sheets offer **MUTE** (with confirmation) and **UNMUTE**. Muted buyers keep their records and get no task messages, including sold notices or automatic QR delivery. Unmuting resumes handling their next message. Each action appears in the task event log.
+Users can use **SOLD + SEND QR** to record a sale made outside the bot (pick a buyer or enter a phone, price and optional note). The bot fetches the meal QR first, so a portal failure changes nothing. Confirming stops negotiation, records the sale with payment kind `manual`, sends the chosen buyer the QR, marks posts ✅ and gives other eligible buyers the usual sold handling. A QR send that fails stays SENDING and is not retried; check the buyer's chat. The `mark_sell_task_sold` tool sends the QR only with `send_qr`. **ADD BUYER** queues a phone/JID with an optional name and sends the opening quote. Buyer sheets offer **MUTE** (with confirmation) and **UNMUTE**. Muted buyers keep their records and get no task messages, including sold notices or automatic QR delivery. Unmuting resumes handling their next message. Each action appears in the task event log.
 
 The MCP tools are `mark_sell_task_sold`, `add_sell_task_buyer`, `mute_sell_task_buyer`, `unmute_sell_task_buyer` and `resend_sell_task_offer`. They require your own linked WhatsApp account and sell tasks enabled for your account. The dashboard uses the same operations with session and CSRF protection. Live updates preserve forms while you type.
 
@@ -172,7 +172,7 @@ Edits wait for SAVE. messwa stores what you save in a `settings` table in the us
 
 Saves made in `run`'s own dashboard apply at once: the next sell task, `sell_task_status` and running tasks' reposts, the sold rule, dedupe, pruning, the sales page target and the insights seasons. Turning sell tasks on or off adds or removes their MCP tools for connected agents. A save made from `messwa dashboard` reaches a running `run` within 30 seconds. `veg_only` shows APPLIES ON RESTART: `run` builds its listing classifier once, when it starts.
 
-**Meal times come from the mess portal.** `run` and `messwa dashboard` read `/config/meal-timings` when they start and every 3 hours after. The endpoint needs no API key. The portal lists each mess and diet separately, and a meal's window runs from the earliest start to the latest end among them: breakfast 06:30 to 10:30, lunch 11:30 to 15:30 as of 15 Nov 2026. The new windows apply at once, with no restart, to classifying posts that name no meal, sell task deadlines and the price slide toward a meal's end. The last answer is saved in `state/meal-times.json`, so a start without network still uses it. The settings page then shows the portal's times as FROM THE MESS PORTAL and locks them. Until the portal first answers, the windows in `config.toml` or the settings page apply. A portal answer with overlapping or unreadable windows is ignored.
+**Admins set the meal times for everyone.** The CALENDAR tab's times aren't one account's setting: SAVE writes them to `state/meal-times.json` in the main state directory, and every account uses them at once, with no restart. They decide which meal a post that names none is for, sell task deadlines and the price slide toward a meal's end. A save made from `messwa dashboard` reaches a running `run` within 30 seconds. The page refuses times that overlap, end before they start or don't read as HH:MM. Saving the `config.toml` windows back deletes the file. messwa no longer reads meal times from the mess portal; a `meal-times.json` the old portal sync wrote is kept as the starting times.
 
 Some things stay in `config.toml`: the listen addresses, `state_dir`, `timezone`, `token_env`, `beeper_db`, the top-level `groups`, and meal keywords and mess names and aliases. If a saved value stops fitting the file, for example a `group_count` above the groups it now lists, messwa logs a warning, skips that value and starts anyway.
 
@@ -181,7 +181,7 @@ Some things stay in `config.toml`: the listen addresses, `state_dir`, `timezone`
 `/sales.html` (the MY SALES button on the board) tracks the meals you sell with `deliver-qr` or a sell task. Every user sees only their own sales and registrations. On the board's day track, a coin and the price replace the meal icon for any meal you sold or armed today.
 
 - **Sales ledger.** Days across, meals down, for the last four weeks (arrow keys page by week). A sold slot shows the price, the mess, and the buyer's pixel head. Each buyer always gets the same head. An armed slot drains like a listing until the meal ends. ATE means you used the registration yourself. WASTED means the meal ended unsold and unused. Dashed slots are registered meals that haven't ended. Hovering shows the buyer, their number, when they paid, how fast the QR went out, and the median ask for that meal.
-- **Selling from the ledger.** With sell tasks on, the meal being served and the next one are outlined in gold. Click one to pick a lowest and an opening price on a two-handle slider (the tick is the median ask) and confirm. That starts a sell task, the same as `start_sell_task`. Equal handles sell at a fixed price. A meal with a task running shows SELLING and its range. Click it for the buyers so far and three buttons: MARK SOLD (you sold it yourself; `mark_sell_task_sold`), EDIT PRICES (`set_sell_task_prices`) and STOP SELLING (`cancel_sell_task`, which deletes the offer posts).
+- **Selling from the ledger.** With sell tasks on, the meal being served and the next one are outlined in gold. Click one to pick a lowest and an opening price on a two-handle slider (the tick is the median ask) and confirm. That starts a sell task, the same as `start_sell_task`. Equal handles sell at a fixed price. A meal with a task running shows SELLING and its range. Click it for the buyers so far and three buttons: SOLD + SEND QR (you sold it yourself and the bot sends them the QR; `mark_sell_task_sold` with `send_qr`), EDIT PRICES (`set_sell_task_prices`) and STOP SELLING (`cancel_sell_task`, which deletes the offer posts).
 - **Selling ahead.** Sell a meal before it starts and the offer waits: it goes up at `[sell] list_at` (default 15 minutes before the meal, -30m to 1h30m, under Settings, Offer) and sells till the meal ends. START NOW posts it straight away instead. Your registration and the groups are checked when you click and again when it goes up. A waiting sale shows the time it goes up; click it to start it now, change its prices or unschedule it. It also gets a dashed card on the board, beside your running sales, with its price range, a countdown, START NOW and the autopilot switch. Schedules survive a restart; one that came due while `run` was down starts on the next start if its meal hasn't ended. Selling a scheduled meal by hand drops the schedule. MCP's `start_sell_task` still posts straight away.
 - **Autopilot.** A scheduled sale has an AUTOPILOT switch beside START NOW, off by default. On autopilot the task never waits on you: a buyer it would park for you (paying some other way, going below your lowest, replies it can't read, saying they paid when no payment came, the message limit) is skipped instead, even one offering more than the rest. A skipped buyer holding the payment turn loses it at once and hears `wait dont pay` / `cant do this one sorry`, and the next buyer is asked to pay. Only WhatsApp Pay with a readable amount counts, whatever `accept_payment_images` and `accept_unreadable_payments` say; nothing is handed off; and the task never pools with another, so another task's rules can't reach it. A WhatsApp Pay payment that matches a price the bot quoted still gets the meal. A payment it can't honour is still listed for you to refund, since only you can send money back. Skips show as `auto_skipped` in the task's events.
 - **Up next.** Once today's last meal is over, tomorrow's first one shows above the ledger as UP NEXT, so you can sell or schedule it the night before. The board's sell card offers it too. It stays out of the grid and the totals.
@@ -353,7 +353,7 @@ claude mcp add --transport http messwa http://127.0.0.1:8766/mcp
 
 ### Docker
 
-The live service runs on an AWS EC2 instance in `/opt/messwa`, reached over Tailscale. Pushing to the `prod` branch deploys it (see [Deploying to AWS](#deploying-to-aws)). The container uses host networking, so `config.toml` works unchanged: the dashboard binds the host's Tailscale address and MCP stays on loopback, where tokenless requests act as the first admin. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
+The live service runs on an AWS EC2 instance in `/opt/messwa`, reached over Tailscale. The container uses host networking, so `config.toml` works unchanged: the dashboard binds the host's Tailscale address and MCP stays on loopback, where tokenless requests act as the first admin. If that address isn't up yet at boot, the bind fails and Docker restarts the container until it is.
 
 ```sh
 docker compose up -d --build        # rebuild and redeploy after code changes
@@ -370,14 +370,7 @@ The old systemd unit (`~/.config/systemd/user/messwa.service`) is disabled. Don'
 
 ### Deploying to AWS
 
-Every push to `prod` runs `.github/workflows/deploy.yml`. It runs `go vet` and `go test`, builds the image, pushes it to ECR tagged with the commit SHA, and runs `deploy/aws-deploy.sh` on the instance through Session Manager. The script pulls the image, restarts the container and waits for `/healthz`. If the service doesn't come up healthy within 90 seconds, it puts the previous image back and the job fails.
-
-```sh
-git push origin origin/master:prod     # ship master
-git push origin <sha>:prod --force     # roll back to an older commit
-```
-
-The job logs in to AWS with GitHub's OIDC token, so the repo stores no AWS keys. The IAM role `messwa-github-deploy` only accepts tokens from this repo's `prod` branch. It reads the repo variables `AWS_DEPLOY_ROLE_ARN` and `EC2_INSTANCE_ID`.
+Deploys run on the AWS side, not from GitHub Actions. `deploy/aws-deploy.sh IMAGE_URI` does the rollout on the instance: it pulls the image, restarts the container and waits for `/healthz`. If the service doesn't come up healthy within 90 seconds, it puts the previous image back and exits non-zero.
 
 The instance reaches the campus-only mess portal (`mess.iiit.ac.in`, 10.10.32.26) through the home server's Tailscale subnet routes and an `/etc/hosts` entry. If the home server is down, portal features fail but WhatsApp and the dashboard keep running.
 
@@ -492,7 +485,7 @@ isn't today's.
 | --- | --- | --- | --- |
 | `groups` | `-group`, repeatable | none | Groups to post to, by exact name or JID, in order |
 | `group_count` | `-group-count` | 0 | Post to the first N of the top-level `groups` instead. Set this or `groups`, not both |
-| `post_gap` | `-post-gap` | `15s` | Pause between copies, at least 3s |
+| `post_gap` | `-post-gap` | `3s` | Pause between copies, at least 3s |
 | `show_price` | `-show-price` | `true` | Put the price in the group post |
 | `mention_extras` | `-mention-extras` | `false` | List the extras registered for that meal |
 | `handoff` | `-handoff` | `never` | When to hand the buyer's chat to you, see below |
@@ -504,7 +497,7 @@ isn't today's.
 | `repost` | `-repost` | `true` | Post a fresh copy in a group once the last one has dropped out of view, see below |
 | `repost_messages` | `-repost-messages` | `10` | Repost once this many messages came in after a copy. 0 turns it off |
 | `repost_listings` | `-repost-listings` | `3` | Repost once this many other sellers listed the same meal at the same mess after a copy. 0 turns it off |
-| `max_reposts` | `-max-reposts` | `6` | Most fresh copies per group for one offer, 0 to 12 |
+| `max_reposts` | `-max-reposts` | `20` | Most fresh copies per group for one offer, 0 to 20 |
 | `accept_payment_images` | `-accept-payment-images` | `false` | Count an image from the paying buyer as their payment, unverified, see below |
 | `accept_unreadable_payments` | `-assume-unreadable-payment` | `true` | Count a WhatsApp Pay message whose amount stays unreadable after recovery as the agreed price, unverified, see [One-meal QR delivery](#one-meal-qr-delivery) |
 

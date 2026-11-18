@@ -36,7 +36,7 @@ func TestSellSettings(t *testing.T) {
 	if err := c.validate(); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Sell.Groups) != 0 || c.Sell.GroupCount != 0 || !c.Sell.ShowPrice || c.Sell.MentionExtras || c.Sell.PostGap.Seconds() != 15 {
+	if len(c.Sell.Groups) != 0 || c.Sell.GroupCount != 0 || !c.Sell.ShowPrice || c.Sell.MentionExtras || c.Sell.PostGap.Seconds() != 3 {
 		t.Errorf("defaults changed today's offer: %+v", c.Sell)
 	}
 	load := func(body string) (*Config, error) {
@@ -48,7 +48,7 @@ func TestSellSettings(t *testing.T) {
 	if err != nil || c.Sell.GroupCount != 2 || c.Sell.ShowPrice || !c.Sell.MentionExtras || c.Sell.PostGap.Seconds() != 30 {
 		t.Fatalf("sell = %+v, %v", c.Sell, err)
 	}
-	if !c.Sell.Repost || c.Sell.RepostMessages != 10 || c.Sell.RepostListings != 3 || c.Sell.MaxReposts != 6 {
+	if !c.Sell.Repost || c.Sell.RepostMessages != 10 || c.Sell.RepostListings != 3 || c.Sell.MaxReposts != 20 {
 		t.Errorf("repost settings = %+v", c.Sell)
 	}
 	// repost_after is gone; an old config.toml that still sets it loads.
@@ -63,7 +63,7 @@ func TestSellSettings(t *testing.T) {
 		"empty group":   "[sell]\ngroups = [\" \"]\n",
 		"gap too short": "[sell]\npost_gap = \"1s\"\n",
 		"bad count":     "[sell]\nrepost_listings = -1\n",
-		"many reposts":  "[sell]\nmax_reposts = 13\n",
+		"many reposts":  "[sell]\nmax_reposts = 21\n",
 		"silence short": "[sell]\nnegotiation_silence = \"30s\"\n",
 		"silence long":  "[sell]\nnegotiation_silence = \"31m\"\n",
 	} {

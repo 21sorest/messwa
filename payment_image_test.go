@@ -76,7 +76,7 @@ func TestSellTaskTakesPaymentImage(t *testing.T) {
 		synctest.Wait()
 		f.conn.emit(f.reply(buyerB, "me too"))
 		synctest.Wait()
-		if got := texts(sentTo(f.conn.messages(), buyerA)); len(got) != 3 || got[0] != "ok 20" || got[1] != "pay using whatsapp pay pls, not gpay/upi" || got[2] != "ill send the qr right after" {
+		if got := texts(sentTo(f.conn.messages(), buyerA)); len(got) != 3 || got[0] != "ok 20" || got[1] != "pay using whatsapp pay pls" || got[2] != "ill send the qr right after" {
 			t.Fatalf("A got %q", got)
 		}
 		time.Sleep(time.Second)
@@ -189,6 +189,82 @@ func TestPaymentImageNeedsThePrompt(t *testing.T) {
 		}
 		if kind, err := f.st.PaymentKind(ctx, f.date, "lunch"); err != nil || kind != store.PaidByImage {
 			t.Fatalf("payment kind = %q, %v", kind, err)
+		}
+	})
+}
+
+// TestNegotiationScreenshotFlow is the 17 Nov case with screenshots
+// counting: asking to pay by UPI is a yes, the pay prompt doesn't rule out
+// UPI, a buyer with no WhatsApp Pay hears to pay the number, a "done" with
+// no image gets one ask for the screenshot, and the screenshot gets the
+// QR.
+func TestNegotiationScreenshotFlow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.Sell.AcceptPaymentImages = true
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 60)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		f.conn.emit(f.reply(buyerA, "price?"))
+		settle()
+		f.conn.emit(dm(buyerA, "can i pay by upi id"))
+		settle()
+		f.conn.emit(dm(buyerA, "I don't have WhatsApp pay"))
+		f.conn.emit(dm(buyerA, "I can do upi"))
+		settle()
+		f.conn.emit(dm(buyerA, "upi?"))
+		settle()
+		f.conn.emit(dm(buyerA, "done"))
+		settle()
+		f.conn.emit(dm(buyerA, "sent"))
+		settle()
+		want := []string{"60", "ok 60", "pay using whatsapp pay pls", "ill send the qr right after",
+			"send to my number then", "can u send payment screenshot"}
+		if got := texts(sentTo(f.conn.messages(), buyerA)); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Fatalf("A got %q, want %q", got, want)
+		}
+		if b := buyerState(t, f, id, buyerA); b.State == store.BuyerParked {
+			t.Fatalf("A = %+v, parked before the screenshot grace ran out", b)
+		}
+		f.conn.emit(imageFrom(buyerA, "img-a", time.Now()))
+		synctest.Wait()
+		if got := texts(sentTo(f.conn.messages(), buyerA)); got[len(got)-1] != "[QR]" {
+			t.Fatalf("A got %q, want the QR last", got)
+		}
+	})
+}
+
+// An image before "sent" is the screenshot already, so the bot doesn't
+// ask for one.
+func TestNegotiationNoScreenshotAskAfterImage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.Sell.AcceptPaymentImages = true
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 60)
+		if _, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, ""); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		f.conn.emit(f.reply(buyerA, "price?"))
+		settle()
+		f.conn.emit(dm(buyerA, "ok"))
+		settle()
+		f.conn.emit(imageFrom(buyerA, "img-a", time.Now()))
+		f.conn.emit(dm(buyerA, "sent"))
+		settle()
+		for _, got := range texts(sentTo(f.conn.messages(), buyerA)) {
+			if got == "can u send payment screenshot" {
+				t.Fatal("asked for a screenshot after one came in")
+			}
 		}
 	})
 }

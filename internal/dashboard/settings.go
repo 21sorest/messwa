@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 
@@ -29,9 +30,19 @@ type settingsState struct {
 	Meals    []string        `json:"meals"`
 	Messes   []string        `json:"messes"`
 	Wording  wordingInfo     `json:"wording"`
-	// PortalMeals are the meal windows the mess portal gave, which the bot
-	// uses instead of meals.times. Empty until the portal has answered.
-	PortalMeals map[string]config.MealTime `json:"portal_meals,omitempty"`
+}
+
+// mealTimesKey is the meal windows on the settings page. Unlike the keys
+// in config.SettingKeys it isn't stored with one account's settings: the
+// meals package keeps one copy for every account.
+const mealTimesKey = "meals.times"
+
+func mealTimes(ms []config.Meal) map[string]config.MealTime {
+	out := map[string]config.MealTime{}
+	for _, m := range ms {
+		out[m.Name] = config.MealTime{Starts: m.Starts, Ends: m.Ends}
+	}
+	return out
 }
 
 // wordingInfo describes the bot's messages for the Messages tab: what each
@@ -107,14 +118,21 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 		for _, m := range cfg.Messes {
 			out.Messes = append(out.Messes, m.Name)
 		}
-		out.PortalMeals = meals.PortalTimes()
+		if mine(r, mealTimesKey) {
+			out.Values[mealTimesKey] = mealTimes(meals.Times(cfg))
+			out.Defaults[mealTimesKey] = mealTimes(cfg.Meals)
+			if meals.Shared() != nil {
+				out.Saved = append(out.Saved, mealTimesKey)
+			}
+		}
 		writeJSON(w, r, out)
 	}
 
 	mux.Handle("GET /api/settings", member(state))
 
 	// PUT replaces every saved setting: keys left out go back to
-	// config.toml.
+	// config.toml. For an admin that includes the meal times, which change
+	// for every account.
 	mux.Handle("PUT /api/settings", member(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Values map[string]json.RawMessage `json:"values"`
@@ -131,9 +149,29 @@ func settingsRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Serve
 				return
 			}
 		}
+		var times map[string]config.MealTime
+		if v, ok := in.Values[mealTimesKey]; ok {
+			d := json.NewDecoder(bytes.NewReader(v))
+			d.DisallowUnknownFields()
+			if err := d.Decode(&times); err != nil {
+				jsonError(w, "meal times: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := meals.Check(cfg, times); err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			delete(in.Values, mealTimesKey)
+		}
 		if err := srv.SaveSettings(r.Context(), config.Settings(in.Values), accounts.UserFrom(r.Context()).ID); err != nil {
 			jsonError(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if mine(r, mealTimesKey) {
+			if err := meals.Save(times); err != nil {
+				jsonError(w, "meal times: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		state(w, r)
 	}))

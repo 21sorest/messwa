@@ -356,7 +356,8 @@ for (const t of TRIGGERS) {
   });
 }
 
-const pips = Array.from({ length: 12 }, (_, i) => {
+// One pip per allowed repost, up to config.MaxRepostsLimit.
+const pips = Array.from({ length: 20 }, (_, i) => {
   const p = el('button', 'pip');
   p.type = 'button';
   p.setAttribute('aria-label', `${i + 1}`);
@@ -433,19 +434,11 @@ const clock = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + 
 function restartTag(id, key) {
   paint(() => { $(id).hidden = !(D.restart.includes(key) || !same(draft[key], D.values[key])); });
 }
-restartTag('mealsRestart', 'meals.times');
-// With portal times in use the bot ignores the saved ones, so the page
-// shows the portal's and doesn't let them be edited.
-const portalMeals = () => (D.portal_meals && Object.keys(D.portal_meals).length ? D.portal_meals : null);
-paint(() => {
-  $('mealsPortal').hidden = !portalMeals();
-  if (portalMeals()) $('mealsRestart').hidden = true;
-});
 restartTag('messRestart', 'messes.veg_only');
 
 let mealInputs = null;
 paint(() => {
-  const times = Object.assign({}, draft['meals.times'], portalMeals() || {});
+  const times = draft['meals.times'];
   const bars = [el('div', 'axis')];
   for (const name of D.meals) {
     const t = times[name];
@@ -501,7 +494,6 @@ paint(() => {
     }
   }
   for (const [name, [a, b]] of Object.entries(mealInputs)) {
-    a.disabled = b.disabled = !!portalMeals();
     const t = times[name] || { starts: '', ends: '' };
     if (document.activeElement !== a) a.value = t.starts;
     if (document.activeElement !== b) b.value = t.ends;

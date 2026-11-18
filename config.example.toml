@@ -86,7 +86,7 @@ monthly_fee = 0
 # group_count = 2
 # Pause between copies of one offer, at least 3s. The sale starts after the
 # first copy; a sold or handed-off offer posts no more copies.
-post_gap = "15s"
+post_gap = "3s"
 # Put the price in the group post. The payment request DM always states it.
 show_price = true
 # List the extras you registered for that meal in the post, read from the
@@ -142,9 +142,9 @@ repost_messages = 10
 # after the copy. A listing tagged with a different diet doesn't count. 0
 # turns it off.
 repost_listings = 3
-# The most fresh copies one group gets for one offer, 0 to 12. A group whose
+# The most fresh copies one group gets for one offer, 0 to 20. A group whose
 # copy failed to send gets none.
-max_reposts = 6
+max_reposts = 20
 # Count an image from the buyer whose payment turn it is as their payment,
 # for buyers who pay by UPI outside WhatsApp Pay and send a screenshot. It
 # must arrive after the payment prompt and inside their pay window. Nothing
@@ -209,7 +209,7 @@ own_wording = true
 
 # Meal windows and mess names have built-in defaults (internal/config/config.go):
 # breakfast 07:30-09:30, lunch 12:30-14:30, snacks 16:45-18:15, dinner 19:30-21:30.
-# Once the mess portal answers, its meal times replace these (see README).
+# Admins can change the times for everyone on the settings page (see README).
 # messes kadamba, yuktahar, palash, bakul. Names match with typo tolerance.
 # Palash and Yuktahar are veg_only, so their listings count as veg.
 # Defining any [[meals]] or [[messes]] here replaces that whole default list:
