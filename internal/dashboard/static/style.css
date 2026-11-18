@@ -753,7 +753,7 @@ a.copy.linked:hover .copy-go { color: var(--gold); }
 .sell-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
 .sell-btn {
   padding: 10px 14px; border-radius: 10px; background: var(--slot); border: 1px solid var(--line);
-  color: var(--text); font: 700 9px Pixel; letter-spacing: .4px; cursor: pointer;
+  color: var(--text); font: 700 9px Pixel; letter-spacing: .4px; cursor: pointer; text-decoration: none;
 }
 .sell-btn:hover { background: var(--slot-hi); }
 .sell-btn.gold { color: #141923; background: var(--gold); border-color: var(--gold); }
