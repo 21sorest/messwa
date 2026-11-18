@@ -289,7 +289,7 @@ function calInfoPanel(panel, date, c) {
   if (!D.owner) return;
   const open = (label, cls) => { const b = el('button', 'sell-btn ' + cls, label); b.type = 'button'; b.onclick = () => openSell(date, c); return b; };
   if (c.task) panel.append(calActs(open('MANAGE SALE', 'gold')));
-  else if (SELL.isSold(c)) panel.append(calActs(open('DELETE SALE', 'red')));
+  else if (SELL.isSold(c)) panel.append(calActs(saleChat(D.sales[c.sale]), open('DELETE SALE', 'red')));
   else if (c.schedule) panel.append(calActs(open('OPEN SCHEDULE', 'gold')));
 }
 
@@ -299,10 +299,23 @@ function calHead(c, date) {
   name.style.setProperty('color', messColor(c.mess));
   const box = el('div');
   box.append(name, el('div', 'ln c8', `${fmtDay(date)}, ${hm(c.start)}-${hm(c.end)}`));
-  const close = el('button', 'pg cal-x', '×'); close.type = 'button'; close.setAttribute('aria-label', 'Close');
+  const close = el('button', 'pg cal-x'); close.type = 'button'; close.setAttribute('aria-label', 'Close');
+  // A drawn cross, since the × glyph sits above the middle of its line.
+  close.append(svgEl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'));
   close.onclick = calClear;
   head.append(box, close);
   return head;
+}
+
+// saleChat opens the chat with a sold meal's buyer, or is null when the
+// sale has no phone number.
+function saleChat(s) {
+  const href = s && chatHref(s.phone);
+  if (!href) return null;
+  const a = el('a', 'sell-btn', 'OPEN CHAT');
+  a.href = href;
+  if (href.startsWith('https:')) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+  return a;
 }
 
 const calActs = (...buttons) => { const a = el('div', 'sell-acts cal-acts'); a.append(...buttons.filter(Boolean)); return a; };

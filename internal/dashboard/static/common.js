@@ -301,6 +301,18 @@ const waIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria
 // Beeper's logo, traced from the PNG.
 const beeperIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8.79 0.00 7.58 0.17 6.54 0.52 5.55 1.04 4.68 1.69 3.90 2.51 3.12 3.73 2.64 4.98 2.47 5.89 2.43 7.06 2.51 7.88 2.73 8.79 3.03 9.57 3.51 10.44 4.03 11.13 5.07 12.13 5.81 12.56 5.81 24.00 15.73 24.00 16.90 23.83 17.98 23.44 18.50 23.22 19.23 22.74 20.32 21.70 21.10 20.40 21.49 19.06 21.49 17.11 21.23 16.20 20.88 15.47 20.40 14.77 19.62 13.95 19.54 13.95 18.80 13.30 18.19 12.95 18.19 12.87 20.19 10.87 20.79 9.92 21.10 9.27 21.49 7.88 21.57 7.06 21.49 5.68 21.18 4.46 20.58 3.21 19.80 2.17 18.89 1.34 18.24 0.91 17.24 0.43 16.20 0.13 15.29 0.00ZM8.75 1.86 15.21 1.86 16.59 2.17 17.63 2.73 18.45 3.47 19.10 4.38 19.58 5.63 19.71 6.71 19.58 7.88 19.32 8.66 18.76 9.66 12.13 16.33 10.31 18.15 10.22 18.15 11.52 11.61 8.58 11.61 7.36 11.31 6.67 10.96 6.11 10.57 5.85 10.27 5.76 10.27 5.11 9.49 4.77 8.88 4.42 7.88 4.29 6.80 4.42 5.59 4.68 4.81 5.29 3.77 5.98 3.03 6.71 2.51 7.71 2.08Z"/></svg>';
 
+// chatHref links to a WhatsApp chat with that phone, in Beeper when the
+// board's settings say so. Beeper's links only work in Beeper Desktop, so
+// touch screens always get WhatsApp. Null without a number.
+function chatHref(phone) {
+  const ph = (phone || '').replace(/\D/g, '');
+  if (!ph) return null;
+  let via = '';
+  try { via = JSON.parse(localStorage.getItem('mah') || '{}').via; } catch { /* no storage: WhatsApp */ }
+  const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+  return via === 'beeper' && !touch ? `beeper://compose/whatsapp/phone/+${ph}` : `https://wa.me/${ph}`;
+}
+
 // ---------- mess identities ----------
 
 const MESS = {

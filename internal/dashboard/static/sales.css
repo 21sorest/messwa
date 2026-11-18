@@ -256,7 +256,8 @@ button.friend { cursor: pointer; }
 .panel.calm { background: linear-gradient(rgba(16, 0, 16, .95), rgba(16, 0, 16, .95)) padding-box, linear-gradient(180deg, #3a1a90, #1c0a55) border-box; }
 .cal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .cal-head > div { min-width: 0; }
-.cal-x { flex: none; margin: -2px -4px 0 0; font-size: 16px; }
+.cal-x { flex: none; display: grid; place-items: center; margin: -2px -4px 0 0; padding: 0; color: var(--text); }
+.cal-x svg { width: 10px; height: 10px; }
 .cal-sum { margin-top: 6px; font-size: 12.5px; }
 .cal-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; max-height: 96px; overflow: auto; }
 .cal-chip {
