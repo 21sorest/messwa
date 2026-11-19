@@ -153,6 +153,7 @@ function renderToday(box, kept) {
   }
   const grid = el('div', 'ms-grid today-grid');
   grid.append(...cards);
+  packToday(box, grid);
   const parts = [grid];
   const over = list.filter((v) => isOver(v) && !used.has(v.id));
   if (over.length) {
@@ -166,6 +167,26 @@ function renderToday(box, kept) {
     }
   }
   box.replaceChildren(...parts);
+}
+
+// packToday lays the Today cards out masonry style. A plain grid row is as
+// tall as its tallest card, so a short finished meal next to a live sale
+// left a hole under it. The grid's rows are 1px tall and each card spans as
+// many as its height plus the gap, so a card sits right under the one above
+// it in its column. Cards grow and shrink as buyers come and go, so a
+// ResizeObserver keeps the spans current. Until the first measure the grid
+// has no .packed class and lays out as a normal grid. box keeps its
+// observer, so a redraw drops the old one without touching another box's.
+function packToday(box, grid) {
+  if (box._pack) box._pack.disconnect();
+  if (typeof ResizeObserver === 'undefined') return;
+  const fit = () => {
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    for (const c of grid.children) c.style.gridRowEnd = `span ${Math.max(1, Math.ceil(c.getBoundingClientRect().height + gap))}`;
+    grid.classList.add('packed');
+  };
+  box._pack = new ResizeObserver(fit);
+  for (const c of grid.children) box._pack.observe(c);
 }
 
 // TILE is how a meal with no sale card reads: its tag and a line under it.
