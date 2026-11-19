@@ -317,7 +317,8 @@ function chest(v) {
   }
   c.append(buyers);
 
-  c.append(postsRow(v));
+  // Once it sold, where the offer went no longer matters.
+  if (!won(v)) c.append(postsRow(v));
   const mk = marketRow(v);
   if (mk) c.append(mk);
   const acts = cardActions(v);
