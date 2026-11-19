@@ -186,6 +186,7 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.
 	regs := newRegCache(acc)
 	authRoutes(mux, acc, srv, regs, "http://"+cfg.MCP.Listen+"/mcp")
 	settingsRoutes(mux, cfg, srv)
+	upiQRRoutes(mux)
 	onboardingRoutes(mux, cfg, srv)
 	deviceRoutes(mux, srv)
 	sellActionRoutes(mux, cfg, srv)

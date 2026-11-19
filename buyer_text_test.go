@@ -43,7 +43,8 @@ func TestBuyerTextStyle(t *testing.T) {
 			l.opening(60), tmrw.opening(60), l.counter(50, 60, 1), l.counter(45, 50, 2), l.lowest(40, 45),
 			l.which(60), l.otherMeal(60, false), l.otherMeal(60, true), l.restate(60), l.queued(50), l.queuedHandoff(50), l.outbid(false), l.outbid(true),
 			l.dropped(), l.nudge(60), l.quietDrop(50, 60), l.have(60), l.payOther(), l.noScreenshots(), l.payNumber(), l.askScreenshot(),
-			l.sold(), l.payPrompt("30.00", false, false), l.payPrompt("1.00", true, false), l.payPrompt("30.00", false, true),
+			l.sold(), l.payPrompt("30.00", false, false, false), l.payPrompt("1.00", true, false, false), l.payPrompt("30.00", false, true, false),
+			l.payPrompt("30.00", false, true, true), l.payOtherUPI(),
 		} {
 			if len(r) == 0 || len(r) > 3 {
 				t.Errorf("%q: want one to three messages", r)
@@ -57,7 +58,7 @@ func TestBuyerTextStyle(t *testing.T) {
 			}
 		}
 	}
-	if got := (lines{}).payPrompt("30.00", false, false); got[0] != "ok 30" {
+	if got := (lines{}).payPrompt("30.00", false, false, false); got[0] != "ok 30" {
 		t.Errorf("prompt starts %q", got[0])
 	}
 	if got := testLines("veg", "tmrw").opening(30); len(got) != 1 || !strings.HasSuffix(got[0], ", its for tmrw") {

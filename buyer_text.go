@@ -234,6 +234,9 @@ func (l lines) dropped() reply { return l.say("dropped") }
 // The bot says it once; asking again hands the buyer to you.
 func (l lines) payOther() reply { return l.say("pay_other") }
 
+// payOtherUPI is payOther when the pay message carries your UPI QR.
+func (l lines) payOtherUPI() reply { return l.say("pay_other_upi") }
+
 // noScreenshots answers an image during a buyer's payment turn, once,
 // when [sell] accept_payment_images is off.
 func (l lines) noScreenshots() reply { return l.say("no_screenshots") }
@@ -271,12 +274,21 @@ func isSold(cfg *config.Config, text string) bool {
 //
 // images is [sell] accept_payment_images: then the prompt leaves out "not
 // gpay/upi", since a screenshot of a UPI payment to the number counts.
-func (l lines) payPrompt(amount string, testImage, images bool) reply {
+// upi says the seller's UPI QR follows the prompt (see sale.payUPI): it
+// asks them to pay on that QR and send the screenshot, which already says
+// what comes next, so no QR promise follows.
+func (l lines) payPrompt(amount string, testImage, images, upi bool) reply {
 	slot := "pay"
-	if images {
+	switch {
+	case upi:
+		slot = "pay_upi"
+	case images:
 		slot = "pay_images"
 	}
 	r := l.say(slot, "price", priceWords(amount))
+	if upi && !testImage {
+		return r
+	}
 	if testImage {
 		return append(r, l.say("pay_test")...)
 	}

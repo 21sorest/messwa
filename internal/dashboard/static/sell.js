@@ -192,7 +192,7 @@ function sellSheet(ctx) {
     acts.append(btn('CLOSE', '', closeModal));
     const auto = el('p', 'sell-note auto-note');
     auto.hidden = !t.autopilot;
-    auto.append(el('b', '', 'On autopilot. '), "Buyers who'd need you are skipped, and only WhatsApp Pay counts.");
+    auto.append(el('b', '', 'On autopilot. '), "Buyers who'd need you are skipped. Screenshots count only if they do in Settings.");
     sheet.append(sum, list, tools, auto, error, acts);
   }
 
@@ -278,7 +278,7 @@ function sellSheet(ctx) {
 
     const autoNote = el('p', 'sell-note auto-note');
     autoNote.hidden = !sc.autopilot;
-    autoNote.append(el('b', '', 'Autopilot. '), "Sells without waiting on you. Anyone who'd need you is skipped, even at a higher price: paying some other way, going below your lowest, replies the bot can't read, saying they paid when no payment came. Only WhatsApp Pay counts, never a screenshot.");
+    autoNote.append(el('b', '', 'Autopilot. '), "Sells without waiting on you. Anyone who'd need you is skipped, even at a higher price: paying some other way, going below your lowest, replies the bot can't read, saying they paid when no payment came. A screenshot counts only if you turned that on in Settings, and nothing checks it.");
     acts.append(btn('CLOSE', '', closeModal));
     sheet.append(sum, note, tools, autoNote, error, acts);
   }

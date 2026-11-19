@@ -246,6 +246,9 @@ func (c *Config) validateSell() error {
 	if d := s.NegotiationSilence.Duration; d < MinNegotiationSilence || d > MaxNegotiationSilence {
 		return fmt.Errorf("sell.negotiation_silence must be between %s and %s", MinNegotiationSilence, MaxNegotiationSilence)
 	}
+	if _, err := ParseUPI(s.UPI); err != nil {
+		return fmt.Errorf("sell.upi: %w", err)
+	}
 	return ValidateRepost(s.RepostMessages, s.RepostListings, s.MaxReposts, "sell.")
 }
 

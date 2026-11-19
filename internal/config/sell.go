@@ -63,6 +63,10 @@ type Sell struct {
 	// by default: a screenshot proves nothing, and a QR can't be taken
 	// back once sent.
 	AcceptPaymentImages bool `toml:"accept_payment_images"`
+	// UPI is the UPI ID (name@bank) buyers pay when AcceptPaymentImages is
+	// on. The pay message then comes with a UPI QR that has the price
+	// filled in. Empty sends no QR.
+	UPI string `toml:"upi"`
 	// AcceptUnreadablePayments counts a WhatsApp Pay message whose amount
 	// stays unreadable after recovery as a payment of the agreed price.
 	// On by default, though the bot can't tell what, if anything, was paid.

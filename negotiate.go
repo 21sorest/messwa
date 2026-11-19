@@ -1405,6 +1405,13 @@ func (ss *session) handle(texts []string) handled {
 		case in.kind == intentPaid || in.kind == intentOK && in.done:
 			ss.askScreenshot()
 			return handledPaidClaim
+		case in.upi && (in.kind == intentPayOther || in.kind == intentAccept) && n.s.payUPI():
+			// They have the UPI QR, or will once their turn comes. Asking
+			// for a UPI ID, scanner or QR gets it once more.
+			if ss.holding() {
+				ss.resendPayQR()
+			}
+			return handledNothing
 		case in.upi && (in.kind == intentPayOther || in.kind == intentAccept) && n.s.acceptImages:
 			// Screenshots count, so a UPI payment to the number works. A
 			// buyer waiting for their turn hears it once the prompt is out.
@@ -1417,7 +1424,11 @@ func (ss *session) handle(texts []string) handled {
 			return handledNothing
 		case in.kind == intentPayOther:
 			if !ss.sayPayOther() {
-				n.park(context.WithoutCancel(ctx), ss, "wants to pay some way other than WhatsApp Pay")
+				way := "WhatsApp Pay"
+				if n.s.payUPI() {
+					way = "UPI"
+				}
+				n.park(context.WithoutCancel(ctx), ss, "wants to pay some way other than "+way)
 			}
 			return handledNothing
 		case in.kind == intentPass:
@@ -1631,7 +1642,22 @@ func (ss *session) sayAgreed(text reply) {
 // WhatsApp Pay only. It reports false if they already heard it, so asking
 // again hands them to you.
 func (ss *session) sayPayOther() bool {
-	return ss.sayOnce(linePayOther, ss.n.lines(ss.buyer).payOther())
+	l := ss.n.lines(ss.buyer)
+	if ss.n.s.payUPI() {
+		return ss.sayOnce(linePayOther, l.payOtherUPI())
+	}
+	return ss.sayOnce(linePayOther, l.payOther())
+}
+
+// resendPayQR sends the paying buyer the UPI QR again, once per buyer.
+func (ss *session) resendPayQR() {
+	n := ss.n
+	if ok, err := n.m.st.ClaimBuyerLine(n.talk, n.t.ID, ss.buyer.String(), linePayQRAgain); err != nil || !ok {
+		return
+	}
+	if err := n.s.resendPayQR(n.talk, ss.buyer); err != nil {
+		n.log.Warn("UPI QR resend failed or is uncertain", "buyer", ss.buyer, "err", err)
+	}
 }
 
 // holding reports whether the buyer holds the payment turn.
