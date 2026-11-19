@@ -39,3 +39,21 @@ func TestMedianAsk(t *testing.T) {
 		}
 	}
 }
+
+func TestMedianAskGala(t *testing.T) {
+	ps := []store.ServingPrices{
+		{Date: "2026-11-04", Meal: "dinner", Mess: "kadamba", Diet: "veg", Prices: []int{50, 55, 60}},
+		{Date: "2026-11-11", Meal: "dinner", Mess: "kadamba", Diet: "veg", Prices: []int{200, 220, 250}, Gala: true},
+	}
+	// A week after the gala, the same weekday's dinner goes by the normal one.
+	if got, ok := MedianAsk(ps, "2026-11-18", "dinner", "kadamba", "veg"); got != 55 || !ok {
+		t.Errorf("the week after: got %v %v, want 55", got, ok)
+	}
+	// The gala dinner itself goes by its own asks.
+	if got, ok := MedianAsk(ps, "2026-11-11", "dinner", "kadamba", "veg"); got != 220 || !ok {
+		t.Errorf("the gala: got %v %v, want 220", got, ok)
+	}
+	if got := Regular(ps); len(got) != 1 || got[0].Gala {
+		t.Errorf("Regular kept %+v", got)
+	}
+}

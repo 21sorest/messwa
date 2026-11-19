@@ -725,6 +725,21 @@ func (s *Server) Facts(ctx context.Context, from, to string) ([]store.Fact, erro
 	return s.st.Facts(ctx, from, to)
 }
 
+// GalaDinners is every date whose dinner an admin marked as a gala dinner.
+func (s *Server) GalaDinners(ctx context.Context) ([]string, error) {
+	return s.st.GalaDinners(ctx)
+}
+
+// SetGalaDinner marks or unmarks date's dinner as a gala dinner.
+func (s *Server) SetGalaDinner(ctx context.Context, date string, gala bool) error {
+	return s.st.SetGalaDinner(ctx, date, gala)
+}
+
+// GalaFacts is the facts of every gala dinner, which Facts leaves out.
+func (s *Server) GalaFacts(ctx context.Context) ([]store.Fact, error) {
+	return s.st.GalaFacts(ctx)
+}
+
 // FactTotals sums the facts per meal date, mess and diet up to to, for the
 // insights page's season comparison.
 func (s *Server) FactTotals(ctx context.Context, to string) ([]store.FactTotal, error) {

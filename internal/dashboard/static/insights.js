@@ -8,6 +8,7 @@
 
 let D = null;   // last /api/insights
 let R = [];     // its rows as objects
+let G = [];     // its gala dinner rows, which R leaves out
 let pick = null; // the slot in the inspector: { mess, wd, meal }
 let failed = false;
 
@@ -139,11 +140,15 @@ async function load() {
 // parse turns the columns in D.facts back into one object per fact. The
 // server sends times as differences; see factCols in insights.go.
 function parse() {
+  R = rowsOf(D.facts);
+  G = rowsOf(D.gala_facts);
+}
+
+function rowsOf(C) {
   const hourFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: tz() });
   const dateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz() });
-  const C = D.facts;
   let end = 0;
-  R = (C.date || []).map((date, i) => {
+  return (C.date || []).map((date, i) => {
     end += C.end[i];
     const first = end + C.first[i];
     const r = {
@@ -386,6 +391,7 @@ function render() {
   else if (empty) $('notice').textContent = 'No ended listings stored yet. messwa run writes one row per listing every hour, once its meal is over.';
   renderOverview();
   renderSeasons();
+  renderGala();
   renderBoards();
   renderDiet();
   renderHours();
@@ -876,6 +882,101 @@ function oddsChart(host, data, overall) {
   for (const t of [0, 0.3, 0.6]) if (t <= max) T(s, x(t), data.length * rh + 16, `${Math.round(t * 100)}%`, { 'text-anchor': 'middle' });
 }
 
+// ---------- gala dinners ----------
+
+// renderGala lists every marked gala dinner next to a normal dinner from
+// the range, under the mess and diet filters but whatever the range.
+function renderGala() {
+  const dates = $('galaDates');
+  dates.replaceChildren();
+  for (const d of [...D.gala].reverse()) {
+    const chip = el('span', 'gala-chip');
+    const x = el('button', 'gala-x', '×');
+    x.type = 'button';
+    x.title = `Unmark ${fmtDay(d)}: its dinner goes back into the normal numbers`;
+    x.setAttribute('aria-label', x.title);
+    x.addEventListener('click', () => markGala(d, false));
+    chip.append(el('span', '', fmtDay(d)), x);
+    dates.append(chip);
+  }
+
+  const t = $('gala');
+  t.replaceChildren();
+  const rows = G.filter((r) => inMess(r) && inDiet(r));
+  const normal = view().filter((r) => r.meal === 'dinner');
+  const normalAsk = median(normal.filter((r) => isOffer(r) && r.kind === 'sell' && r.price > 0).map((r) => r.price));
+  $('galaNote').hidden = D.gala.length > 0;
+  $('galaNote').textContent = 'No gala dinners marked yet. Pick the date above; its dinner moves out of the normal numbers and shows here.';
+  t.hidden = !D.gala.length;
+  if (!D.gala.length) return;
+
+  const stats = (rs) => {
+    const off = rs.filter(isOffer), sold = off.filter((r) => r.sold);
+    const asks = off.filter((r) => r.kind === 'sell' && r.price > 0).map((r) => r.price);
+    return { n: off.length, sold: sold.length, ask: median(asks), wanted: rs.filter(isWanted).length };
+  };
+  const hr = el('tr');
+  for (const [h, n] of [['DINNER', 0], ['LISTED', 1], ['SOLD', 1], ['MEDIAN ASK', 1], ['VS NORMAL', 1], ['WANTED', 1]]) hr.append(el('th', n ? 'n' : '', h));
+  t.append(hr);
+  const line = (label, sub, st, cls) => {
+    const tr = el('tr', cls);
+    const td0 = el('td');
+    td0.append(el('span', 'nm', label), el('span', 'ph', sub));
+    const rate = el('span', 'rate'), fill = el('i');
+    fill.style.setProperty('width', `${pc(st.sold, st.n) || 0}%`);
+    rate.append(fill);
+    const tdS = el('td', 'n');
+    tdS.append(rate, `${st.sold} · ${pcs(st.sold, st.n)}`);
+    const vs = st.ask != null && normalAsk ? `${(st.ask / normalAsk).toFixed(1)}×` : '-';
+    tr.append(td0, el('td', 'n', String(st.n)), tdS, el('td', 'n', st.ask == null ? '-' : rupees(st.ask)),
+      el('td', 'n', cls ? '' : vs), el('td', 'n', String(st.wanted)));
+    return tr;
+  };
+  for (const d of [...D.gala].reverse()) {
+    const here = rows.filter((r) => r.date === d);
+    const st = stats(here);
+    const tr = line(fmtDay(d), d > D.today ? 'coming up' : here.length ? '' : 'no listings stored', st);
+    tip(tr, () => {
+      const by = new Map();
+      for (const r of here.filter(isOffer)) {
+        if (!by.has(r.mess)) by.set(r.mess, []);
+        by.get(r.mess).push(r);
+      }
+      return [[{ t: `Gala dinner · ${fmtDay(d)}`, c: 'nm' }], null,
+        ...(by.size ? [...by.entries()].sort((a, b) => b[1].length - a[1].length).map(([m, rs]) => {
+          const s = stats(rs);
+          return [{ t: `${messName(m)} `, color: messColor(m) }, { t: `${s.n} listed, ${pcs(s.sold, s.n)} sold${s.ask == null ? '' : `, ask ${rupees(s.ask)}`}`, c: 'c7' }];
+        }) : [[{ t: 'Nothing listed yet', c: 'c8' }]])];
+    });
+    t.append(tr);
+  }
+  // A normal dinner, per serving, for scale.
+  const nDays = new Set(normal.map((r) => r.date)).size;
+  if (nDays) {
+    const st = stats(normal);
+    const per = (v) => Math.round(v / nDays);
+    const tr = line('Normal dinner', `average of ${nDays} in range`, { ...st, n: per(st.n), sold: per(st.sold), wanted: per(st.wanted) }, 'base');
+    t.append(tr);
+  }
+}
+
+async function markGala(date, gala) {
+  $('galaErr').hidden = true;
+  try {
+    await send('PUT', 'api/insights/gala', { date, gala });
+    await load();
+  } catch (e) {
+    $('galaErr').hidden = false;
+    $('galaErr').textContent = `Couldn't save: ${e.message}`;
+  }
+}
+
+$('galaForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = $('galaDate').value;
+  if (d) markGala(d, true).then(() => { $('galaDate').value = ''; });
+});
+
 // ---------- sellers ----------
 
 function renderSellers() {
@@ -1005,6 +1106,7 @@ $('useIcon').append(svgEl(icon('check')));
 me().then(userLink).catch(() => {});
 $('ovIcon').append(svgEl(icon('paper')));
 $('snIcon').append(svgEl(icon('chart')));
+$('galaIcon').append(svgEl(icon('dinner')));
 $('wkIcon').append(svgEl(icon('clock')));
 $('dietIcon').append(svgEl(icon('lunch')));
 $('hrIcon').append(svgEl(icon('clock')));

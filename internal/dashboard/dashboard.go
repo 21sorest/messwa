@@ -246,6 +246,7 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.
 	recurringRoutes(mux, srv)
 	mux.Handle("GET /api/sales", member(salesHandler(cfg, srv, regs)))
 	mux.Handle("GET /api/insights", requireRole(accounts.Admin, insightsHandler(cfg, srv)))
+	mux.Handle("PUT /api/insights/gala", requireRole(accounts.Admin, galaHandler(srv)))
 
 	beeper := newBeeperIndex(cfg.Dash.BeeperDB)
 	mux.Handle("GET /api/listing", member(func(w http.ResponseWriter, r *http.Request) {

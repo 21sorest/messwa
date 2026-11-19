@@ -98,6 +98,11 @@ type insightsState struct {
 	// filters. Seasons[i].Days counts the same dates.
 	TotalCols []string `json:"total_cols"`
 	Totals    [][]any  `json:"totals"`
+	// Gala are the dates marked as gala dinners, oldest first. Facts and
+	// Totals leave those dinners out; GalaFacts holds them all, whatever
+	// the range, with sellers indexed into Sellers like Facts.
+	Gala      []string `json:"gala"`
+	GalaFacts factCols `json:"gala_facts"`
 }
 
 // seasonStat is a season span and how many of its meal dates have facts.
@@ -149,6 +154,10 @@ func insightsHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc
 			Current: cur.Key, Next: next, Seasons: []seasonStat{},
 			Messes: []mess{}, Windows: []window{}, Sellers: []seller{},
 			TotalCols: totalCols, Totals: [][]any{}}
+		if st.Gala, err = srv.GalaDinners(r.Context()); err != nil {
+			fail(err)
+			return
+		}
 		for _, m := range cfg.Messes {
 			st.Messes = append(st.Messes, mess{m.Name, m.VegOnly})
 		}
@@ -206,12 +215,13 @@ func insightsHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc
 			fail(err)
 			return
 		}
+		gala, err := srv.GalaFacts(r.Context())
+		if err != nil {
+			fail(err)
+			return
+		}
 		idx := map[string]int{}
-		for k := range facts {
-			f := &facts[k]
-			if seasons.HiddenMeal(f.Meal) {
-				continue
-			}
+		sellerOf := func(f *store.Fact) int {
 			i, ok := idx[f.Seller]
 			if !ok {
 				i = len(st.Sellers)
@@ -222,9 +232,37 @@ func insightsHandler(cfg *config.Config, srv *mcpserver.Server) http.HandlerFunc
 			if f.SellerName != "" {
 				st.Sellers[i].Name = f.SellerName
 			}
-			st.Facts.add(f, i)
+			return i
+		}
+		for k := range facts {
+			f := &facts[k]
+			if seasons.HiddenMeal(f.Meal) {
+				continue
+			}
+			st.Facts.add(f, sellerOf(f))
+		}
+		for k := range gala {
+			st.GalaFacts.add(&gala[k], sellerOf(&gala[k]))
 		}
 		writeJSONRevalidate(w, r, st)
+	}
+}
+
+// galaHandler marks or unmarks one date's dinner as a gala dinner.
+func galaHandler(srv *mcpserver.Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Date string `json:"date"`
+			Gala bool   `json:"gala"`
+		}
+		if !readJSON(w, r, &in) {
+			return
+		}
+		if err := srv.SetGalaDinner(r.Context(), in.Date, in.Gala); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
