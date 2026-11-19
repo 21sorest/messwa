@@ -414,6 +414,9 @@ const HW = (() => {
     for (const f of fs) {
       const row = el('a', 'friend' + (f.task || f.schedule ? ' live' : ''));
       row.href = 'sales.html#friends';
+      if (f.task || f.schedule) row.addEventListener('click', (e) => {
+        if (typeof openFriendHere === 'function' && openFriendHere(f.task ? f.task.id : f.schedule.id, f.task ? 'task' : 'schedule')) e.preventDefault();
+      });
       row.style.setProperty('--m', messColor(f.mess));
       const ic = el('span', 'fr-ic');
       ic.append(svgEl(messIcon(f.mess)));
