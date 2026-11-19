@@ -31,6 +31,9 @@
 
 /* auto-fit, so today's few cards share the row instead of leaving empty columns. */
 .today-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+/* packToday (sale.js) sets each card's row span from its height plus the
+   10px gap; the negative margin takes back the gap under the last card. */
+.today-grid.packed { grid-auto-rows: 1px; row-gap: 0; margin-bottom: -10px; }
 .mysale.tile { gap: 8px; }
 .tile .ms-meal { min-width: 0; }
 .tile-tag { margin-left: auto; color: var(--muted); border-color: var(--line); }
