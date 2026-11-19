@@ -116,11 +116,16 @@ func (s *Store) SnapshotFacts(ctx context.Context, rule SoldRule, now time.Time)
 	return err
 }
 
-// Facts returns every fact for meals dated from..to, inclusive.
+// Facts returns every fact for meals dated from..to, inclusive, leaving
+// out gala dinners (see GalaFacts).
 func (s *Store) Facts(ctx context.Context, from, to string) ([]Fact, error) {
+	return s.queryFacts(ctx, `WHERE meal_date >= ? AND meal_date <= ? AND NOT `+galaFact, from, to)
+}
+
+func (s *Store) queryFacts(ctx context.Context, where string, args ...any) ([]Fact, error) {
 	rows, err := s.boardDB().QueryContext(ctx, `SELECT seller,seller_name,kind,meal,meal_date,mess,diet,wants,price,qty,
 		first_seen,last_seen,meal_end,coalesce(sold_at,0),closed,deleted,posts,groups,other_ticks
-		FROM listing_facts WHERE meal_date >= ? AND meal_date <= ? ORDER BY meal_end, first_seen`, from, to)
+		FROM listing_facts `+where+` ORDER BY meal_end, first_seen`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +164,8 @@ type FactTotal struct {
 	AskSum, Asks         int
 }
 
-// FactTotals returns the totals for every meal date up to to, oldest first.
+// FactTotals returns the totals for every meal date up to to, oldest
+// first. Gala dinners don't count.
 func (s *Store) FactTotals(ctx context.Context, to string) ([]FactTotal, error) {
 	rows, err := s.boardDB().QueryContext(ctx, `SELECT meal_date, mess, diet,
 		sum(kind != 'buy' AND mess != '' AND deleted = 0),
@@ -167,7 +173,7 @@ func (s *Store) FactTotals(ctx context.Context, to string) ([]FactTotal, error) 
 		sum(kind = 'buy' AND deleted = 0),
 		sum(CASE WHEN kind = 'sell' AND mess != '' AND deleted = 0 AND price > 0 THEN price ELSE 0 END),
 		sum(kind = 'sell' AND mess != '' AND deleted = 0 AND price > 0)
-		FROM listing_facts WHERE meal_date <= ? GROUP BY meal_date, mess, diet ORDER BY meal_date`, to)
+		FROM listing_facts WHERE meal_date <= ? AND NOT `+galaFact+` GROUP BY meal_date, mess, diet ORDER BY meal_date`, to)
 	if err != nil {
 		return nil, err
 	}

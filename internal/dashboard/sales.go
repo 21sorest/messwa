@@ -731,7 +731,7 @@ func newAsks(ps []store.ServingPrices, recentFrom string) *asks {
 		for _, d := range []string{p.Diet, ""} {
 			a.serving[p.Date+"|"+p.Meal+"|"+p.Mess+"|"+d] = append(a.serving[p.Date+"|"+p.Meal+"|"+p.Mess+"|"+d], p.Prices...)
 			a.pooled[p.Date+"|"+p.Meal+"|"+d] = append(a.pooled[p.Date+"|"+p.Meal+"|"+d], p.Prices...)
-			if p.Date >= recentFrom {
+			if p.Date >= recentFrom && !p.Gala {
 				a.recent[p.Meal+"|"+d] = append(a.recent[p.Meal+"|"+d], p.Prices...)
 			}
 		}

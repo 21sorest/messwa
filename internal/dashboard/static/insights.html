@@ -65,6 +65,22 @@
     <p class="empty-note" id="snNote" hidden></p>
   </section>
 
+  <section class="chest" aria-label="Gala dinners">
+    <div class="chest-head">
+      <span class="head-icon" id="galaIcon"></span>
+      <span class="head-name">Gala dinners</span>
+      <span class="head-meta">The special dinner each mess serves once or twice a semester. Kept out of every other number on this page and out of price medians.</span>
+    </div>
+    <form class="gala-mark" id="galaForm">
+      <input type="date" id="galaDate" aria-label="Gala dinner date" required>
+      <button class="win on" type="submit" id="galaAdd">MARK AS GALA</button>
+      <span class="gala-err" id="galaErr" role="alert" hidden></span>
+    </form>
+    <div class="gala-dates" id="galaDates"></div>
+    <div class="tablewrap"><table class="sellers gala" id="gala"></table></div>
+    <p class="empty-note" id="galaNote" hidden></p>
+  </section>
+
   <section class="chest" aria-label="Weekly menu board">
     <div class="chest-head">
       <span class="head-icon" id="wkIcon"></span>

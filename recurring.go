@@ -102,6 +102,8 @@ func (m *sellManager) rulePricer(ctx context.Context, r store.RecurringRule, row
 		m.log.Warn("could not read market prices; recurring rule uses its fixed range", "rule", r.ID, "err", err)
 		return fixed
 	}
+	// A rule prices next week's dinner by last week's, which may have been a gala.
+	ps = market.Regular(ps)
 	regs := map[string]portal.Registration{}
 	for _, row := range rows {
 		regs[row.Date+"|"+row.Meal] = row

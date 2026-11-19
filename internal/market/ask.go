@@ -36,7 +36,8 @@ const Window = 28 * 24 * time.Hour
 // that always go for more; that serving at every mess; then any ask for
 // that meal. Only asks for the same diet count, since non-veg goes for
 // two or three times veg. With none in that diet it tries every diet.
-// False when there is none.
+// A gala dinner's asks count only toward that gala dinner itself. False
+// when there is none.
 func MedianAsk(ps []store.ServingPrices, date, meal, mess, diet string) (float64, bool) {
 	if diet != "" {
 		if v, ok := medianAsk(ps, date, meal, mess, store.PriceDiet(diet)); ok {
@@ -53,7 +54,7 @@ func medianAsk(ps []store.ServingPrices, date, meal, mess, diet string) (float64
 	}
 	var serving, weekday, pooled, recent []int
 	for _, p := range ps {
-		if p.Meal != meal || diet != "" && p.Diet != diet {
+		if p.Meal != meal || diet != "" && p.Diet != diet || p.Gala && p.Date != date {
 			continue
 		}
 		d, err := time.Parse("2006-01-02", p.Date)
@@ -83,4 +84,16 @@ func medianAsk(ps []store.ServingPrices, date, meal, mess, diet string) (float64
 		return Quantile(recent, .5), true
 	}
 	return 0, false
+}
+
+// Regular drops gala dinners from ps, for a median that must describe a
+// normal serving even when the date it reads from was a gala.
+func Regular(ps []store.ServingPrices) []store.ServingPrices {
+	out := make([]store.ServingPrices, 0, len(ps))
+	for _, p := range ps {
+		if !p.Gala {
+			out = append(out, p)
+		}
+	}
+	return out
 }

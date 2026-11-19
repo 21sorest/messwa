@@ -53,6 +53,8 @@ func PriceDiet(diet string) string {
 type ServingPrices struct {
 	Date, Meal, Mess, Diet string
 	Prices                 []int
+	// Gala marks a gala dinner, whose prices say nothing about a normal one.
+	Gala bool
 }
 
 func (s *Store) livePrices(ctx context.Context, from, to string) (map[[4]string][]int, error) {
@@ -118,9 +120,18 @@ func (s *Store) Prices(ctx context.Context, from, to string) ([]ServingPrices, e
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	gala, err := s.GalaDinners(ctx)
+	if err != nil {
+		return nil, err
+	}
+	isGala := map[string]bool{}
+	for _, d := range gala {
+		isGala[d] = true
+	}
 	out := make([]ServingPrices, 0, len(all))
 	for k, ps := range all {
-		out = append(out, ServingPrices{Date: k[0], Meal: k[1], Mess: k[2], Diet: k[3], Prices: ps})
+		out = append(out, ServingPrices{Date: k[0], Meal: k[1], Mess: k[2], Diet: k[3], Prices: ps,
+			Gala: k[1] == GalaMeal && isGala[k[0]]})
 	}
 	return out, nil
 }
