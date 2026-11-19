@@ -393,9 +393,10 @@ type negotiation struct {
 	sessions map[types.JID]*session
 	resumed  []*session
 	holder   types.JID // the buyer whose payment turn is under way
-	// dropped are turn holders autopilot skipped, with why. Their turn
-	// ends through the outbid signal and lostTurn drops them for good.
-	dropped map[types.JID]string
+	// dropped are turn holders autopilot skipped, or who backed out of
+	// their deal, with why. Their turn ends through the outbid signal and
+	// lostTurn drops them for good.
+	dropped map[types.JID]droppedTurn
 	// outbidC fires when someone agrees more than holder; see outbidLocked.
 	outbidC chan struct{}
 	sold    bool
@@ -865,13 +866,13 @@ func (n *negotiation) lostTurn(ctx context.Context, buyer types.JID, handedOff b
 		n.holder, n.outbidC = types.EmptyJID, nil
 	}
 	ss := n.sessions[buyer]
-	if note, ok := n.dropped[buyer]; ok {
+	if d, ok := n.dropped[buyer]; ok {
 		delete(n.dropped, buyer)
 		if ss != nil {
 			ss.state = sessionEnded
 		}
 		n.mu.Unlock()
-		return n.dropTurn(ctx, buyer, note)
+		return n.dropTurn(ctx, buyer, d)
 	}
 	var agreed string
 	if ss != nil {
@@ -1083,14 +1084,7 @@ func (n *negotiation) skip(ctx context.Context, ss *session, note string) {
 	n.mu.Lock()
 	holder := n.holder == ss.buyer
 	if holder {
-		if n.dropped == nil {
-			n.dropped = map[types.JID]string{}
-		}
-		n.dropped[ss.buyer] = note
-		select {
-		case n.outbidC <- struct{}{}:
-		default:
-		}
+		n.dropLocked(ss.buyer, droppedTurn{note: note})
 	} else {
 		ss.state = sessionEnded
 	}
@@ -1104,19 +1098,78 @@ func (n *negotiation) skip(ctx context.Context, ss *session, note string) {
 	n.event(ss.buyer, store.EventAutoSkipped, 0, note)
 }
 
-// dropTurn ends the turn of a holder autopilot skipped, for good. A buyer
-// already asked to pay hears not to.
-func (n *negotiation) dropTurn(ctx context.Context, buyer types.JID, note string) error {
-	prompted, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerOffered, store.BuyerSkipped, "", time.Time{})
+// backOut ends the deal of an agreed buyer who no longer takes the agreed
+// price, such as "naa I said 50" after the pay prompt. Autopilot skips
+// them. Otherwise they need you, and a buyer holding the payment turn
+// loses it so the meal doesn't wait on a deal that fell through. park
+// can't do that: a buyer who says they paid keeps their turn.
+func (n *negotiation) backOut(ctx context.Context, ss *session, note string) {
+	if n.t.Autopilot {
+		n.skip(ctx, ss, note)
+		return
+	}
+	n.mu.Lock()
+	holder := n.holder == ss.buyer
+	if holder {
+		n.dropLocked(ss.buyer, droppedTurn{note: note, park: true})
+	} else {
+		ss.state = sessionEnded
+	}
+	n.mu.Unlock()
+	n.log.Info("buyer backed out of the agreed price; needs you", "buyer", ss.buyer, "why", note, "had_turn", holder)
+	if !holder {
+		if err := n.m.st.ParkSellTaskBuyer(ctx, n.t.ID, ss.buyer.String(), note); err != nil {
+			n.log.Error("could not park buyer", "buyer", ss.buyer, "err", err)
+		}
+	}
+	n.event(ss.buyer, store.EventParked, 0, note)
+}
+
+// droppedTurn is why a turn holder's turn ends for good. park puts them
+// with the buyers who need you instead of skipping them.
+type droppedTurn struct {
+	note string
+	park bool
+}
+
+// dropLocked ends the turn of holder buyer through the outbid signal;
+// lostTurn then drops them. n.mu must be held.
+func (n *negotiation) dropLocked(buyer types.JID, d droppedTurn) {
+	if n.dropped == nil {
+		n.dropped = map[types.JID]droppedTurn{}
+	}
+	n.dropped[buyer] = d
+	select {
+	case n.outbidC <- struct{}{}:
+	default:
+	}
+}
+
+// dropTurn ends a dropped holder's turn for good. A buyer autopilot
+// skipped after the pay prompt hears not to pay. One who backed out is
+// parked for you, and the bot says nothing more to them.
+func (n *negotiation) dropTurn(ctx context.Context, buyer types.JID, d droppedTurn) error {
+	to := store.BuyerSkipped
+	if d.park {
+		to = store.BuyerParked
+	}
+	prompted, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerOffered, to, "", time.Time{})
 	if err != nil {
 		return err
 	}
 	if !prompted {
-		if _, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerAgreed, store.BuyerSkipped, "", time.Time{}); err != nil {
+		if _, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerAgreed, to, "", time.Time{}); err != nil {
 			return err
 		}
 	}
-	if err := n.m.st.SkipSellTaskBuyer(ctx, n.t.ID, buyer.String(), note); err != nil {
+	if d.park {
+		if err := n.m.st.ParkSellTaskBuyer(ctx, n.t.ID, buyer.String(), d.note); err != nil {
+			n.log.Error("could not note why the buyer was parked", "buyer", buyer, "err", err)
+		}
+		n.log.Info("ended the turn of a buyer who backed out", "buyer", buyer, "prompted", prompted)
+		return nil
+	}
+	if err := n.m.st.SkipSellTaskBuyer(ctx, n.t.ID, buyer.String(), d.note); err != nil {
 		n.log.Error("could not note why the buyer was skipped", "buyer", buyer, "err", err)
 	}
 	n.log.Info("autopilot ended a skipped buyer's turn", "buyer", buyer, "prompted", prompted)
@@ -1390,7 +1443,7 @@ func (ss *session) handle(texts []string) handled {
 	}
 	in := combineIntents(texts)
 	n.mu.Lock()
-	state, hs := ss.state, ss.hs
+	state, hs, agreed := ss.state, ss.hs, ss.agreed
 	n.mu.Unlock()
 	// A picture or sticker has no text to read; the payment turn records
 	// pictures on its own.
@@ -1418,6 +1471,18 @@ func (ss *session) handle(texts []string) handled {
 		case in.kind == intentPayOther:
 			if !ss.sayPayOther() {
 				n.park(context.WithoutCancel(ctx), ss, "wants to pay some way other than WhatsApp Pay")
+			}
+			return handledNothing
+		case in.kind == intentOffer && int64(in.offer)*100 < paise(agreed), in.kind == intentLower:
+			// "naa I said 50" after agreeing ₹60: the deal they're waiting
+			// to pay isn't one they took.
+			note := fmt.Sprintf("agreed ₹%d, then wants it cheaper; check the chat", paise(agreed)/100)
+			if in.kind == intentOffer {
+				note = fmt.Sprintf("agreed ₹%d, then offered ₹%d; check the chat", paise(agreed)/100, in.offer)
+			}
+			n.backOut(context.WithoutCancel(ctx), ss, note)
+			if ss.current() == sessionEnded {
+				return handledEnded
 			}
 			return handledNothing
 		case in.kind == intentPass:
