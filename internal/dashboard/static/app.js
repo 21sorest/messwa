@@ -1218,6 +1218,18 @@ function openSellHere(date, meal, view) {
   return true;
 }
 
+// openFriendHere opens the sell sheet for a friend's sale, found by its
+// task id (kind 'task') or schedule id (kind 'schedule') among the friends'
+// meals the nudge loaded. It returns false when they don't have it.
+function openFriendHere(id, kind, view) {
+  if (!N || !N.owner) return false;
+  const f = (N.friends || []).find((x) => x[kind] && x[kind].id === id);
+  if (!f) return false;
+  sheet.className = 'sheet sell-sheet';
+  SELL.open(f.date, SELL.friendCell(f), view);
+  return true;
+}
+
 // ---------- live status ----------
 
 function tickLive() {

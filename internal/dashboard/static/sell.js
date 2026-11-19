@@ -402,5 +402,11 @@ function sellSheet(ctx) {
   }
 
 
-  return { open: openSell, isSold, priceSlider, priceText, listAt, listWord, listWhen, sellBounds, sellDefaults };
+  // friendCell turns a friend's meal (api/sales friends) into the cell
+  // openSell takes. friend is '' for an unnamed friend, so the title still
+  // says "for a friend".
+  const friendCell = (f) => ({ meal: f.meal, mess: f.mess, diet: f.diet, start: f.start, end: f.end, ask: f.ask, task: f.task,
+    schedule: f.schedule, opens: f.opens, opens_after: f.opens_after, friend: f.friend || '' });
+
+  return { open: openSell, isSold, friendCell, priceSlider, priceText, listAt, listWord, listWhen, sellBounds, sellDefaults };
 }

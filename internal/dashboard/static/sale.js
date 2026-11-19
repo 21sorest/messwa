@@ -305,11 +305,12 @@ function chest(v) {
   return c;
 }
 
-// openTaskMenu opens the sell menu for one of your running sales, the same
-// one the sales page shows. It returns false for a friend's sale, or when
-// the ledger the nudge loaded doesn't have this task yet.
+// openTaskMenu opens the sell menu for a running sale, yours or a friend's,
+// the same one the sales page shows. It returns false when the ledger the
+// nudge loaded doesn't have this task yet.
 function openTaskMenu(v, view) {
-  if (v.for_friend || v.state !== 'active') return false;
+  if (v.state !== 'active') return false;
+  if (v.for_friend) return openFriendHere(v.id, 'task', view);
   const cell = ledgerCell(v.date, v.meal);
   if (!cell || !cell.task || cell.task.id !== v.id) return false;
   return openSellHere(v.date, v.meal, view);
@@ -388,9 +389,9 @@ function scheduledCard(s) {
   auto.setAttribute('role', 'switch');
   auto.setAttribute('aria-checked', String(!!s.autopilot));
   auto.title = 'Autopilot sells without waiting on you: it skips any buyer who would need you, even one offering more.';
-  // A friend's sale has no sheet here, so it goes to the sales page.
+  // Without the ledger loaded it goes to the sales page instead.
   tapCard(c, () => {
-    if (!s.for_friend && openSellHere(s.date, s.meal)) return;
+    if (s.for_friend ? openFriendHere(s.id, 'schedule') : openSellHere(s.date, s.meal)) return;
     location.href = s.for_friend ? 'sales.html' : `sales.html#sell=${encodeURIComponent(`${s.date}|${s.meal}`)}`;
   });
   c.append(a, err);

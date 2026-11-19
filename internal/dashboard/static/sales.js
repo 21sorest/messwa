@@ -364,7 +364,7 @@ const FRIEND_LOOK = {
   scheduled: ['SCHEDULED', 'ce'], selling: ['SELLING', 'c6'], armed: ['ARMED', 'ce'], sending: ['PAID · SENDING', 'c6'], sold: ['SOLD', 'ca'],
   handoff: ['HANDED OFF', 'c6'], ended: ['ENDED UNSOLD', 'c8'],
 };
-const friendCell = (f) => ({ meal: f.meal, mess: f.mess, diet: f.diet, start: f.start, end: f.end, ask: f.ask, task: f.task, schedule: f.schedule, friend: f.friend || '' });
+const { friendCell } = SELL;
 
 function renderFriends() {
   const box = $('friends');
