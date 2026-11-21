@@ -4,26 +4,28 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
 
-async function fixture(){
+async function fixture(extra = {}){
  class Element{
-  constructor(tag='div'){this.tag=tag;this.children=[];this.listeners={};this.value='';}
+  constructor(tag='div',cls=''){this.tag=tag;this.className=cls;this.children=[];this.listeners={};this.attrs={};this.style={setProperty(k,v){this[k]=v;}};this.value='';}
   append(...items){this.children.push(...items);}
   replaceChildren(...items){this.children=items;}
   addEventListener(name,fn){this.listeners[name]=fn;}
+  setAttribute(k,v){this.attrs[k]=v;}
   scrollIntoView(){}
-  querySelectorAll(selector){const all=[];const visit=n=>{if(!n||typeof n!=='object')return;if(selector==='input:checked'&&n.tag==='input'&&n.checked)all.push(n);if(selector==='button'&&n.tag==='button')all.push(n);for(const c of n.children||[])visit(c);};for(const c of this.children)visit(c);return all;}
+  querySelectorAll(selector){const all=[];const visit=n=>{if(!n||typeof n!=='object')return;if(selector==='input:checked'&&n.tag==='input'&&n.checked)all.push(n);if(selector==='button'&&n.tag==='button')all.push(n);if(selector==='input[type="range"]'&&n.tag==='input'&&n.type==='range')all.push(n);for(const c of n.children||[])visit(c);};for(const c of this.children)visit(c);return all;}
  }
  const nodes=new Map(),calls=[];
  const $=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
- const ctx=vm.createContext({$,D:{owner:true,today:'2026-11-16',list_at:-900},el:tag=>new Element(tag),svgEl:()=>new Element(),icon:()=>'',cap:s=>s,
+ const ctx=vm.createContext({$,D:{owner:true,today:'2026-11-16',list_at:-900},el:(tag,cls,text)=>{const e=new Element(tag,cls);if(text!=null)e.textContent=text;return e;},svgEl:()=>new Element(),icon:()=>'',cap:s=>s,
   meals:()=>['breakfast','lunch','snacks','dinner'],addDays:(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);},
   location:{hash:'',pathname:'/sales.html',search:''},history:{replaceState(){}},addEventListener(){},load:async()=>{},keepScroll:fn=>fn(),
   fetch:async()=>({ok:true,status:200,json:async()=>[]}),
   send:async(method,url,body)=>{calls.push(body);return body.action==='preview'?{new:5,starts_now:1,waiting:2,preserved_overrides:1,kept:1,existing:0}:{...body.rule,id:7,revision:2};},
+  ...extra,
  });
  vm.runInContext(fs.readFileSync(path.join(__dirname,'static/recurring.js'),'utf8'),ctx);
  await new Promise(resolve=>setImmediate(resolve));
- return {$,calls,run:code=>vm.runInContext(code,ctx)};
+ return {$,calls,Element,run:code=>vm.runInContext(code,ctx)};
 }
 
 test('rule preview is invalidated when settings change',async()=>{
@@ -62,4 +64,44 @@ test('median pricing sends percentages for each selected meal',async()=>{
  assert.equal(saved.rule.pricing,'median');
  assert.deepEqual(JSON.parse(JSON.stringify(saved.rule.relative)),{lunch:{low:-15,high:25},dinner:{low:-10,high:40}});
  assert.equal(saved.rule.min,40);
+});
+
+test('goes up slider maps offsets to rule.before and formats like Settings',async()=>{
+ const f=await fixture();
+ assert.equal(f.$('ruleBeforeRange').value,'-15');
+ assert.equal(f.$('ruleBeforeVal').textContent,'15m before start');
+ f.$('ruleBeforeRange').value='0';f.$('ruleBeforeRange').listeners.input();
+ assert.equal(f.$('ruleBefore').value,'0');assert.equal(f.$('ruleBeforeVal').textContent,'At the start');
+ f.$('ruleBeforeRange').value='75';f.$('ruleBeforeRange').listeners.input();
+ assert.equal(f.$('ruleBefore').value,'-75');assert.equal(f.$('ruleBeforeVal').textContent,'1h 15m after start');
+ f.$('ruleName').value='Late lunches';
+ await f.$('rulePreview').onclick();await f.$('ruleForm').listeners.submit({preventDefault(){}});
+ const saved=f.calls.find(c=>c.action==='save');
+ assert.equal(saved.rule.before,-75);
+});
+
+test('median pricing renders dual sliders for each meal and the fallback range',async()=>{
+ let sliderNodes=null;
+ const f=await fixture({priceRange:(o)=>{
+  const vals={tag:'div',className:'pr-vals',children:[]},dual={tag:'div',className:'dual',children:[]},axis={tag:'div',className:'sell-axis',children:[]};
+  sliderNodes=[vals,dual,axis];
+  return {nodes:sliderNodes,get:()=>[o.lo,o.hi]};
+ }});
+ const radios=f.$('rulePricing').children.filter(c=>c.tag==='label').map(l=>l.children[0]);
+ radios.forEach(r=>{r.checked=r.value==='median';});
+ f.run('renderRuleRelative()');
+ const rows=f.$('ruleRelative').children;
+ assert.equal(rows.length,2);
+ const mealRanges=rows[0].querySelectorAll('input[type="range"]');
+ assert.equal(mealRanges.length,2);
+ assert.equal(mealRanges[0].value,'-15');assert.equal(mealRanges[1].value,'25');
+ mealRanges[0].value='-30';mealRanges[0].listeners.input();
+ mealRanges[1].value='50';mealRanges[1].listeners.input();
+ assert.deepEqual(JSON.parse(JSON.stringify(f.run('recurringRelative.lunch'))),{low:-30,high:50});
+ mealRanges[0].value='70';mealRanges[0].listeners.input();
+ assert.equal(f.run('recurringRelative.lunch.low'),50,'lowest slider stops at opening');
+ const fallback=rows[1];
+ assert.ok(fallback.children.includes(sliderNodes[0]));
+ assert.ok(fallback.children.includes(sliderNodes[1]));
+ assert.ok(fallback.children.includes(sliderNodes[2]));
 });

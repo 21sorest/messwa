@@ -411,9 +411,9 @@ button.friend { cursor: pointer; }
 .rr-est { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .rr-est b { font: 700 12px Pixel; color: var(--gold); }
 .rr-est small { color: var(--dim); font-size: 11px; }
-.rr-bar { position: relative; height: 6px; margin: 0 2px; border-radius: 3px; background: #0c0f14; box-shadow: 0 0 0 1px var(--line); }
-.rr-bar .band { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #ff9f3d, var(--gold)); }
-.rr-bar .mid { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text); opacity: .7; }
+.rr-row .dual + .sell-axis { margin-top: -8px; }
+.rr-axis { position: relative; margin-left: 0; margin-right: 0; padding: 0 2px; }
+.rr-axis .med-l { position: absolute; transform: translateX(-50%); }
 .rr-fallback { background: none; border-style: dashed; }
 .rr-fallback .rr-meal { color: var(--muted); font-weight: 500; }
 .pr-in.sm { height: 36px; }
@@ -421,11 +421,28 @@ button.friend { cursor: pointer; }
 .pr-in .cur.pct { font-size: 15px; }
 .sell-form .pr-in.sm input.pr-num { font-size: 15px; }
 
-/* Goes up: a select with the clock in front. */
-.rw-in { position: relative; display: block; }
-.rw-in i { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; margin-top: -8px; pointer-events: none; }
-.rw-in i svg { display: block; width: 16px; height: 16px; image-rendering: pixelated; }
-.sell-form .rw-in select { padding: 9px 10px 9px 36px; border-radius: 10px; }
+/* Goes up: the same -30m to +1h 30m slider as Settings. */
+.rule-when .rf-top { margin-bottom: 8px; }
+.rw-val { display: inline-flex; align-items: center; gap: 6px; font: 700 11px Pixel; color: var(--gold); white-space: nowrap; }
+.rw-val i { width: 14px; height: 14px; flex: none; }
+.rw-val i svg { display: block; width: 14px; height: 14px; image-rendering: pixelated; }
+.rw-card { padding: 11px 12px; border-radius: 12px; background: var(--slot); border: 1px solid var(--line); }
+.rw-sl { display: flex; align-items: center; gap: 10px; }
+.rw-sl .dim { font-size: 11px; color: var(--dim); white-space: nowrap; }
+.rw-sl input[type=range] {
+  -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 6px; margin: 0;
+  border-radius: 99px; background: #0c0f14; border: 1px solid var(--line); outline: none; cursor: pointer;
+}
+.rw-sl input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 0 4px rgba(255, 197, 61, .18); cursor: pointer;
+}
+.rw-sl input[type=range]::-moz-range-thumb {
+  width: 16px; height: 16px; border: 0; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 0 4px rgba(255, 197, 61, .18); cursor: pointer;
+}
+.rw-sl input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(255, 197, 61, .45); }
+.rw-sl input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(255, 197, 61, .45); }
 
 /* On/off rows with a switch on the right. */
 .rule-switches { display: grid; border-radius: 12px; background: var(--slot); border: 1px solid var(--line); overflow: hidden; }
