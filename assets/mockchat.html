@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mock WhatsApp · messwa</title>
+<style>
+:root {
+  --bg: #eae6df; --side: #ffffff; --line: #e9edef; --text: #111b21; --muted: #667781;
+  --head: #f0f2f5; --in: #ffffff; --out: #d9fdd3; --accent: #00a884; --wall: #efeae2;
+  --chip: #f0f2f5; --danger: #ea0038; --quote: rgba(0,0,0,.05); --shadow: 0 1px .5px rgba(11,20,26,.13);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1317; --side: #111b21; --line: #222d34; --text: #e9edef; --muted: #8696a0;
+    --head: #202c33; --in: #202c33; --out: #005c4b; --accent: #00a884; --wall: #0b141a;
+    --chip: #202c33; --quote: rgba(255,255,255,.07); --shadow: 0 1px .5px rgba(0,0,0,.4);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+.app { display: grid; grid-template-columns: 360px 1fr; height: 100dvh; max-width: 1500px; margin: 0 auto; background: var(--side); }
+.side { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-height: 0; }
+.side-head { background: var(--head); padding: 12px 16px; }
+.side-head b { font-size: 16px; }
+.side-head small { display: block; color: var(--muted); font-size: 12px; }
+.ctl { padding: 10px 14px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.ctl .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ctl label.f { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.ctl input[type=text], .ctl input[type=number], .ctl input[type=time], .ctl select { background: var(--chip); border: 1px solid transparent; border-radius: 8px; padding: 6px 9px; outline: none; min-width: 0; }
+.ctl input:focus, .ctl select:focus { border-color: var(--accent); }
+.ctl .upi { flex: 1; }
+.ctl input[type=number] { width: 66px; }
+.btn { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 600; }
+.btn.ghost { background: var(--chip); color: var(--text); font-weight: 500; }
+.btn:disabled { opacity: .5; cursor: default; }
+.check { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+.tasks { display: grid; gap: 4px; }
+.task { display: flex; gap: 8px; align-items: center; font-size: 12.5px; background: var(--chip); border-radius: 8px; padding: 5px 8px; }
+.task .st { font-weight: 600; }
+.task .st.sold { color: var(--accent); }
+.task .st.active { color: #f5a623; }
+.task .d { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task button { background: none; border: 0; color: var(--danger); cursor: pointer; padding: 0; font-size: 12px; }
+.chats { overflow-y: auto; flex: 1; min-height: 0; }
+.chat-item { display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--line); width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; }
+.chat-item:hover { background: var(--chip); }
+.chat-item.on { background: var(--chip); }
+.avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; flex: none; font-size: 16px; }
+.chat-item .meta { flex: 1; min-width: 0; }
+.chat-item .name { font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+.chat-item .name small { color: var(--muted); font-size: 11.5px; }
+.chat-item .prev { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-item .dot { background: var(--accent); color: #fff; border-radius: 10px; font-size: 11px; padding: 0 6px; font-weight: 700; }
+.add { margin: 10px 14px 14px; }
+main { display: flex; flex-direction: column; min-height: 0; background: var(--wall); }
+.chat-head { background: var(--head); padding: 9px 14px; display: flex; gap: 12px; align-items: center; border-left: 1px solid var(--line); }
+.chat-head .avatar { width: 38px; height: 38px; font-size: 14px; }
+.chat-head .t { flex: 1; min-width: 0; }
+.chat-head .t small { display: block; color: var(--muted); font-size: 12.5px; }
+.back { display: none; background: none; border: 0; font-size: 22px; cursor: pointer; padding: 0 6px 0 0; }
+.log { flex: 1; overflow-y: auto; padding: 14px 7%; display: flex; flex-direction: column; gap: 3px;
+  background-image: radial-gradient(color-mix(in srgb, var(--muted) 14%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
+.empty { margin: auto; text-align: center; color: var(--muted); max-width: 340px; background: var(--side); padding: 14px 18px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13.5px; }
+.b { max-width: min(70%, 420px); padding: 6px 8px 7px 9px; border-radius: 8px; box-shadow: var(--shadow); background: var(--in); align-self: flex-start; position: relative; word-wrap: break-word; margin-top: 4px; }
+.b.me { background: var(--out); align-self: flex-end; }
+.b + .b.same { margin-top: 1px; }
+.b .who { font-size: 12.5px; font-weight: 600; color: #06cf9c; margin-bottom: 2px; }
+.b .time { float: right; font-size: 11px; color: var(--muted); margin: 6px 0 -4px 10px; }
+.b img { display: block; max-width: 260px; width: 100%; border-radius: 6px; margin: -2px -3px 4px; background: #fff; cursor: zoom-in; }
+.b .cap { white-space: pre-wrap; }
+.b .q { background: var(--quote); border-left: 4px solid #06cf9c; border-radius: 6px; padding: 4px 8px; margin: 0 -3px 5px; font-size: 13px; color: var(--muted); }
+.b .q b { display: block; color: #06cf9c; font-size: 12.5px; }
+.b .react { position: absolute; bottom: -14px; right: 8px; background: var(--side); border-radius: 12px; padding: 0 5px; font-size: 14px; box-shadow: var(--shadow); }
+.b.react-on { margin-bottom: 14px; }
+.b.deleted { font-style: italic; color: var(--muted); }
+.b .reply-btn { display: inline-block; margin-top: 6px; background: var(--chip); border: 0; border-radius: 14px; padding: 3px 10px; font-size: 12.5px; color: var(--accent); cursor: pointer; font-weight: 600; }
+.pay { display: flex; gap: 10px; align-items: center; min-width: 200px; }
+.pay .rupee { width: 38px; height: 38px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; }
+.pay b { font-size: 18px; display: block; }
+.pay small { color: var(--muted); }
+.quotebar { display: none; background: var(--head); padding: 8px 14px 0; }
+.quotebar.on { display: block; }
+.quotebar .q { background: var(--quote); border-left: 4px solid #06cf9c; border-radius: 6px; padding: 6px 30px 6px 10px; position: relative; font-size: 13px; color: var(--muted); }
+.quotebar .q b { display: block; color: #06cf9c; font-size: 12.5px; }
+.quotebar .x { position: absolute; right: 6px; top: 6px; background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 16px; }
+.composer { background: var(--head); padding: 8px 10px; display: flex; gap: 6px; align-items: center; }
+.composer .ic { background: none; border: 0; font-size: 20px; cursor: pointer; padding: 4px 6px; border-radius: 8px; }
+.composer .ic:hover { background: var(--chip); }
+.composer input[type=text] { flex: 1; min-width: 0; background: var(--side); border: 0; border-radius: 8px; padding: 10px 12px; outline: none; }
+.composer .send { width: 42px; height: 42px; border-radius: 50%; padding: 0; font-size: 18px; }
+.composer.off { color: var(--muted); justify-content: center; font-size: 13px; padding: 14px; text-align: center; }
+.composer[hidden] { display: none; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13.5px; max-width: calc(100% - 32px); z-index: 9; }
+.toast[hidden] { display: none; }
+.zoom { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: grid; place-items: center; z-index: 8; cursor: zoom-out; }
+.zoom[hidden] { display: none; }
+.zoom img { max-width: 92vw; max-height: 92vh; background: #fff; border-radius: 6px; }
+.hint { font-size: 12px; color: var(--muted); }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  main { display: none; }
+  .app.show-chat .side { display: none; }
+  .app.show-chat main { display: flex; }
+  .back { display: block; }
+  .log { padding: 12px 10px; }
+  .b { max-width: 85%; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side">
+    <div class="side-head"><b>messwa mock chat</b><small>The real bot, a pretend WhatsApp. Nothing leaves this page.</small></div>
+    <section class="ctl">
+      <label class="f" for="upi">Seller's UPI ID</label>
+      <div class="row">
+        <input class="upi" id="upi" type="text" placeholder="name@okaxis (empty: WhatsApp Pay only)" spellcheck="false" autocomplete="off">
+        <button class="btn ghost" id="saveSettings" type="button">Save</button>
+      </div>
+      <label class="check"><input type="checkbox" id="images"> Screenshot counts as paid</label>
+      <div class="hint" id="settingsNote"></div>
+      <label class="f" for="clockAt">Pretend it's</label>
+      <div class="row">
+        <input type="time" id="clockAt" step="60">
+        <button class="btn ghost" id="setClock" type="button">Set time</button>
+        <button class="btn ghost" id="realClock" type="button">Real time</button>
+      </div>
+      <div class="hint" id="clockNote"></div>
+      <label class="f">Sell a meal today</label>
+      <div class="row">
+        <select id="meal"></select>
+        ₹<input type="number" id="min" value="40" min="1" title="Lowest price">–<input type="number" id="max" value="60" min="1" title="Highest price">
+        <button class="btn" id="start" type="button">Start sale</button>
+      </div>
+      <div class="tasks" id="tasks"></div>
+    </section>
+    <div class="chats" id="chats"></div>
+    <button class="btn ghost add" id="addBuyer" type="button">+ New buyer</button>
+  </aside>
+  <main>
+    <div class="chat-head">
+      <button class="back" id="back" type="button" aria-label="Back to chats">‹</button>
+      <div class="avatar" id="headAvatar"></div>
+      <div class="t"><b id="headName"></b><small id="headSub"></small></div>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="quotebar" id="quoteBar"><div class="q"><b>Seller · offer</b><span id="quoteText"></span><button class="x" id="unquote" type="button" aria-label="Don't quote the offer">✕</button></div></div>
+    <form class="composer" id="composer">
+      <button class="ic" type="button" id="payBtn" title="Pay with WhatsApp Pay">₹</button>
+      <button class="ic" type="button" id="shotBtn" title="Send a made-up payment screenshot">🧾</button>
+      <button class="ic" type="button" id="fileBtn" title="Send an image from your device">📎</button>
+      <input type="file" id="file" accept="image/*" hidden>
+      <input type="text" id="text" placeholder="Type a message" autocomplete="off">
+      <button class="btn send" type="submit" aria-label="Send">➤</button>
+    </form>
+    <div class="composer off" id="groupNote" hidden>You're watching the group. Tap “Reply privately” on an offer to message the bot as a buyer.</div>
+  </main>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div class="zoom" id="zoom" hidden><img id="zoomImg" alt=""></div>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let S = null;          // last /api/state
+let shownVersion = -1;
+let chat = null;       // selected chat JID
+let quote = {};        // buyer JID -> quoting the offer
+const seen = {};       // chat JID -> messages read
+const COLORS = ['#25d366', '#53bdeb', '#ff7c5c', '#a786df', '#f7b928', '#ef5da8'];
+
+function toast(msg) {
+  $('toast').textContent = msg;
+  $('toast').hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { $('toast').hidden = true; }, 4000);
+}
+
+async function api(path, body, isForm) {
+  const r = await fetch(path, isForm ? { method: 'POST', body } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.status === 204) return null;
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+
+const isGroup = (jid) => S && jid === S.group;
+const buyerOf = (jid) => S && S.buyers.find((b) => b.jid === jid);
+const nameOf = (jid) => (isGroup(jid) ? 'Mess Buy Sell (mock)' : (buyerOf(jid) || {}).name || jid);
+const colorOf = (jid) => (isGroup(jid) ? '#00a884' : COLORS[S.buyers.findIndex((b) => b.jid === jid) % COLORS.length]);
+const initials = (n) => n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const msgsIn = (jid) => S.messages.filter((m) => m.chat === jid);
+const lastOffer = () => [...S.messages].reverse().find((m) => m.from_bot && isGroup(m.chat) && !m.deleted && m.text);
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function preview(m) {
+  if (!m) return '';
+  if (m.deleted) return 'This message was deleted';
+  if (m.payment) return `₹${m.payment} · WhatsApp Pay`;
+  if (m.image) return `📷 ${m.text || 'Photo'}`;
+  return m.text;
+}
+
+function renderSide() {
+  $('upi').placeholder = 'name@okaxis (empty: WhatsApp Pay only)';
+  if (document.activeElement !== $('upi') && !$('upi').dataset.dirty) $('upi').value = S.upi;
+  if (!$('images').dataset.dirty) $('images').checked = S.images;
+  $('settingsNote').textContent = S.upi && S.images
+    ? `Buyers who agree get a UPI QR for the price, paying ${S.upi}.`
+    : S.upi ? 'Turn screenshots on too, or the bot sticks to WhatsApp Pay.' : 'No UPI ID: the bot asks for WhatsApp Pay.';
+  $('clockNote').textContent = S.pretend
+    ? `It's ${S.clock} here (pretend, still ticking). Meal windows follow this clock.`
+    : `It's ${S.clock} here (real time).`;
+  if (!$('clockAt').value && document.activeElement !== $('clockAt')) $('clockAt').value = S.clock;
+  if (!$('meal').options.length) {
+    for (const m of S.meals) $('meal').append(new Option(`${m.name} · ${m.starts}–${m.ends}`, m.name));
+    if (S.next_meal) $('meal').value = S.next_meal;
+  }
+  $('tasks').replaceChildren(...S.tasks.map((t) => {
+    const row = el('div', 'task');
+    row.append(el('span', '', `#${t.id} ${t.meal}`), el('span', `st ${t.state}`, t.state), el('span', 'd', t.detail || ''));
+    row.title = t.detail || '';
+    if (t.state === 'active') {
+      const c = el('button', '', 'Cancel');
+      c.type = 'button';
+      c.onclick = () => api('api/cancel', { id: t.id }).then(apply).catch((x) => toast(x.message));
+      row.append(c);
+    }
+    return row;
+  }));
+  const jids = [S.group, ...S.buyers.map((b) => b.jid)];
+  $('chats').replaceChildren(...jids.map((jid) => {
+    const ms = msgsIn(jid);
+    const last = ms[ms.length - 1];
+    const unread = jid === chat ? 0 : ms.slice(seen[jid] || 0).filter((m) => m.from_bot).length;
+    const b = el('button', 'chat-item' + (jid === chat ? ' on' : ''));
+    b.type = 'button';
+    const av = el('div', 'avatar', isGroup(jid) ? '👥' : initials(nameOf(jid)));
+    av.style.background = colorOf(jid);
+    const meta = el('div', 'meta');
+    const nm = el('div', 'name');
+    nm.append(el('span', '', nameOf(jid)), el('small', '', last ? hhmm(last.at) : ''));
+    const pv = el('div', 'name');
+    pv.append(el('span', 'prev', last ? preview(last) : isGroup(jid) ? 'Offers show up here' : 'You play this buyer'));
+    if (unread) pv.append(el('span', 'dot', String(unread)));
+    meta.append(nm, pv);
+    b.append(av, meta);
+    b.onclick = () => open(jid);
+    return b;
+  }));
+}
+
+function bubble(m, prev) {
+  const mine = !m.from_bot && !isGroup(m.chat);
+  const b = el('div', 'b' + (mine ? ' me' : '') + (prev && prev.from_bot === m.from_bot ? ' same' : ''));
+  if (m.deleted) {
+    b.classList.add('deleted');
+    b.append(el('span', '', '🚫 This message was deleted'));
+  } else {
+    if (isGroup(m.chat) && (!prev || !prev.from_bot)) b.append(el('div', 'who', 'Seller (the bot)'));
+    if (m.quoted) {
+      const q = S.messages.find((x) => x.id === m.quoted);
+      const qb = el('div', 'q');
+      qb.append(el('b', '', q && q.from_bot ? 'Seller' : 'You'), document.createTextNode(q ? preview(q) : 'offer'));
+      b.append(qb);
+    }
+    if (m.payment) {
+      const p = el('div', 'pay');
+      const t = el('div');
+      t.append(el('b', '', `₹${m.payment}`), el('small', '', 'Paid with WhatsApp Pay'));
+      p.append(el('div', 'rupee', '₹'), t);
+      b.append(p);
+    }
+    if (m.image) {
+      const img = el('img');
+      img.src = m.image;
+      img.alt = m.text || 'image';
+      img.onclick = () => { $('zoomImg').src = m.image; $('zoom').hidden = false; };
+      b.append(img);
+    }
+    if (m.text) b.append(el('span', 'cap', m.text + (m.edited ? '  ✎' : '')));
+    if (isGroup(m.chat) && m.from_bot && m.text) {
+      const row = el('div');
+      for (const buyer of S.buyers.slice(0, 4)) {
+        const r = el('button', 'reply-btn', `Reply privately as ${buyer.name}`);
+        r.type = 'button';
+        r.style.marginRight = '4px';
+        r.onclick = () => { quote[buyer.jid] = true; open(buyer.jid); $('text').focus(); };
+        row.append(r);
+      }
+      b.append(row);
+    }
+  }
+  const t = el('span', 'time', hhmm(m.at));
+  b.prepend(t);
+  if (m.reaction) {
+    b.classList.add('react-on');
+    b.append(el('span', 'react', m.reaction));
+  }
+  return b;
+}
+
+function renderChat() {
+  const app = $('app');
+  app.classList.toggle('show-chat', !!chat);
+  const jid = chat || S.group;
+  $('headAvatar').textContent = isGroup(jid) ? '👥' : initials(nameOf(jid));
+  $('headAvatar').style.background = colorOf(jid);
+  $('headName').textContent = nameOf(jid);
+  $('headSub').textContent = isGroup(jid) ? 'Group · the bot posts offers here' : `You are ${nameOf(jid)}, messaging the seller`;
+  const ms = msgsIn(jid);
+  seen[jid] = ms.length;
+  const log = $('log');
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  if (!ms.length) {
+    const e = el('div', 'empty', isGroup(jid)
+      ? 'No offer yet. Pick a meal and press Start sale; the bot posts its offer here.'
+      : `Nothing yet. ${lastOffer() ? 'Say something like “interested” — it quotes the offer, like a private reply.' : 'Start a sale first, then reply to its offer.'}`);
+    log.replaceChildren(e);
+  } else {
+    log.replaceChildren(...ms.map((m, i) => bubble(m, ms[i - 1])));
+  }
+  if (atBottom || renderChat.last !== jid) log.scrollTop = log.scrollHeight;
+  renderChat.last = jid;
+  const group = isGroup(jid);
+  $('composer').hidden = group;
+  $('groupNote').hidden = !group;
+  const offer = lastOffer();
+  const q = !group && offer && quote[jid] !== false && (quote[jid] || !ms.some((m) => !m.from_bot));
+  $('quoteBar').classList.toggle('on', !!q);
+  if (q) $('quoteText').textContent = offer.text;
+}
+
+function apply(d) {
+  if (!d) return;
+  const first = !S;
+  S = d;
+  if (first && window.innerWidth > 760) chat = S.group;
+  if (d.version !== shownVersion || apply.chat !== chat) {
+    shownVersion = d.version;
+    apply.chat = chat;
+    renderSide();
+    renderChat();
+  }
+}
+
+function open(jid) {
+  chat = jid;
+  shownVersion = -1;
+  apply(S);
+}
+
+async function poll() {
+  try {
+    const r = await fetch('api/state', { cache: 'no-store' });
+    apply(await r.json());
+  } catch { /* server restarting */ }
+  setTimeout(poll, 700);
+}
+
+$('back').onclick = () => { chat = null; shownVersion = -1; apply(S); };
+$('unquote').onclick = () => { quote[chat] = false; renderChat(); };
+$('upi').oninput = () => { $('upi').dataset.dirty = '1'; };
+$('images').onchange = () => { $('images').dataset.dirty = '1'; };
+$('saveSettings').onclick = async () => {
+  try {
+    const d = await api('api/settings', { upi: $('upi').value.trim(), images: $('images').checked });
+    delete $('upi').dataset.dirty;
+    delete $('images').dataset.dirty;
+    $('upi').value = d.upi;
+    apply(d);
+    toast('Saved. New sales use these.');
+  } catch (x) { toast(x.message); }
+};
+$('start').onclick = async () => {
+  try {
+    if ($('upi').dataset.dirty || $('images').dataset.dirty) await $('saveSettings').onclick();
+    apply(await api('api/start', { meal: $('meal').value, min: +$('min').value, max: +$('max').value }));
+    open(S.group);
+  } catch (x) { toast(x.message); }
+};
+async function setClock(time) {
+  try {
+    const d = await api('api/clock', { time });
+    $('clockAt').value = d.clock;
+    if (d.next_meal) $('meal').value = d.next_meal;
+    apply(d);
+    toast(time ? `Pretending it's ${d.clock}.` : `Back to the real time, ${d.clock}.`);
+  } catch (x) { toast(x.message); }
+}
+$('setClock').onclick = () => { if ($('clockAt').value) setClock($('clockAt').value); };
+$('realClock').onclick = () => setClock('');
+
+$('addBuyer').onclick = async () => {
+  const name = prompt('Buyer name', '');
+  if (name === null) return;
+  try { apply(await api('api/buyer', { name: name.trim() })); } catch (x) { toast(x.message); }
+};
+$('composer').onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $('text').value.trim();
+  if (!text || !chat) return;
+  const q = $('quoteBar').classList.contains('on');
+  $('text').value = '';
+  try {
+    await api('api/send', { buyer: chat, text, quote: q });
+    quote[chat] = false;
+    poll.now();
+  } catch (x) { toast(x.message); $('text').value = text; }
+};
+poll.now = async () => { const r = await fetch('api/state', { cache: 'no-store' }); apply(await r.json()); };
+
+// The amount the bot asked this buyer for: the newest "₹50 to ..." caption
+// or "ok 50" line.
+function askedAmount() {
+  for (const m of [...msgsIn(chat)].reverse()) {
+    if (!m.from_bot || !m.text) continue;
+    const a = m.text.match(/₹\s?(\d+)/) || m.text.match(/^ok (\d+)$/i);
+    if (a) return a[1];
+  }
+  return '';
+}
+
+$('payBtn').onclick = async () => {
+  const amount = prompt('WhatsApp Pay amount (₹)', askedAmount());
+  if (!amount) return;
+  try { await api('api/pay', { buyer: chat, amount }); poll.now(); } catch (x) { toast(x.message); }
+};
+
+// A made-up UPI success screen, so you don't need a real screenshot.
+function fakeScreenshot(amount, upi) {
+  const c = document.createElement('canvas');
+  c.width = 360; c.height = 640;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0b8a5f'; g.fillRect(0, 0, 360, 640);
+  g.fillStyle = '#fff';
+  g.beginPath(); g.arc(180, 170, 54, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#0b8a5f'; g.lineWidth = 12; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(152, 172); g.lineTo(172, 192); g.lineTo(210, 150); g.stroke();
+  g.fillStyle = '#fff'; g.textAlign = 'center';
+  g.font = 'bold 44px sans-serif'; g.fillText(`₹${amount}`, 180, 300);
+  g.font = '20px sans-serif'; g.fillText('Payment successful', 180, 340);
+  g.font = '16px sans-serif'; g.fillText(`to ${upi || 'the seller'}`, 180, 372);
+  g.globalAlpha = .75;
+  g.fillText(new Date().toLocaleString(), 180, 420);
+  g.fillText(`UPI ref ${Math.floor(1e11 + Math.random() * 9e11)}`, 180, 446);
+  g.globalAlpha = .5; g.font = '13px sans-serif';
+  g.fillText('mock screenshot · not a real payment', 180, 610);
+  return new Promise((res) => c.toBlob(res, 'image/png'));
+}
+
+async function sendImage(blob) {
+  const f = new FormData();
+  f.append('buyer', chat);
+  f.append('image', blob, 'screenshot.png');
+  try { await api('api/image', f, true); poll.now(); } catch (x) { toast(x.message); }
+}
+
+$('shotBtn').onclick = async () => {
+  const amount = askedAmount() || prompt('Amount on the screenshot (₹)', '50');
+  if (!amount) return;
+  sendImage(await fakeScreenshot(amount, S.upi));
+};
+$('fileBtn').onclick = () => $('file').click();
+$('file').onchange = () => {
+  const f = $('file').files[0];
+  $('file').value = '';
+  if (f) sendImage(f);
+};
+$('zoom').onclick = () => { $('zoom').hidden = true; };
+
+poll();
+</script>
+</body>
+</html>

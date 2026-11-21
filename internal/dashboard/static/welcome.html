@@ -99,20 +99,38 @@
     </div>
   </section>
 
-  <section class="chest step" id="payStep" aria-label="WhatsApp Pay">
+  <section class="chest step" id="payStep" aria-label="Your UPI">
     <div class="chest-head">
       <span class="head-icon" id="payIcon"></span>
-      <span class="head-name">5. WhatsApp Pay</span>
+      <span class="head-name">5. Your UPI</span>
       <span class="head-meta" id="payMeta"></span>
+      <button class="help" type="button" aria-expanded="false" aria-controls="payHelp" title="What's this?">?</button>
     </div>
-    <div class="form">
-      <p class="note">Buyers pay you with WhatsApp Pay, and messwa sends the QR once the payment shows up in the chat. It can't see GPay or other UPI apps. Turn WhatsApp Pay on for the number you linked:</p>
-      <ol class="steps-list">
-        <li>Open WhatsApp and go to Payments: under Settings on iPhone, in the ⋮ menu on Android.</li>
-        <li>Tap Add payment method and pick your bank.</li>
-        <li>Verify your number and set or confirm your UPI PIN.</li>
-      </ol>
-      <label class="check"><input type="checkbox" id="payReady"><span>WhatsApp Pay is set up on this number</span></label>
+    <div class="form upi-step">
+      <div class="upi-main">
+        <p class="note">Buyers pay you on UPI. When one agrees to a price, messwa sends them a QR for it, and sends the meal QR once they send the payment screenshot.</p>
+        <p class="note" id="payHelp" hidden>messwa can't check that a screenshot is real, so check your UPI app after each sale. WhatsApp Pay payments count too. Change both in Settings, Buyers.</p>
+        <form id="upiForm" class="row">
+          <label class="grow">UPI ID<input id="upi" type="text" autocomplete="off" spellcheck="false" placeholder="name@okaxis" required></label>
+          <button class="btn" type="button" id="upiPick">📷 From QR</button>
+          <button class="btn primary" type="submit" id="upiSave">Save</button>
+        </form>
+        <input type="file" id="upiFile" accept="image/png,image/jpeg" hidden>
+        <p class="err" id="upiErr" role="alert" hidden></p>
+      </div>
+      <figure class="upi-demo" aria-label="What a buyer sees">
+        <figcaption class="h-lbl">What a buyer sees</figcaption>
+        <div class="demo-phone">
+          <div class="demo-head"><span class="demo-av">A</span><div><b>Asha</b><small>online</small></div></div>
+          <div class="demo-log">
+            <div class="demo-b in">kadamba lunch?</div>
+            <div class="demo-b out">ok 50</div>
+            <div class="demo-b out" id="demoPay">pay using whatsapp pay pls, not gpay/upi</div>
+            <div class="demo-b out" id="demoAfter">ill send the qr right after</div>
+            <div class="demo-b out demo-img" id="demoQR" hidden><img id="demoQRImg" alt=""><span id="demoCap"></span></div>
+          </div>
+        </div>
+      </figure>
     </div>
   </section>
 

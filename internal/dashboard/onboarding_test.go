@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -68,5 +69,59 @@ func TestSetupSell(t *testing.T) {
 	}
 	if l := cfg.Live(); len(l.Sell.Groups) != 2 || l.Sell.Groups[0] != "c@g.us" || l.Sell.GroupCount != 0 {
 		t.Fatalf("live sell = %+v", l.Sell)
+	}
+}
+
+func TestSetupUPI(t *testing.T) {
+	cfg := config.Default()
+	cfg.ApplySaved(nil)
+	st := newTestStore(t)
+	ms := mcpserver.New(cfg, st, nil)
+	d := startDashboard(t, cfg, st, ms, NewHub())
+
+	// A new account, not approved yet, saves its UPI ID from the welcome page.
+	jar, _ := cookiejar.New(nil)
+	c := &testClient{Client: &http.Client{Jar: jar}, d: d}
+	res := c.send(t, "POST", "/api/signup", map[string]string{"name": "asha", "password": "asha's password"})
+	var me struct{ CSRF string }
+	json.NewDecoder(res.Body).Decode(&me)
+	res.Body.Close()
+	c.csrf = me.CSRF
+
+	var got struct{ UPI string }
+	if res := c.get(t, "/api/setup-upi", &got); res.StatusCode != 200 || got.UPI != "" {
+		t.Fatalf("GET = %d %+v", res.StatusCode, got)
+	}
+	for _, bad := range []string{"", "  ", "not a upi"} {
+		res := c.send(t, "PUT", "/api/setup-upi", map[string]string{"upi": bad})
+		res.Body.Close()
+		if res.StatusCode != 400 {
+			t.Errorf("PUT %q = %d, want 400", bad, res.StatusCode)
+		}
+	}
+	res = c.send(t, "PUT", "/api/setup-upi", map[string]string{"upi": " Asha@OkAxis "})
+	json.NewDecoder(res.Body).Decode(&got)
+	res.Body.Close()
+	if res.StatusCode != 200 || got.UPI != "asha@okaxis" {
+		t.Fatalf("PUT = %d %+v", res.StatusCode, got)
+	}
+	// The UPI QR only goes out when screenshots count, so saving turns
+	// that on.
+	if l := cfg.Live(); l.Sell.UPI != "asha@okaxis" || !l.Sell.AcceptPaymentImages {
+		t.Fatalf("live sell = %+v", l.Sell)
+	}
+
+	// The sample chat's QR pays the UPI ID typed so far.
+	res, err := c.Get(d.URL + "/api/upi-qr-preview?upi=Asha@OkAxis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if got, err := readUPIQR(png); res.StatusCode != 200 || err != nil || got != "asha@okaxis" {
+		t.Fatalf("preview = %d, %q, %v", res.StatusCode, got, err)
+	}
+	if res := c.get(t, "/api/upi-qr-preview?upi=nope", nil); res.StatusCode != 400 {
+		t.Errorf("bad preview = %d, want 400", res.StatusCode)
 	}
 }

@@ -207,6 +207,7 @@ function render() {
   document.documentElement.style.setProperty('--accent', accent);
   renderDay();
   $('noGroups').hidden = !D.no_groups;
+  $('noUPI').hidden = !D.no_upi;
   renderSales();
   // The sales ledger feeds the nudge, the Today widget, the mess of a
   // scheduled sale's card and the widgets drawn from your sales.

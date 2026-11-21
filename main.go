@@ -73,6 +73,11 @@ inspection (read the database only, safe while run is up):
   rebuild                       re-derive all listings from the stored group log
   dashboard [-listen addr] [-at time]
                                 serve the dashboard alone (run serves it too)
+
+development:
+  mockchat [-listen addr] [-upi ID]
+                                chat with the bot as pretend buyers in a WhatsApp-like page;
+                                real sell tasks, fake WhatsApp, a throwaway database
 `
 
 func main() {
@@ -152,6 +157,8 @@ func main() {
 		err = rebuild(ctx, cfg)
 	case "dashboard":
 		err = dashboardCmd(ctx, cfg, log, args)
+	case "mockchat":
+		err = mockChatCmd(ctx, cfg, log, args)
 	default:
 		flag.Usage()
 		os.Exit(2)

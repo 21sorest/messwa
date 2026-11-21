@@ -1,8 +1,8 @@
 'use strict';
 
 // The welcome page: a new account saves its mess API key, links its
-// WhatsApp, picks the groups to post in and how it sells, confirms
-// WhatsApp Pay, and asks the admins for approval. So an approved account
+// WhatsApp, picks the groups to post in and how it sells, saves its UPI
+// ID, and asks the admins for approval. So an approved account
 // can sell straight away. The server sends approved accounts on to the
 // board.
 
@@ -214,32 +214,100 @@ function paintChoices() {
   $('howStep').classList.toggle('done', ready);
 }
 
-// WhatsApp Pay can't be checked from here, so the account says it's on.
-// Only this browser remembers the tick.
-const PAY_KEY = 'messwa.waPayReady';
-try { $('payReady').checked = localStorage.getItem(PAY_KEY) === '1'; } catch { /* storage off */ }
-function paintPay() {
-  const on = $('payReady').checked;
-  $('payMeta').replaceChildren(on ? el('b', '', 'ready') : el('span', 'red', 'not confirmed'));
-  $('payStep').classList.toggle('done', on);
-}
-$('payReady').addEventListener('change', () => {
-  try { localStorage.setItem(PAY_KEY, $('payReady').checked ? '1' : '0'); } catch { /* storage off */ }
-  paintPay();
+// The UPI step. upiSaved is the UPI ID the server has.
+let upiSaved = '';
+function paintUPI() {
+  $('payMeta').replaceChildren(upiSaved ? el('b', '', upiSaved) : el('span', 'red', 'not set'));
+  $('payStep').classList.toggle('done', !!upiSaved);
+  if (document.activeElement !== $('upi') && !$('upi').value) $('upi').value = upiSaved;
+  paintDemo();
   if (lastMe) paintAsk(lastMe);
+}
+
+async function loadUPI() {
+  try {
+    const r = await fetch('api/setup-upi', { cache: 'no-store' });
+    if (r.status === 401) return toLogin();
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    upiSaved = d.upi;
+    paintUPI();
+  } catch (x) { showErr('upiErr', x); }
+}
+
+async function saveUPI(upi) {
+  showErr('upiErr');
+  $('upiSave').disabled = true;
+  try {
+    const d = await send('PUT', 'api/setup-upi', { upi });
+    upiSaved = d.upi;
+    $('upi').value = d.upi;
+    paintUPI();
+  } catch (x) { showErr('upiErr', x); } finally { $('upiSave').disabled = false; }
+}
+
+// The sample chat: without a UPI ID the bot asks for WhatsApp Pay; with
+// one typed it sends a QR for the price, drawn by the server for that ID.
+const UPI_ID = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
+let demoFor = null;
+let demoTimer = null;
+function paintDemo() {
+  const upi = $('upi').value.trim().toLowerCase();
+  const ok = UPI_ID.test(upi);
+  if ((ok ? upi : '') === demoFor) return;
+  demoFor = ok ? upi : '';
+  if (!ok) {
+    $('demoQR').hidden = true;
+    $('demoPay').textContent = 'pay using whatsapp pay pls, not gpay/upi';
+    $('demoAfter').hidden = false;
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    if (demoFor !== upi) return;
+    $('demoQRImg').src = img.src;
+    $('demoQRImg').alt = `UPI QR paying ₹50 to ${upi}`;
+    $('demoCap').textContent = `₹50 to ${upi}`;
+    $('demoPay').textContent = 'pay on this qr and send the screenshot, ill send the meal qr after';
+    $('demoAfter').hidden = true;
+    const box = $('demoQR');
+    const fresh = box.hidden;
+    box.hidden = false;
+    if (fresh) { box.classList.remove('pop'); void box.offsetWidth; box.classList.add('pop'); }
+  };
+  img.src = `api/upi-qr-preview?upi=${encodeURIComponent(upi)}`;
+}
+$('upi').addEventListener('input', () => { clearTimeout(demoTimer); demoTimer = setTimeout(paintDemo, 250); });
+
+$('upiForm').addEventListener('submit', (e) => { e.preventDefault(); saveUPI($('upi').value); });
+$('upiPick').addEventListener('click', () => $('upiFile').click());
+// A UPI QR image fills the UPI ID in and saves it.
+$('upiFile').addEventListener('change', async () => {
+  const file = $('upiFile').files[0];
+  $('upiFile').value = '';
+  if (!file) return;
+  showErr('upiErr');
+  $('upiPick').disabled = true;
+  try {
+    const m = await me();
+    const body = new FormData();
+    body.append('qr', file);
+    const r = await fetch('api/upi-qr', { method: 'POST', cache: 'no-store', headers: { 'X-CSRF-Token': m.csrf }, body });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    await saveUPI(d.upi);
+  } catch (x) { showErr('upiErr', x); } finally { $('upiPick').disabled = false; }
 });
-paintPay();
 
 function paintAsk(m) {
   lastMe = m;
   const asked = m.status === 'requested';
   const groups = !!(G && G.saved && G.groups.some((g) => g.picked));
-  const pay = $('payReady').checked;
   const missing = [
     !m.mess_key_set && 'save your mess key',
     !waLinked && 'link WhatsApp',
     waLinked && !groups && 'pick a group to post in',
-    !pay && 'confirm WhatsApp Pay',
+    !upiSaved && 'add your UPI ID',
   ].filter(Boolean);
   $('askMeta').replaceChildren(asked ? el('b', '', 'waiting') : el('span', 'dim', 'not asked'));
   $('ask').hidden = asked;
@@ -312,4 +380,5 @@ function listen() {
 }
 
 paintSell();
+loadUPI();
 paint().then(paintWhatsApp).then(listen).catch(() => {});

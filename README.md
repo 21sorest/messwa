@@ -72,8 +72,9 @@ Each person saves their own mess API key on the account page (`/account.html`, t
 
 1. They save their mess API key. messwa reads today's registrations with it first, so a mistyped key is refused, and saving one needs the IIIT network.
 2. They link their WhatsApp by scanning a QR code, the same way as on the account page.
-3. They ask for approval.
-4. An admin approves or declines them under Sign-up requests on the account page, or with `messwa user approve NAME` / `decline NAME`. The admin's list and the user's welcome page update the moment either side acts, over server-sent events. The welcome page moves them to the board once approved. Decisions made with the CLI run in another process, so the welcome page catches those within a minute.
+3. They save their UPI ID, typed or read from a picture of their UPI QR. A sample chat beside the field shows what a buyer would get: the WhatsApp Pay ask while it's empty, then a QR drawn for the ID as soon as it's valid. Saving turns on `accept_payment_images` too, since the UPI QR needs it.
+4. They ask for approval.
+5. An admin approves or declines them under Sign-up requests on the account page, or with `messwa user approve NAME` / `decline NAME`. The admin's list and the user's welcome page update the moment either side acts, over server-sent events. The welcome page moves them to the board once approved. Decisions made with the CLI run in another process, so the welcome page catches those within a minute.
 
 Until then the API answers 403 and their MCP tokens don't work. `run` connects a waiting account's WhatsApp only while it pairs, and doesn't reconnect it after a restart until it's approved. Approval connects it and resumes its sell tasks. If you approve from the CLI, that happens the next time the user loads a page, or at the next restart. Declining unlinks the device. A declined account can still sign in, but only to see that it was declined; remove it with `user remove`. One address can sign up five times an hour. Accounts made with `user add` skip all this and start approved.
 
@@ -661,8 +662,8 @@ who can't scan an image on their own phone. A paying buyer who asks for the
 UPI ID, a scanner or the QR gets it once more; asking to pay some other way
 (cash, later) gets `only upi sorry`, and asking twice parks them for you.
 WhatsApp Pay payments still count. Without `upi`, the pay message stays as
-it was. The bot still can't see a UPI payment, so check your UPI app as
-before.
+it was, and the board shows a banner until you add one. The bot still
+can't see a UPI payment, so check your UPI app as before.
 
 **A screenshot proves nothing.** Anyone can send an old screenshot, someone
 else's, an edited one, or a picture of their lunch, and the bot sends the QR
@@ -885,6 +886,20 @@ registration imports, scheduling, negotiation or refunds. To negotiate,
 use `-handoff on_reply` (see [Taking over the chat yourself](#taking-over-the-chat-yourself)),
 or a sell task, which negotiates by itself.
 Sell tasks use the same sale code from inside `run`; see below.
+
+### Mock chat
+
+`messwa mockchat [-listen addr] [-upi ID]` runs real sell tasks against a
+pretend WhatsApp and serves a WhatsApp-like page (default
+`http://127.0.0.1:8769/`) where you play the buyers. Start a sale, reply
+privately to its offer as Asha or Ravi, haggle, then pay with ₹ (WhatsApp
+Pay), 🧾 (a made-up UPI success screenshot) or 📎 (any image). The bot's
+replies, the UPI QR it draws, the meal QR and the ✅ on the offer all show
+up as they would on a phone. The panel on the left sets the UPI ID and
+whether screenshots count, for the next sale. Nothing reaches WhatsApp or
+the mess portal: the meal QR is a placeholder and sales go to a throwaway
+database that's deleted on exit. It uses your meal times, so it can only
+start a sale for a meal that could go up now.
 
 ### Payment diagnostic
 

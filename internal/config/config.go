@@ -36,6 +36,8 @@ type Config struct {
 	Sell    Sell     `toml:"sell"`
 
 	loc *time.Location
+	// pretend, when set, replaces loc: see SetLocation.
+	pretend *time.Location
 	// file is the config as config.toml has it, before saved settings.
 	file *Config
 	// live holds the config with the latest saved settings; see Live.
@@ -273,10 +275,23 @@ func ValidateRepost(messages, listings, maxReposts int, prefix string) error {
 }
 
 func (c *Config) Location() *time.Location {
+	if c.pretend != nil {
+		return c.pretend
+	}
 	if c.loc == nil {
 		c.loc, _ = time.LoadLocation(c.Timezone)
 	}
 	return c.loc
+}
+
+// SetLocation makes c, and the file config under it, tell time in loc
+// instead of their timezone. messwa mockchat uses it to pretend it's
+// another time of day; call Update after it so Live picks it up too.
+func (c *Config) SetLocation(loc *time.Location) {
+	c.pretend = loc
+	if c.file != nil {
+		c.file.pretend = loc
+	}
 }
 
 // ParseClock parses "HH:MM" into minutes after midnight.

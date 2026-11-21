@@ -11,16 +11,17 @@ import (
 
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
+	"rsc.io/qr"
 
-	"messwa/internal/accounts"
 	"messwa/internal/config"
 )
 
 // upiQRRoutes adds POST /api/upi-qr, which reads the UPI ID out of a UPI
 // QR image (multipart, as qr) for the settings page. It stores nothing:
-// the page puts the UPI ID in sell.upi, which saves with the rest.
+// the page puts the UPI ID in sell.upi, which saves with the rest. Any
+// signed-in user may use it, so the welcome page can too.
 func upiQRRoutes(mux *http.ServeMux) {
-	mux.Handle("POST /api/upi-qr", requireRole(accounts.Member, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("POST /api/upi-qr", signedIn(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxQR+64<<10)
 		if err := r.ParseMultipartForm(maxQR + 64<<10); err != nil {
 			jsonError(w, "the image is too large (5 MB at most)", http.StatusBadRequest)
@@ -45,8 +46,29 @@ func upiQRRoutes(mux *http.ServeMux) {
 		writeJSON(w, r, struct {
 			UPI string `json:"upi"`
 		}{upi})
-	})))
+	}))
+
+	// GET /api/upi-qr-preview?upi=ID draws the QR a buyer would get for a
+	// ₹50 meal, for the welcome page's sample chat.
+	mux.Handle("GET /api/upi-qr-preview", signedIn(func(w http.ResponseWriter, r *http.Request) {
+		upi, err := config.ParseUPI(r.URL.Query().Get("upi"))
+		if err != nil || upi == "" {
+			jsonError(w, "not a UPI ID", http.StatusBadRequest)
+			return
+		}
+		code, err := qr.Encode(config.UPIPayURI(upi, previewAmount, "messwa preview"), qr.M)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Write(code.PNG())
+	}))
 }
+
+// previewAmount is the price in the welcome page's sample chat.
+const previewAmount = "50.00"
 
 // readUPIQR finds the QR in a PNG or JPEG, such as a screenshot of your
 // UPI app's "receive money" screen, and returns the UPI ID it pays.
