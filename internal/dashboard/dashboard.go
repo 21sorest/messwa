@@ -72,6 +72,9 @@ type state struct {
 	// NoGroups is true when your selling settings pick no group to post
 	// offers in, so the board can say so before a sale goes nowhere.
 	NoGroups bool `json:"no_groups,omitempty"`
+	// NoUPI is true when you saved no UPI ID, so buyers get no QR to pay
+	// on.
+	NoUPI bool `json:"no_upi,omitempty"`
 	// Nudge is true when the board should ask you to sell your next meal
 	// ([sell] nudge).
 	Nudge bool `json:"nudge,omitempty"`
@@ -186,7 +189,9 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.
 	regs := newRegCache(acc)
 	authRoutes(mux, acc, srv, regs, "http://"+cfg.MCP.Listen+"/mcp")
 	settingsRoutes(mux, cfg, srv)
+	upiQRRoutes(mux)
 	onboardingRoutes(mux, cfg, srv)
+	setupUPIRoutes(mux, cfg, srv)
 	deviceRoutes(mux, srv)
 	sellActionRoutes(mux, cfg, srv)
 
@@ -223,6 +228,7 @@ func Handler(cfg *config.Config, srv *mcpserver.Server, hub *Hub, acc *accounts.
 				return
 			}
 			st.NoGroups = !picksGroups(cfg.Live())
+			st.NoUPI = cfg.Live().Sell.UPI == ""
 			st.Nudge = cfg.Live().Sell.Nudge
 		}
 		sc := srv.Schedule()

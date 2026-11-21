@@ -72,8 +72,9 @@ Each person saves their own mess API key on the account page (`/account.html`, t
 
 1. They save their mess API key. messwa reads today's registrations with it first, so a mistyped key is refused, and saving one needs the IIIT network.
 2. They link their WhatsApp by scanning a QR code, the same way as on the account page.
-3. They ask for approval.
-4. An admin approves or declines them under Sign-up requests on the account page, or with `messwa user approve NAME` / `decline NAME`. The admin's list and the user's welcome page update the moment either side acts, over server-sent events. The welcome page moves them to the board once approved. Decisions made with the CLI run in another process, so the welcome page catches those within a minute.
+3. They save their UPI ID, typed or read from a picture of their UPI QR. A sample chat beside the field shows what a buyer would get: the WhatsApp Pay ask while it's empty, then a QR drawn for the ID as soon as it's valid. Saving turns on `accept_payment_images` too, since the UPI QR needs it.
+4. They ask for approval.
+5. An admin approves or declines them under Sign-up requests on the account page, or with `messwa user approve NAME` / `decline NAME`. The admin's list and the user's welcome page update the moment either side acts, over server-sent events. The welcome page moves them to the board once approved. Decisions made with the CLI run in another process, so the welcome page catches those within a minute.
 
 Until then the API answers 403 and their MCP tokens don't work. `run` connects a waiting account's WhatsApp only while it pairs, and doesn't reconnect it after a restart until it's approved. Approval connects it and resumes its sell tasks. If you approve from the CLI, that happens the next time the user loads a page, or at the next restart. Declining unlinks the device. A declined account can still sign in, but only to see that it was declined; remove it with `user remove`. One address can sign up five times an hour. Accounts made with `user add` skip all this and start approved.
 
@@ -161,7 +162,7 @@ Everyone edits their own selling settings on the OFFER, REPOST, BUYERS and MESSA
 | YOU | messaging app (this browser only), `hide_snacks` |
 | OFFER | `[mcp] sell_tasks`, `[sell] groups` or `group_count`, `post_gap`, `show_price`, `mention_extras`, `[sales] monthly_fee`, `[sell] list_at`, `nudge`, with a preview of the group post |
 | REPOST | `[sell] repost`, `repost_messages`, `repost_listings`, `max_reposts` |
-| BUYERS | `[sell] buyers`, `handoff`, `accept_plain_dms`, `message_buy_posts`, `accept_payment_images`, `accept_unreadable_payments`, `[dms] retention` |
+| BUYERS | `[sell] buyers`, `handoff`, `accept_plain_dms`, `message_buy_posts`, `accept_payment_images`, `upi`, `accept_unreadable_payments`, `[dms] retention` |
 | MESSAGES | `[sell] own_wording`, `messages`: every DM the bot sends a buyer, see [Bot wording](#bot-wording) |
 | MARKET | `[sold]` emojis, closed emojis, words and `admins_count`, `[dedupe] window` |
 | CALENDAR | meal times, `[[seasons]]`, each mess's `veg_only` |
@@ -183,7 +184,7 @@ Some things stay in `config.toml`: the listen addresses, `state_dir`, `timezone`
 - **Sales ledger.** Days across, meals down, for the last four weeks (arrow keys page by week). A sold slot shows the price, the mess, and the buyer's pixel head. Each buyer always gets the same head. An armed slot drains like a listing until the meal ends. ATE means you used the registration yourself. WASTED means the meal ended unsold and unused. Dashed slots are registered meals that haven't ended. Hovering shows the buyer, their number, when they paid, how fast the QR went out, and the median ask for that meal.
 - **Selling from the ledger.** With sell tasks on, the meal being served and the next one are outlined in gold. Click one to pick a lowest and an opening price on a two-handle slider (the tick is the median ask) and confirm. That starts a sell task, the same as `start_sell_task`. Equal handles sell at a fixed price. A meal with a task running shows SELLING and its range. Click it for the buyers so far and three buttons: SOLD + SEND QR (you sold it yourself and the bot sends them the QR; `mark_sell_task_sold` with `send_qr`), EDIT PRICES (`set_sell_task_prices`) and STOP SELLING (`cancel_sell_task`, which deletes the offer posts).
 - **Selling ahead.** Sell a meal before it starts and the offer waits: it goes up at `[sell] list_at` (default 15 minutes before the meal, -30m to 1h30m, under Settings, Offer) and sells till the meal ends. START NOW posts it straight away instead. Your registration and the groups are checked when you click and again when it goes up. A waiting sale shows the time it goes up; click it to start it now, change its prices or unschedule it. It also gets a dashed card on the board, beside your running sales, with its price range, a countdown, START NOW and the autopilot switch. Schedules survive a restart; one that came due while `run` was down starts on the next start if its meal hasn't ended. Selling a scheduled meal by hand drops the schedule. MCP's `start_sell_task` still posts straight away.
-- **Autopilot.** A scheduled sale has an AUTOPILOT switch beside START NOW, off by default. On autopilot the task never waits on you: a buyer it would park for you (paying some other way, going below your lowest, replies it can't read, saying they paid when no payment came, the message limit) is skipped instead, even one offering more than the rest. A skipped buyer holding the payment turn loses it at once and hears `wait dont pay` / `cant do this one sorry`, and the next buyer is asked to pay. Only WhatsApp Pay with a readable amount counts, whatever `accept_payment_images` and `accept_unreadable_payments` say; nothing is handed off; and the task never pools with another, so another task's rules can't reach it. A WhatsApp Pay payment that matches a price the bot quoted still gets the meal. A payment it can't honour is still listed for you to refund, since only you can send money back. Skips show as `auto_skipped` in the task's events.
+- **Autopilot.** A scheduled sale has an AUTOPILOT switch beside START NOW, off by default. On autopilot the task never waits on you: a buyer it would park for you (paying some other way, going below your lowest, replies it can't read, saying they paid when no payment came, the message limit) is skipped instead, even one offering more than the rest. A skipped buyer holding the payment turn loses it at once and hears `wait dont pay` / `cant do this one sorry`, and the next buyer is asked to pay. A screenshot counts when `accept_payment_images` is on, as it does without autopilot, and the sale is marked unverified the same way. A WhatsApp Pay message counts only with a readable amount, whatever `accept_unreadable_payments` says; nothing is handed off; and the task never pools with another, so another task's rules can't reach it. A WhatsApp Pay payment that matches a price the bot quoted still gets the meal. A payment it can't honour is still listed for you to refund, since only you can send money back. Skips show as `auto_skipped` in the task's events.
 - **Up next.** Once today's last meal is over, tomorrow's first one shows above the ledger as UP NEXT, so you can sell or schedule it the night before. The board's sell card offers it too. It stays out of the grid and the totals.
 - **Friends' meals.** SELL A FRIEND'S MEAL sells someone else's meal through your WhatsApp. Pick the meal, their mess, veg, egg or non-veg, the price range and any extras they registered, and attach their QR (PNG or JPEG, up to 5 MB). The offer reads like yours, extras included, and the buyer gets the friend's QR. Each friend's meal gets its own slot, like `dinner#f1`, so it never touches your own registration, and its sale stays out of the ledger, the regulars and every total. The list shows what became of each one; click a running one to mark it sold, edit its prices or stop it. The meal and QR are kept in the `friend_meals` table. `proxy-meal.json` still works for the same thing from the command line.
 - **Saved this month.** The green bar is what your sales earned back against this month's mess bill. The striped part after it is what the month's wasted meals would have fetched at the median ask. The bill comes from the portal's `/registrations/bill`, the same read as IIITH-mess-MCP's `get_bill`: availed meals plus the projected cost of meals you're registered for, so it grows as you register. When the portal can't be read, the page uses `sales.monthly_fee` from `config.toml` instead.
@@ -501,6 +502,7 @@ isn't today's.
 | `max_reposts` | `-max-reposts` | `20` | Most fresh copies per group for one offer, 0 to 20 |
 | `smart_haggle` | none | `false` | Sell tasks only: hold out for the meal's usual price and only come down toward `min_price` near the meal's end, see [Prices](#sell-tasks) |
 | `accept_payment_images` | `-accept-payment-images` | `false` | Count an image from the paying buyer as their payment, unverified, see below |
+| `upi` | none | `""` | Your UPI ID. With `accept_payment_images` on, the pay message comes with a UPI QR for the exact price, see below |
 | `accept_unreadable_payments` | `-assume-unreadable-payment` | `true` | Count a WhatsApp Pay message whose amount stays unreadable after recovery as the agreed price, unverified, see [One-meal QR delivery](#one-meal-qr-delivery) |
 
 With `groups` or `group_count` set, `deliver-qr` without `-peer` posts to
@@ -649,6 +651,20 @@ others hear `sold sorry` and the offer posts get a ✅. The log warns that
 the payment was assumed from an image, the delivery ledger records it as
 paid by image, the sales page shows "By image, not verified" and SOLD ·
 UNVERIFIED, and a sell task ends with a detail that says so.
+
+**Your UPI QR.** With `accept_payment_images` on and `upi` set to your UPI
+ID (BUYERS tab: type it, or 📷 FROM QR reads it from a picture of your UPI
+QR), the pay message asks the buyer to pay on a QR and send the
+screenshot: `ok 50`, `pay on this qr and send the screenshot, ill send the
+meal qr after`. The bot then sends a UPI QR it draws for that buyer, which
+pays your UPI ID exactly the agreed price, with the mess and meal as the
+note. Its caption, `₹50 to name@okaxis`, has the UPI ID to copy for a buyer
+who can't scan an image on their own phone. A paying buyer who asks for the
+UPI ID, a scanner or the QR gets it once more; asking to pay some other way
+(cash, later) gets `only upi sorry`, and asking twice parks them for you.
+WhatsApp Pay payments still count. Without `upi`, the pay message stays as
+it was, and the board shows a banner until you add one. The bot still
+can't see a UPI payment, so check your UPI app as before.
 
 **A screenshot proves nothing.** Anyone can send an old screenshot, someone
 else's, an edited one, or a picture of their lunch, and the bot sends the QR
@@ -871,6 +887,20 @@ registration imports, scheduling, negotiation or refunds. To negotiate,
 use `-handoff on_reply` (see [Taking over the chat yourself](#taking-over-the-chat-yourself)),
 or a sell task, which negotiates by itself.
 Sell tasks use the same sale code from inside `run`; see below.
+
+### Mock chat
+
+`messwa mockchat [-listen addr] [-upi ID]` runs real sell tasks against a
+pretend WhatsApp and serves a WhatsApp-like page (default
+`http://127.0.0.1:8769/`) where you play the buyers. Start a sale, reply
+privately to its offer as Asha or Ravi, haggle, then pay with ₹ (WhatsApp
+Pay), 🧾 (a made-up UPI success screenshot) or 📎 (any image). The bot's
+replies, the UPI QR it draws, the meal QR and the ✅ on the offer all show
+up as they would on a phone. The panel on the left sets the UPI ID and
+whether screenshots count, for the next sale. Nothing reaches WhatsApp or
+the mess portal: the meal QR is a placeholder and sales go to a throwaway
+database that's deleted on exit. It uses your meal times, so it can only
+start a sale for a meal that could go up now.
 
 ### Payment diagnostic
 

@@ -74,6 +74,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		if overrides.paymentImages != nil {
 			sell.AcceptPaymentImages = *overrides.paymentImages
 		}
+		sell.UPI = cfg.Sell.UPI
 		sell.AcceptUnreadablePayments = cfg.Sell.AcceptUnreadablePayments
 		if overrides.unreadable != nil {
 			sell.AcceptUnreadablePayments = *overrides.unreadable
@@ -128,6 +129,7 @@ func deliverQR(ctx context.Context, cfg *config.Config, log *slog.Logger, args [
 		log: log, loc: cfg.Location(), date: *date, meal: *meal, end: slot.End, cfg: cfg,
 		image: data, testImage: *qr == "", imageHash: fmt.Sprintf("%x", sha256.Sum256(data)),
 		diagnostics: *diagnostics, assumeUnreadable: sell.AcceptUnreadablePayments, acceptImages: sell.AcceptPaymentImages,
+		upi: sell.UPI,
 	}
 	if s.acceptImages {
 		fmt.Fprintln(os.Stderr, "accept_payment_images is on: an image the buyer sends after the payment prompt counts as payment. Nothing verifies it; check your UPI app before trusting the sale.")

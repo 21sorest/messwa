@@ -629,9 +629,10 @@ func (m *sellManager) runTask(ctx context.Context, t store.SellTask, s *sale, rt
 	if err != nil {
 		return err
 	}
-	// A screenshot only counts once you check your UPI app, so autopilot
-	// takes WhatsApp Pay alone.
-	s.acceptImages = settings.AcceptPaymentImages && !t.Autopilot
+	// Autopilot takes screenshots too when they count: with a UPI QR
+	// they're how most buyers pay. Check your UPI app after.
+	s.acceptImages = settings.AcceptPaymentImages
+	s.upi = settings.UPI
 	s.assumeUnreadable = settings.AcceptUnreadablePayments && !t.Autopilot
 	queue := newOfferQueue()
 	s.joined = queue

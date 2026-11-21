@@ -33,6 +33,7 @@ const (
 	EventBotSaid       = "bot_said"       // Text: the template sent; N: the price in it, paise
 	EventAgreed        = "agreed"         // N: paise
 	EventPrompt        = "prompt"         // asked to pay; N: paise
+	EventPayQR         = "pay_qr"         // sent the UPI QR to pay; N: its amount in paise, 0 when it leaves the amount to them
 	EventParked        = "parked"         // Text: why they need you
 	EventAutoSkipped   = "auto_skipped"   // autopilot dropped a buyer who would need you; Text: why
 	EventPassed        = "passed"         // the buyer dropped out

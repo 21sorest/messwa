@@ -120,6 +120,12 @@ type sale struct {
 	// their payment, once they have the payment prompt. Nothing about the
 	// image is checked. See [sell] accept_payment_images.
 	acceptImages bool
+	// upi is the UPI ID buyers pay when acceptImages is on: the pay
+	// message comes with a UPI QR for the price (see payUPI). Empty sends
+	// none. payQRAmounts remembers each buyer's QR amount for a resend.
+	upi          string
+	payQRMu      sync.Mutex
+	payQRAmounts map[types.JID]string
 
 	// handoff, when set, gets the first buyer from the queue instead of the
 	// bot, which sends them nothing. others are the buyers still queued.
@@ -292,6 +298,9 @@ type turn struct {
 	listening func() error
 	// prompt is sent to the buyer after arming. Empty sends nothing.
 	prompt reply
+	// payQR sends the UPI QR for d.Amount right after the prompt; see
+	// sale.payUPI.
+	payQR bool
 	// prompting claims the prompt before it is sent. Returning false skips
 	// the send: it already went out before a restart.
 	prompting func(context.Context) (bool, error)
@@ -575,6 +584,13 @@ func (s *sale) takeTurn(ctx context.Context, buyer types.JID, d store.Delivery, 
 			if err := sendReply(ctx, s.send, buyer, t.prompt); err != nil {
 				return fmt.Errorf("offer send failed or is uncertain; inspect chat before retrying: %w", err)
 			}
+			if t.payQR {
+				// The prompt is out, so a failed QR leaves the buyer able
+				// to ask for it again; it doesn't stop the turn.
+				if err := s.sendPayQR(ctx, buyer, d.Amount); err != nil {
+					s.log.Warn("UPI QR send failed or is uncertain", "err", err)
+				}
+			}
 			mu.Lock()
 			prompted = true
 			mu.Unlock()
@@ -759,7 +775,8 @@ func (s *sale) sellToQueue(ctx, notifyCtx context.Context, q *offerQueue, j sale
 			}
 			t = turn{
 				arm:      j.arm,
-				prompt:   s.lines(buyer).payPrompt(amount, s.testImage, s.acceptImages),
+				prompt:   s.lines(buyer).payPrompt(amount, s.testImage, s.acceptImages, s.payUPI()),
+				payQR:    s.payUPI(),
 				payUntil: payUntil,
 				prompting: func(ctx context.Context) (bool, error) {
 					return j.prompting(ctx, buyer, amount, payUntil)
@@ -877,6 +894,7 @@ const (
 	linePayOther      = "pay_other"
 	linePayNumber     = "pay_number"
 	lineAskScreenshot = "ask_screenshot"
+	linePayQRAgain    = "pay_qr_again"
 )
 
 // lineJournal claims once-per-buyer lines across restarts.

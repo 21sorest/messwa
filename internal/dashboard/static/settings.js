@@ -599,6 +599,34 @@ paint(() => {
   }));
 });
 
+// Your UPI ID: typed, or read from a picture of your UPI QR. The server
+// checks it on save.
+const upi = document.querySelector('[data-key="sell.upi"]');
+upi.addEventListener('input', () => set('sell.upi', upi.value.trim()));
+paint(() => { if (document.activeElement !== upi) upi.value = draft['sell.upi'] || ''; });
+$('upiPick').addEventListener('click', () => $('upiFile').click());
+$('upiFile').addEventListener('change', async () => {
+  const file = $('upiFile').files[0];
+  $('upiFile').value = '';
+  if (!file) return;
+  const body = new FormData();
+  body.append('qr', file);
+  $('upiPick').disabled = true;
+  try {
+    const m = await me();
+    const r = await fetch('api/upi-qr', { method: 'POST', cache: 'no-store', headers: { 'X-CSRF-Token': m.csrf }, body });
+    if (r.status === 401) return toLogin();
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    set('sell.upi', data.upi);
+    showErr();
+  } catch (e) {
+    showErr(e);
+  } finally {
+    $('upiPick').disabled = false;
+  }
+});
+
 const fee = document.querySelector('[data-key="sales.monthly_fee"]');
 fee.addEventListener('input', () => { const v = Math.max(0, Math.floor(Number(fee.value) || 0)); set('sales.monthly_fee', v); });
 paint(() => { if (document.activeElement !== fee) fee.value = String(draft['sales.monthly_fee']); });

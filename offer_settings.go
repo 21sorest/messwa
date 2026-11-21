@@ -29,6 +29,9 @@ type sellSettings struct {
 	// AcceptPaymentImages counts an image from the paying buyer as their
 	// payment; see sale.acceptImages.
 	AcceptPaymentImages bool
+	// UPI is the UPI ID the pay message's QR pays, when screenshots
+	// count; see sale.upi.
+	UPI string
 	// AcceptUnreadablePayments counts a WhatsApp Pay payment whose amount
 	// stays unreadable after recovery as the agreed price; see
 	// sale.assumeUnreadable.
@@ -131,6 +134,7 @@ func resolveSellSettings(cfg *config.Config, f sellFlags) (sellSettings, error) 
 		Buyers:                   cfg.Sell.Buyers,
 		Repost:                   repost.FromConfig(cfg.Sell),
 		AcceptPaymentImages:      cfg.Sell.AcceptPaymentImages,
+		UPI:                      cfg.Sell.UPI,
 		AcceptUnreadablePayments: cfg.Sell.AcceptUnreadablePayments,
 	}
 	firstN := func(n int, name string) ([]string, error) {

@@ -268,3 +268,113 @@ func TestNegotiationNoScreenshotAskAfterImage(t *testing.T) {
 		}
 	})
 }
+
+// TestNegotiationUPIQR: with screenshots counting and a UPI ID saved, the
+// pay message comes with a UPI QR for the agreed price, a buyer asking for
+// the UPI ID gets it once more, and their screenshot gets the meal QR.
+func TestNegotiationUPIQR(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.Sell.AcceptPaymentImages = true
+		f.cfg.Sell.UPI = "seller@okaxis"
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 60)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		f.conn.emit(f.reply(buyerA, "price?"))
+		settle()
+		f.conn.emit(dm(buyerA, "ok"))
+		settle()
+		f.conn.emit(dm(buyerA, "upi id?"))
+		settle()
+		f.conn.emit(dm(buyerA, "scanner?"))
+		settle()
+		f.conn.emit(dm(buyerA, "cash?"))
+		settle()
+		var got []string
+		for _, m := range sentTo(f.conn.messages(), buyerA) {
+			if m.qr {
+				got = append(got, "[image]")
+			} else {
+				got = append(got, m.text)
+			}
+		}
+		want := []string{"60", "ok 60", "pay on this qr and send the screenshot, ill send the meal qr after",
+			"[image]", "[image]", "only upi sorry"}
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Fatalf("A got %q, want %q", got, want)
+		}
+		evs, err := f.st.SellTaskEvents(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var amounts []int64
+		for _, e := range evs {
+			if e.Kind == store.EventPayQR {
+				amounts = append(amounts, e.N)
+			}
+		}
+		if !slices.Equal(amounts, []int64{6000, 6000}) {
+			t.Fatalf("UPI QR amounts %v, want 60 twice", amounts)
+		}
+		f.conn.emit(imageFrom(buyerA, "img-a", time.Now()))
+		synctest.Wait()
+		if got := texts(sentTo(f.conn.messages(), buyerA)); got[len(got)-1] != "[QR]" {
+			t.Fatalf("A got %q, want the meal QR last", got)
+		}
+	})
+}
+
+// TestAutopilotTakesScreenshot: autopilot counts a screenshot as payment
+// when the setting is on.
+func TestAutopilotTakesScreenshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.Sell.AcceptPaymentImages = true
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 60)
+		id, _, err := m.StartNow(ctx, 0, f.date, "lunch", 30, 60, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		f.conn.emit(f.reply(buyerA, "price?"))
+		settle()
+		f.conn.emit(dm(buyerA, "ok"))
+		settle()
+		f.conn.emit(imageFrom(buyerA, "img-a", time.Now()))
+		synctest.Wait()
+		if got := texts(sentTo(f.conn.messages(), buyerA)); got[len(got)-1] != "[QR]" {
+			t.Fatalf("A got %q, want the meal QR last", got)
+		}
+		if task := f.task(id); task.State != store.TaskSold {
+			t.Fatalf("task is %s (%s)", task.State, task.Detail)
+		}
+	})
+}
+
+// TestPayQRPNG: the UPI QR is a square image big enough to scan, and its
+// caption names the price and the UPI ID.
+func TestPayQRPNG(t *testing.T) {
+	s := &sale{upi: "seller@okaxis", mess: "kadamba", meal: "lunch"}
+	png, err := s.payQRPNG("30.00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, w, h, err := deliveryImageBytes(png); err != nil || w < 200 || w != h {
+		t.Fatalf("QR is %dx%d, %v", w, h, err)
+	}
+	if got := payQRCaption("30.00", "seller@okaxis"); got != "₹30 to seller@okaxis" {
+		t.Errorf("caption %q", got)
+	}
+	if got := payQRCaption("", "seller@okaxis"); got != "pay to seller@okaxis" {
+		t.Errorf("caption %q", got)
+	}
+}

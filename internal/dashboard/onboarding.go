@@ -148,3 +148,53 @@ func onboardingRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Ser
 		state(w, r)
 	}))
 }
+
+// setupUPIRoutes adds /api/setup-upi, the welcome page's UPI step. It
+// doesn't wait for WhatsApp like the selling steps: saving the UPI ID
+// needs nothing from it.
+func setupUPIRoutes(mux *http.ServeMux, cfg *config.Config, srv *mcpserver.Server) {
+	state := func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, r, struct {
+			UPI string `json:"upi"`
+		}{cfg.Live().Sell.UPI})
+	}
+	mux.Handle("GET /api/setup-upi", signedIn(state))
+
+	// PUT saves the UPI ID and turns on screenshots counting as paid,
+	// which the UPI QR needs: the bot can't see a payment made outside
+	// WhatsApp, only the buyer's screenshot of it.
+	mux.Handle("PUT /api/setup-upi", signedIn(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			UPI string `json:"upi"`
+		}
+		if !readJSON(w, r, &in) {
+			return
+		}
+		upi, err := config.ParseUPI(in.UPI)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if upi == "" {
+			jsonError(w, "type your UPI ID, like name@okaxis", http.StatusBadRequest)
+			return
+		}
+		saved, err := srv.Settings(r.Context())
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		all := config.Settings{}
+		for k, v := range saved {
+			all[k] = v
+		}
+		raw := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+		all["sell.upi"] = raw(upi)
+		all["sell.accept_payment_images"] = raw(true)
+		if err := srv.SaveSettings(r.Context(), all, accounts.UserFrom(r.Context()).ID); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		state(w, r)
+	}))
+}

@@ -142,6 +142,17 @@ var settings = []setting{
 	secondsSetting("sell.negotiation_silence", MinNegotiationSilence, false, func(c *Config) *duration { return &c.Sell.NegotiationSilence }),
 	boolSetting("sell.smart_haggle", func(c *Config) *bool { return &c.Sell.SmartHaggle }),
 	boolSetting("sell.accept_payment_images", func(c *Config) *bool { return &c.Sell.AcceptPaymentImages }),
+	{key: "sell.upi",
+		get: func(c *Config) any { return c.Sell.UPI },
+		set: func(c *Config, v json.RawMessage) error {
+			var s string
+			if err := strictJSON(v, &s); err != nil {
+				return err
+			}
+			upi, err := ParseUPI(s)
+			c.Sell.UPI = upi
+			return err
+		}},
 	boolSetting("sell.accept_unreadable_payments", func(c *Config) *bool { return &c.Sell.AcceptUnreadablePayments }),
 	boolSetting("sell.own_wording", func(c *Config) *bool { return &c.Sell.OwnWording }),
 	{key: "sell.messages",
