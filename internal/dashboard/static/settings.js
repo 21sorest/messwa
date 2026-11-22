@@ -29,6 +29,8 @@ for (const small of document.querySelectorAll('[data-help] .row .lbl > small')) 
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', name);
   pop.textContent = small.textContent;
+  // A pick's description follows the picked choice; see CHOICES.
+  if (small.dataset.sub) pop.dataset.sub = small.dataset.sub;
   const b = el('button', 'keybtn qhelp', '?');
   b.type = 'button';
   b.setAttribute('aria-label', `What "${name}" does`);
@@ -50,7 +52,11 @@ for (const small of document.querySelectorAll('[data-help] .row .lbl > small')) 
 // ---------- tabs ----------
 
 function showPane(id) {
-  for (const t of document.querySelectorAll('.set-tab')) t.classList.toggle('on', t.dataset.pane === id);
+  for (const t of document.querySelectorAll('.set-tab')) {
+    t.classList.toggle('on', t.dataset.pane === id);
+    // On a phone the tabs are one row that scrolls sideways.
+    if (t.dataset.pane === id && t.offsetParent) t.parentElement.scrollLeft = t.offsetLeft - 16;
+  }
   for (const p of document.querySelectorAll('.pane')) p.classList.toggle('on', p.id === id);
   store.set('mah-settings-tab', id);
 }
@@ -160,19 +166,25 @@ for (const b of document.querySelectorAll('.tg[data-key]')) {
   paint(() => b.setAttribute('aria-checked', String(!!draft[b.dataset.key])));
 }
 
+// Each choice is [value, label, what it does]. The row's description
+// shows what the picked one does.
 const CHOICES = {
-  'sell.buyers': [['anyone', '🌐', 'Anyone'], ['unsaved_only', '🙈', 'Skip contacts']],
-  'sell.handoff': [['never', '🤖', 'Bot sells', 'Pay → QR'], ['on_reply', '✋', 'On reply', 'First DM is yours']],
+  'sell.buyers': [['anyone', 'Anyone', 'Everyone who replies can buy'], ['unsaved_only', 'Skip contacts', 'Saved contacts are skipped and get nothing']],
+  'sell.handoff': [['never', 'Bot sells', 'The bot takes payment, then sends the QR'], ['on_reply', 'On reply', 'The first buyer DM is yours to answer']],
 };
 for (const g of document.querySelectorAll('.pick[data-key]')) {
   const key = g.dataset.key;
-  const bs = CHOICES[key].map(([v, ic, label, sub]) => {
-    const b = opt(ic, label, sub, () => set(key, v));
+  const sub = document.querySelector(`[data-sub="${key}"]`);
+  const bs = CHOICES[key].map(([v, label]) => {
+    const b = opt('', label, '', () => set(key, v));
     b.dataset.v = v;
     g.append(b);
     return b;
   });
-  paint(() => { for (const b of bs) b.setAttribute('aria-checked', String(b.dataset.v === draft[key])); });
+  paint(() => {
+    for (const b of bs) b.setAttribute('aria-checked', String(b.dataset.v === draft[key]));
+    if (sub) sub.textContent = (CHOICES[key].find(([v]) => v === draft[key]) || [])[2] || '';
+  });
 }
 
 // ---------- offer ----------
