@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -58,8 +59,8 @@ func TestSellEventsRecordTheSale(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		m := f.negotiatingManager(ctx, 40)
-		notified := 0
-		m.notify = func() { notified++ }
+		var notified atomic.Int32
+		m.notify = func() { notified.Add(1) }
 		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, "")
 		if err != nil {
 			t.Fatal(err)
@@ -95,7 +96,7 @@ func TestSellEventsRecordTheSale(t *testing.T) {
 		if task := f.task(id); task.TargetPaise != 4000 {
 			t.Fatalf("target = %d", task.TargetPaise)
 		}
-		if notified == 0 {
+		if notified.Load() == 0 {
 			t.Fatal("the dashboard was never told")
 		}
 	})

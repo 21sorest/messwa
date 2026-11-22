@@ -216,8 +216,8 @@ var (
 		"pay here", "pay on this", "pay to this", "pay this", "pay on same", "gpay", "g pay", "google pay", "phonepe", "phone pe", "paytm",
 		"upi", "upi?", "whatsapp pay", "paying", "sending", "send", "i'll take", "ill take", "i will take", "im taking", "i'm taking",
 		"taking it", "take it", "i take", "deal", "bhejo", "bhej", "bhejta", "karta hu", "kar raha", "kr rha", "doing")
-	okWords = newVocab("ok", "okay", "okie", "oki", "okey", "okayy", "k", "kk", "fine", "cool", "works", "work", "sure", "done", "alright",
-		"alr", "aight", "awesome", "great", "haa", "haan", "han", "ha", "yes", "ya", "yeah", "yep", "yup", "yea", "yo", "bet", "chalega",
+	okWords = newVocab("ok", "okay", "okie", "oki", "okey", "okayy", "okies", "okz", "k", "kk", "fine", "cool", "works", "work", "sure", "done", "alright",
+		"alr", "alryt", "alrite", "alrt", "aryt", "aight", "awesome", "great", "haa", "haan", "han", "ha", "yes", "ya", "yeah", "yep", "yup", "yea", "yo", "bet", "chalega",
 		"chalo", "theek", "thik", "thk", "perfect", "wait", "sec", "fast", "bolo", "tell", "quick", "dn", "agreed", "noted", "go")
 	questionWords = newVocab("veg", "nonveg", "non", "nv", "egg", "chicken", "paneer", "kadamba", "kadamb", "kdmb", "kadam", "yuktahar",
 		"yukta", "yukthahar", "palash", "bakul", "which", "mess", "extras", "extra", "menu", "what's", "whats", "kya", "special")

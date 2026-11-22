@@ -51,6 +51,90 @@ func pooled(t store.SellTask) bool {
 	return negotiates(t) && (t.Handoff == "" || t.Handoff == string(config.HandoffNever)) && t.Mess != "" && !t.Autopilot
 }
 
+// samePoolTasks reports whether a and b belong to the same pool.
+func samePoolTasks(a, b store.SellTask) bool {
+	if a.ID == b.ID {
+		return true
+	}
+	return pooled(a) && pooled(b) &&
+		a.Date == b.Date && a.Mess == b.Mess && a.Diet == b.Diet &&
+		baseMeal(a.Meal) == baseMeal(b.Meal)
+}
+
+// notifyReserved wakes goroutines waiting on waitUnreserved.
+func (m *sellManager) notifyReserved() {
+	m.mu.Lock()
+	close(m.resCh)
+	m.resCh = make(chan struct{})
+	m.mu.Unlock()
+}
+
+// poolTasks returns every active running task in t's pool.
+func (m *sellManager) poolTasks(t store.SellTask) []*runningTask {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*runningTask
+	for _, rt := range m.running {
+		if rt.gate.active.Load() && samePoolTasks(t, rt.task) {
+			out = append(out, rt)
+		}
+	}
+	return out
+}
+
+// poolReserved reports whether every active task in t's pool currently has
+// its meal reserved for a buyer.
+func (m *sellManager) poolReserved(t store.SellTask) bool {
+	rts := m.poolTasks(t)
+	if len(rts) == 0 {
+		return true
+	}
+	for _, rt := range rts {
+		if !rt.busy() {
+			return false
+		}
+	}
+	return true
+}
+
+// waitUnreserved blocks until t's pool has an unreserved meal or ctx ends.
+func (m *sellManager) waitUnreserved(ctx context.Context, t store.SellTask) error {
+	for {
+		m.mu.Lock()
+		ch := m.resCh
+		m.mu.Unlock()
+		if !m.poolReserved(t) {
+			return nil
+		}
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+// syncPoolPause pauses negotiations in t's pool while every active meal in
+// the pool is reserved, and unpauses them once any meal is free again.
+func (m *sellManager) syncPoolPause(t store.SellTask) {
+	m.pauseMu.Lock()
+	defer m.pauseMu.Unlock()
+	rts := m.poolTasks(t)
+	allBusy := len(rts) > 0
+	for _, rt := range rts {
+		if !rt.busy() {
+			allBusy = false
+			break
+		}
+	}
+	for _, rt := range rts {
+		if n := rt.neg.Load(); n != nil {
+			n.setPaused(allBusy)
+		}
+	}
+	m.notifyReserved()
+}
+
 // poolView is a task's pool on its date.
 type poolView struct {
 	all    []store.SellTask // every task in it, whatever its state, oldest first
@@ -219,6 +303,7 @@ func (m *sellManager) poolChanged(t store.SellTask) {
 		m.lead(rt)
 		rt.kick()
 	}
+	m.syncPoolPause(t)
 }
 
 // sellerFor picks the task that sells to a buyer who agreed paise in t's
