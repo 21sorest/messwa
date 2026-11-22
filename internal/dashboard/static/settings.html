@@ -29,21 +29,22 @@
     </div>
   </header>
 
+  <div class="set-body">
   <nav class="set-tabs" id="tabs" aria-label="Settings sections" hidden>
-    <button class="set-tab on" type="button" data-pane="you"><span class="ic" aria-hidden="true">👤</span>You</button>
-    <button class="set-tab" type="button" data-pane="offer" data-mine hidden><span class="ic" aria-hidden="true">📣</span>Offer</button>
-    <button class="set-tab" type="button" data-pane="repost" data-mine hidden><span class="ic" aria-hidden="true">🔁</span>Repost</button>
-    <button class="set-tab" type="button" data-pane="buyers" data-mine hidden><span class="ic" aria-hidden="true">🤝</span>Buyers</button>
-    <button class="set-tab" type="button" data-pane="messages" data-mine hidden><span class="ic" aria-hidden="true">💬</span>Messages</button>
-    <button class="set-tab" type="button" data-pane="market" data-admin hidden><span class="crown" aria-hidden="true">👑</span><span class="ic" aria-hidden="true">✅</span>Market</button>
-    <button class="set-tab" type="button" data-pane="calendar" data-admin hidden><span class="crown" aria-hidden="true">👑</span><span class="ic" aria-hidden="true">🗓️</span>Calendar</button>
+    <button class="set-tab on" type="button" data-pane="you">You</button>
+    <button class="set-tab" type="button" data-pane="offer" data-mine hidden>Offer</button>
+    <button class="set-tab" type="button" data-pane="repost" data-mine hidden>Repost</button>
+    <button class="set-tab" type="button" data-pane="buyers" data-mine hidden>Buyers</button>
+    <button class="set-tab" type="button" data-pane="messages" data-mine hidden>Messages</button>
+    <button class="set-tab" type="button" data-pane="market" data-admin hidden title="Admins only">Market<span class="crown" aria-hidden="true">👑</span></button>
+    <button class="set-tab" type="button" data-pane="calendar" data-admin hidden title="Admins only">Calendar<span class="crown" aria-hidden="true">👑</span></button>
   </nav>
+  <div class="set-main">
 
   <section class="pane on" id="you">
-    <div class="box">
-      <div class="h">Open chats in</div>
-      <div class="pick" id="via" role="radiogroup" aria-label="Messaging app"></div>
-      <p class="s-hint" id="viaNote" hidden>Beeper only opens on desktop, so this device uses WhatsApp.</p>
+    <div class="box list">
+      <div class="row"><div class="lbl">Open chats in</div><div class="pick inline" id="via" role="radiogroup" aria-label="Messaging app"></div></div>
+      <p class="s-hint via-note" id="viaNote" hidden>Beeper only opens on desktop, so this device uses WhatsApp.</p>
     </div>
     <div class="master" data-mine hidden>
       <span class="ic" aria-hidden="true">🍪</span>
@@ -128,22 +129,27 @@
   </section>
 
   <section class="pane" id="buyers" data-help>
-    <div class="box">
-      <div class="h">Who can buy</div>
-      <div class="pick" data-key="sell.buyers" role="radiogroup" aria-label="Who can buy"></div>
-    </div>
-    <div class="box">
-      <div class="h">Default handoff</div>
-      <div class="pick" data-key="sell.handoff" role="radiogroup" aria-label="Default handoff"></div>
-    </div>
+    <div class="grp-h">Who and how</div>
     <div class="box list">
-      <div class="row"><div class="lbl">🧠 Smart haggle<small>Holds out for the meal's usual price. Drops toward your floor in the last 2 hours.</small></div><button class="tg" type="button" data-key="sell.smart_haggle" aria-label="Smart haggle"></button></div>
-      <div class="row"><div class="lbl">💬 Buyers who DM without replying<small>"price?", "kadamba lunch available?"</small></div><button class="tg" type="button" data-key="sell.accept_plain_dms" aria-label="Buyers who DM without replying"></button></div>
-      <div class="row"><div class="lbl">📣 Message people with buy posts<small>Sell tasks DM whoever posted "need bakul lunch"</small></div><button class="tg" type="button" data-key="sell.message_buy_posts" aria-label="Message people with buy posts"></button></div>
-      <div class="row"><div class="lbl">🖼️ Screenshot counts as paid <span class="tag warn">Unverified</span><small>QR goes out on any image. Check UPI after.</small></div><button class="tg danger" type="button" data-key="sell.accept_payment_images" aria-label="Screenshot counts as paid"></button></div>
-      <div class="row upi-row"><div class="lbl">💳 Your UPI<small>With screenshots counting, the pay message comes with a QR for the exact price. Type your UPI ID, or read it from your UPI QR.</small></div><div class="upi"><input class="upi-in" type="text" data-key="sell.upi" placeholder="name@okaxis" autocomplete="off" spellcheck="false" aria-label="Your UPI ID"><button class="btn small" type="button" id="upiPick">📷 From QR</button><input type="file" id="upiFile" accept="image/png,image/jpeg" hidden></div></div>
-      <div class="row"><div class="lbl">🫥 Blank WhatsApp Pay counts as paid <span class="tag warn">Unverified</span><small>WhatsApp sometimes sends a payment confirmation without the amount paid. With this on, the bot trusts that the buyer paid the right amount and sends the QR without checking.</small></div><button class="tg danger" type="button" data-key="sell.accept_unreadable_payments" aria-label="Blank WhatsApp Pay counts as paid"></button></div>
-      <div class="row"><div class="lbl">🧹 Forget unsaved DMs after</div><div class="step" data-key="dms.retention" data-unit="h"></div></div>
+      <div class="row"><div class="lbl">Who can buy<small data-sub="sell.buyers"></small></div><div class="pick inline" data-key="sell.buyers" role="radiogroup" aria-label="Who can buy"></div></div>
+      <div class="row"><div class="lbl">Default handoff<small data-sub="sell.handoff"></small></div><div class="pick inline" data-key="sell.handoff" role="radiogroup" aria-label="Default handoff"></div></div>
+    </div>
+    <div class="grp-h">Bot</div>
+    <div class="box list">
+      <div class="row"><div class="lbl">Smart haggle<small>Holds out for the meal's usual price, then drops toward your floor in the last 2 hours</small></div><button class="tg" type="button" data-key="sell.smart_haggle" aria-label="Smart haggle"></button></div>
+      <div class="row"><div class="lbl">Buyers who DM without replying<small>"price?", "kadamba lunch available?"</small></div><button class="tg" type="button" data-key="sell.accept_plain_dms" aria-label="Buyers who DM without replying"></button></div>
+      <div class="row"><div class="lbl">Message people with buy posts<small>Sell tasks DM whoever posted "need bakul lunch"</small></div><button class="tg" type="button" data-key="sell.message_buy_posts" aria-label="Message people with buy posts"></button></div>
+      <div class="row"><div class="lbl">Forget unsaved DMs after</div><div class="step" data-key="dms.retention" data-unit="h"></div></div>
+    </div>
+    <div class="grp-h">Payment</div>
+    <div class="box list">
+      <div class="row upi-row"><div class="lbl">Your UPI<small>With screenshots counting, the pay message carries a QR for the exact price</small></div><div class="upi"><input class="upi-in" type="text" data-key="sell.upi" placeholder="name@okaxis" autocomplete="off" spellcheck="false" aria-label="Your UPI ID"><button class="btn small" type="button" id="upiPick">From QR</button><input type="file" id="upiFile" accept="image/png,image/jpeg" hidden></div></div>
+    </div>
+    <div class="box list risk">
+      <div class="h">Skips payment checks</div>
+      <p class="s-hint">The bot sends the meal QR without seeing the money. Check your UPI app after each sale.</p>
+      <div class="row"><div class="lbl">Screenshot counts as paid<small>Any image from the buyer gets the meal QR</small></div><button class="tg danger" type="button" data-key="sell.accept_payment_images" aria-label="Screenshot counts as paid"></button></div>
+      <div class="row"><div class="lbl">Blank WhatsApp Pay counts as paid<small>Trusts a WhatsApp payment notice that shows no amount</small></div><button class="tg danger" type="button" data-key="sell.accept_unreadable_payments" aria-label="Blank WhatsApp Pay counts as paid"></button></div>
     </div>
   </section>
 
@@ -200,6 +206,8 @@
     <button class="btn primary small" type="button" id="saveBtn" disabled>Save</button>
   </div>
   <p class="err" id="err" role="alert" hidden></p>
+  </div>
+  </div>
 </div>
 <div class="tip" id="tip" hidden></div>
 <dialog class="var-help" id="varHelp" aria-labelledby="varHelpTitle">

@@ -1,15 +1,18 @@
 /* The settings page. Shares style.css and account.css with the other pages. */
 
-.settings .set-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+/* Sections sit in a sidebar; on a phone it becomes a row of tabs. */
+.app.account.settings { width: min(900px, 100%); }
+.set-body { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; align-items: start; }
+.set-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.settings .set-tabs { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 12px; }
 .set-tab {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px 8px;
-  border-radius: 12px; background: var(--slot); border: 1px solid var(--line); cursor: pointer; color: var(--muted);
-  font: 700 8.5px Pixel; letter-spacing: .4px; text-transform: uppercase; transition: background .12s, border-color .12s, color .12s;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 10px; border: 0; border-radius: 8px;
+  background: none; cursor: pointer; color: var(--muted); text-align: left;
+  font: 700 9px Pixel; letter-spacing: .5px; text-transform: uppercase; transition: background .12s, color .12s;
 }
-.set-tab:hover { background: var(--slot-hi); }
-.set-tab.on { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 60%, transparent); background: color-mix(in srgb, var(--gold) 7%, var(--slot)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 10%, transparent); }
-.set-tab .ic { font-size: 20px; line-height: 1; }
-.set-tab .crown { position: absolute; top: 4px; right: 6px; font-size: 9px; opacity: .8; }
+.set-tab:hover { background: var(--slot); color: var(--text); }
+.set-tab.on { color: var(--gold); background: color-mix(in srgb, var(--gold) 7%, var(--slot)); box-shadow: 0 0 14px color-mix(in srgb, var(--gold) 12%, transparent); }
+.set-tab .crown { font-size: 9px; opacity: .55; }
 
 .pane { display: none; flex-direction: column; gap: 10px; animation: fade .15s ease; }
 .pane.on { display: flex; }
@@ -52,6 +55,26 @@
 .opt b { white-space: nowrap; font: 700 9px Pixel; letter-spacing: .4px; color: var(--text); text-transform: uppercase; }
 .opt[aria-checked="true"] { border-color: color-mix(in srgb, var(--gold) 60%, transparent); background: color-mix(in srgb, var(--gold) 7%, var(--slot)); color: var(--text); }
 .opt[aria-checked="true"] b { color: var(--gold); }
+/* A pick that sits at the end of a row, as a segmented control. */
+.pick.inline { display: inline-flex; flex: none; flex-wrap: nowrap; gap: 2px; padding: 2px; border-radius: 10px; background: #10141c; border: 1px solid var(--line); }
+.pick.inline .opt { flex: none; flex-direction: row; gap: 6px; padding: 6px 11px; border: 0; border-radius: 8px; background: none; }
+.pick.inline .opt .ic { font-size: 14px; }
+.pick.inline .opt .ic svg { width: 14px; height: 14px; }
+.pick.inline .opt b { font: 600 12.5px var(--sans); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.pick.inline .opt:hover b { color: var(--text); }
+.pick.inline .opt[aria-checked="true"] { background: var(--slot-hi); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 40%, transparent); }
+.pick.inline .opt[aria-checked="true"] b { color: var(--gold); }
+.via-note { margin: 0 0 10px; }
+
+/* A group's name above its list. */
+.grp-h { margin: 6px 2px -4px; font: 700 8.5px Pixel; letter-spacing: .6px; color: var(--dim); text-transform: uppercase; }
+.grp-h:first-child { margin-top: 0; }
+
+/* Switches that let the bot hand over a meal without seeing the money. */
+.box.risk { margin-top: 6px; border-color: #ff6b5b55; background: linear-gradient(180deg, #ff6b5b0f, transparent 70%), linear-gradient(180deg, #171c27, #121620); }
+.risk .h { margin: 10px 0 2px; color: #ff8b7d; }
+.risk .s-hint { margin: 0 0 4px; }
+
 .pick.mini { gap: 4px; }
 .pick.mini .opt { flex: none; padding: 4px 8px; flex-direction: row; border-radius: 8px; }
 
@@ -171,7 +194,6 @@ button.chip.mess { cursor: pointer; }
 .save .btn:disabled { opacity: .5; cursor: default; }
 
 @media (max-width: 600px) {
-  .settings .set-tabs { grid-template-columns: repeat(4, 1fr); }
   .tiles, .grid2 { grid-template-columns: 1fr; }
   .trig { grid-template-columns: 1fr; }
   .opt { flex: 1 1 120px; }
@@ -256,6 +278,20 @@ button.var:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent
   .upi-in { flex: 1; width: auto; min-width: 0; }
 }
 
+@media (max-width: 760px) {
+  .set-body { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .settings .set-tabs { position: static; flex-direction: row; gap: 18px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+  .settings .set-tabs::-webkit-scrollbar { display: none; }
+  .set-tab { flex: none; padding: 4px 0 10px; border-radius: 0; white-space: nowrap; }
+  .set-tab:hover { background: none; }
+  .set-tab.on { background: none; box-shadow: inset 0 -2px 0 var(--gold); }
+}
+@media (max-width: 420px) {
+  /* A two-way pick goes under its name, full width. */
+  .settings .row:has(> .pick.inline) { flex-wrap: wrap; }
+  .row > .pick.inline { flex: 1 1 100%; }
+  .row > .pick.inline .opt { flex: 1; justify-content: center; }
+}
 /* A row's ? sits after its name and opens the description. */
 .lbl > .keybtn.qhelp { width: 20px; height: 20px; margin: 0 6px 0 6px; border-radius: 6px; font: 700 12px/1 var(--sans); vertical-align: 2px; }
 .keypop { line-height: 1.45; }
