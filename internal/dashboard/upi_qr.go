@@ -8,6 +8,9 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
@@ -48,15 +51,23 @@ func upiQRRoutes(mux *http.ServeMux) {
 		}{upi})
 	}))
 
-	// GET /api/upi-qr-preview?upi=ID draws the QR a buyer would get for a
-	// ₹50 meal, for the welcome page's sample chat.
+	// GET /api/upi-qr-preview?upi=ID&amount=RUPEES draws the QR a buyer
+	// would get for a meal at that price, ₹50 if amount is left out. The
+	// welcome page's sample chat and the settings page's test QR use it.
 	mux.Handle("GET /api/upi-qr-preview", signedIn(func(w http.ResponseWriter, r *http.Request) {
 		upi, err := config.ParseUPI(r.URL.Query().Get("upi"))
 		if err != nil || upi == "" {
 			jsonError(w, "not a UPI ID", http.StatusBadRequest)
 			return
 		}
-		code, err := qr.Encode(config.UPIPayURI(upi, previewAmount, "messwa preview"), qr.M)
+		amount := previewAmount
+		if a := r.URL.Query().Get("amount"); a != "" {
+			if amount, err = parsePreviewAmount(a); err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		code, err := qr.Encode(config.UPIPayURI(upi, amount, "messwa preview"), qr.M)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -69,6 +80,24 @@ func upiQRRoutes(mux *http.ServeMux) {
 
 // previewAmount is the price in the welcome page's sample chat.
 const previewAmount = "50.00"
+
+// previewAmountRE is a rupee amount with at most two decimals, like "30"
+// or "30.50".
+var previewAmountRE = regexp.MustCompile(`^[0-9]{1,6}(\.[0-9]{1,2})?$`)
+
+// parsePreviewAmount turns a typed rupee amount into the "30.00" form a
+// UPI QR carries. It allows ₹0.01 to ₹1,00,000, the UPI per-payment cap.
+func parsePreviewAmount(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if !previewAmountRE.MatchString(s) {
+		return "", errors.New("the amount must be rupees, like 30 or 30.50")
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || v <= 0 || v > 100000 {
+		return "", errors.New("the amount must be between ₹0.01 and ₹1,00,000")
+	}
+	return strconv.FormatFloat(v, 'f', 2, 64), nil
+}
 
 // readUPIQR finds the QR in a PNG or JPEG, such as a screenshot of your
 // UPI app's "receive money" screen, and returns the UPI ID it pays.

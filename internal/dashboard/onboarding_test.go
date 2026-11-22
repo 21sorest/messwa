@@ -1,12 +1,19 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"strings"
 	"testing"
+
+	"github.com/makiuchi-d/gozxing"
+	"github.com/makiuchi-d/gozxing/qrcode"
 
 	"messwa/internal/config"
 	"messwa/internal/mcpserver"
@@ -124,4 +131,36 @@ func TestSetupUPI(t *testing.T) {
 	if res := c.get(t, "/api/upi-qr-preview?upi=nope", nil); res.StatusCode != 400 {
 		t.Errorf("bad preview = %d, want 400", res.StatusCode)
 	}
+	// The settings page's test QR asks for the amount it was given.
+	if res, err = c.Get(d.URL + "/api/upi-qr-preview?upi=asha@okaxis&amount=32.5"); err != nil {
+		t.Fatal(err)
+	}
+	png, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if text := decodeQRText(t, png); !strings.Contains(text, "am=32.50") || !strings.Contains(text, "pa=asha%40okaxis") {
+		t.Errorf("preview with amount = %q", text)
+	}
+	for _, bad := range []string{"0", "-5", "abc", "100001", "1.234"} {
+		if res := c.get(t, "/api/upi-qr-preview?upi=asha@okaxis&amount="+url.QueryEscape(bad), nil); res.StatusCode != 400 {
+			t.Errorf("amount %q = %d, want 400", bad, res.StatusCode)
+		}
+	}
+}
+
+// decodeQRText returns the text inside a QR PNG.
+func decodeQRText(t *testing.T, png []byte) string {
+	t.Helper()
+	img, _, err := image.Decode(bytes.NewReader(png))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bmp, err := gozxing.NewBinaryBitmapFromImage(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := qrcode.NewQRCodeReader().Decode(bmp, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.GetText()
 }

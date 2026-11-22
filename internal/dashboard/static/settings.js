@@ -604,6 +604,63 @@ paint(() => {
 const upi = document.querySelector('[data-key="sell.upi"]');
 upi.addEventListener('input', () => set('sell.upi', upi.value.trim()));
 paint(() => { if (document.activeElement !== upi) upi.value = draft['sell.upi'] || ''; });
+
+// The test QR under the UPI field: the QR a buyer would get for the test
+// amount, redrawn as you type, so you can scan it with your own UPI app
+// and check it opens a payment to you. Nothing here is saved. The checks
+// match config.ParseUPI and parsePreviewAmount, which the server runs.
+const UPI_ID = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
+const UPI_AMT = /^[0-9]{1,6}(\.[0-9]{1,2})?$/;
+let upiQRFor = null;
+let upiQRTimer;
+function paintUPIQR() {
+  const id = upi.value.trim().toLowerCase();
+  const amt = $('upiAmt').value.trim();
+  const qrImg = $('upiQR');
+  const okID = UPI_ID.test(id);
+  const okAmt = UPI_AMT.test(amt) && Number(amt) > 0 && Number(amt) <= 100000;
+  for (const b of $('upiPicks').children) b.setAttribute('aria-pressed', String(Number(b.dataset.amt) === Number(amt) && amt !== ''));
+  // The card shows once the UPI ID reads right. A bad amount dims the QR
+  // instead of removing it, so the card keeps its size while you type.
+  $('upiTest').hidden = !okID;
+  $('upiCap').textContent = !id || okID ? (okAmt ? '' : 'Type an amount from ₹0.01 to ₹1,00,000.')
+    : 'Type a full UPI ID, like name@okaxis, to see its QR.';
+  if (!okID || !okAmt) {
+    upiQRFor = null;
+    qrImg.classList.add('stale');
+    return;
+  }
+  const key = `${id} ${amt}`;
+  if (key === upiQRFor) return;
+  upiQRFor = key;
+  const n = Number(amt);
+  const rupees = n.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
+  // Load off-screen and swap on load, so the old QR doesn't blink out.
+  const img = new Image();
+  img.onload = () => {
+    if (upiQRFor !== key) return;
+    qrImg.src = img.src;
+    qrImg.alt = `UPI QR paying ₹${rupees} to ${id}`;
+    qrImg.classList.remove('stale');
+  };
+  img.onerror = () => {
+    if (upiQRFor !== key) return;
+    upiQRFor = null;
+    qrImg.classList.add('stale');
+    $('upiCap').textContent = "Couldn't draw the QR for that UPI ID.";
+  };
+  img.src = `api/upi-qr-preview?upi=${encodeURIComponent(id)}&amount=${encodeURIComponent(amt)}`;
+}
+function queueUPIQR() { clearTimeout(upiQRTimer); upiQRTimer = setTimeout(paintUPIQR, 250); }
+upi.addEventListener('input', queueUPIQR);
+$('upiAmt').addEventListener('input', queueUPIQR);
+$('upiPicks').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  $('upiAmt').value = b.dataset.amt;
+  paintUPIQR();
+});
+paint(queueUPIQR);
 $('upiPick').addEventListener('click', () => $('upiFile').click());
 $('upiFile').addEventListener('change', async () => {
   const file = $('upiFile').files[0];

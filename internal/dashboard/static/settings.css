@@ -144,6 +144,30 @@ button.chip.mess { cursor: pointer; }
 .upi { display: flex; gap: 6px; align-items: center; }
 .upi-in { width: 170px; height: 30px; padding: 0 10px; border-radius: 9px; background: #10141c; border: 1px solid var(--line); color: var(--text); font: 13px var(--sans); outline: none; }
 .upi-in:focus { border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
+/* Your UPI keeps its controls in one column on the right, like every
+   other row: the field and From QR, then a card with the QR a buyer would
+   get for the test amount. The card is as wide as the field row above.
+   On a wide screen the QR sits centred at the card's top, with the amount
+   under it; on a phone the two sit side by side. */
+.settings .row.upi-row { align-items: flex-start; }
+.upi-row .lbl { padding-top: 5px; }
+.upi-ctl { display: flex; flex-direction: column; gap: 8px; width: 300px; flex: none; }
+.upi-ctl .upi-in { flex: 1; width: auto; min-width: 0; }
+.upi-err { color: #ff6b5b; font-size: 11.5px; line-height: 1.4; }
+.upi-err:empty { display: none; }
+.upi-test { display: flex; flex-direction: column; gap: 12px; align-items: stretch; padding: 12px; border-radius: 12px; background: #10141c; border: 1px solid var(--line); }
+.upi-qr { display: block; width: 184px; height: 184px; flex: none; align-self: center; border-radius: 8px; background: #fff; image-rendering: pixelated; transition: opacity .15s; }
+.upi-qr.stale { opacity: .2; }
+.upi-amt { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; }
+.upi-amt-h { font: 700 9.5px Pixel; letter-spacing: .6px; color: var(--muted); text-transform: uppercase; }
+.upi-amt-in { display: flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; border-radius: 9px; background: var(--slot); border: 1px solid var(--line); color: var(--dim); font: 13px var(--sans); }
+.upi-amt-in:focus-within { border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
+.upi-amt-in .rs { font: 13px/1 var(--sans); position: relative; top: 1px; }
+.upi-amt-in input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: none; color: var(--text); font: 700 11px Pixel; outline: none; }
+.upi-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.upi-picks button { height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--slot); color: var(--muted); font: 700 9px Pixel; letter-spacing: .3px; cursor: pointer; }
+.upi-picks button:hover { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.upi-picks button[aria-pressed="true"] { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); background: color-mix(in srgb, var(--gold) 10%, var(--slot)); }
 .num-in:focus { border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
 
 .tag { font: 700 8px Pixel; padding: 2px 6px; border-radius: 99px; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); }
@@ -250,10 +274,15 @@ button.var:hover { border-color: color-mix(in srgb, var(--gold) 55%, transparent
   .var-help td.ex { display: none; }
   /* Twenty pips don't fit one row on a phone; wrap them ten and ten. */
   .pips { max-width: 216px; }
-  /* The UPI field and button go under the name, full width. */
+  /* Your UPI's controls go under the name, full width. */
   .settings .row.upi-row { flex-wrap: wrap; }
-  .upi { flex: 1 1 100%; }
-  .upi-in { flex: 1; width: auto; min-width: 0; }
+  .upi-row .lbl { padding-top: 0; }
+  .upi-ctl { width: 100%; }
+  /* Side by side, the amount column is as tall as the QR: label at its
+     top, picks at its bottom. */
+  .upi-test { flex-direction: row; align-items: flex-start; padding: 10px; }
+  .upi-qr { width: 112px; height: 112px; align-self: auto; }
+  .upi-amt { align-self: stretch; }
 }
 
 /* A row's ? sits after its name and opens the description. */
