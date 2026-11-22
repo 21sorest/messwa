@@ -143,7 +143,21 @@
     </div>
     <div class="grp-h">Payment</div>
     <div class="box list">
-      <div class="row upi-row"><div class="lbl">Your UPI<small>With screenshots counting, the pay message carries a QR for the exact price</small></div><div class="upi"><input class="upi-in" type="text" data-key="sell.upi" placeholder="name@okaxis" autocomplete="off" spellcheck="false" aria-label="Your UPI ID"><button class="btn small" type="button" id="upiPick">From QR</button><input type="file" id="upiFile" accept="image/png,image/jpeg" hidden></div></div>
+      <div class="row upi-row">
+        <div class="lbl">Your UPI<small>With screenshots counting, the pay message carries a QR for the exact price</small></div>
+        <div class="upi-ctl">
+          <div class="upi"><input class="upi-in" type="text" data-key="sell.upi" placeholder="name@okaxis" autocomplete="off" spellcheck="false" aria-label="Your UPI ID"><button class="btn small" type="button" id="upiPick">From QR</button><input type="file" id="upiFile" accept="image/png,image/jpeg" hidden></div>
+          <small class="upi-err" id="upiCap" role="status"></small>
+          <div class="upi-test" id="upiTest" hidden>
+            <img class="upi-qr stale" id="upiQR" width="184" height="184" alt="">
+            <div class="upi-amt">
+              <label class="upi-amt-h" for="upiAmt">Test amount</label>
+              <span class="upi-amt-in"><span class="rs" aria-hidden="true">₹</span><input type="text" id="upiAmt" value="50" inputmode="decimal" autocomplete="off" aria-label="Test amount in rupees"></span>
+              <div class="upi-picks" id="upiPicks" role="group" aria-label="Test amounts"><button type="button" data-amt="30">₹30</button><button type="button" data-amt="50">₹50</button><button type="button" data-amt="100">₹100</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="box list risk">
       <div class="h">Skips payment checks</div>
