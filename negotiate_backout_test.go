@@ -43,15 +43,15 @@ func TestHolderWhoOffersLessLosesTurn(t *testing.T) {
 				settle()
 				f.conn.emit(dm(buyerB, "ok"))
 				settle()
-				// C haggles down and agrees less; they wait behind B.
-				f.conn.emit(f.reply(buyerC, "price?"))
-				settle()
-				f.conn.emit(dm(buyerC, "40?"))
-				settle()
-				f.conn.emit(dm(buyerC, "ok"))
+				// C replies while B holds the turn; C stays paused silently
+				// until B's turn ends.
+				f.conn.emit(f.reply(buyerC, "60"))
 				settle()
 				if b := buyerState(t, f, id, buyerB); b.State != store.BuyerOffered {
 					t.Fatalf("B = %+v, want asked to pay", b)
+				}
+				if got := sentTo(f.conn.messages(), buyerC); len(got) != 0 {
+					t.Fatalf("C was messaged while B held the turn: %+v", got)
 				}
 				before := len(sentTo(f.conn.messages(), buyerB))
 				beforeC := len(sentTo(f.conn.messages(), buyerC))

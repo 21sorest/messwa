@@ -95,32 +95,38 @@ func TestSetPricesRaisedFloorKeepsQuotesAndDeals(t *testing.T) {
 			t.Fatal(err)
 		}
 		synctest.Wait()
-		// A takes the opening price and holds the payment turn. B agrees
-		// ₹40 and waits behind A.
+		// B gets quoted ₹45 first, then A takes the opening price and holds
+		// the payment turn. B replies "ok" while A holds the turn and waits
+		// paused until A's turn ends.
+		f.conn.emit(f.reply(buyerB, "30?"))
+		settle()
+		if got := texts(sentTo(f.conn.messages(), buyerB)); len(got) != 1 || got[0] != "how about 45" {
+			t.Fatalf("B got %q", got)
+		}
 		f.conn.emit(f.reply(buyerA, "ok same number?"))
 		settle()
-		f.conn.emit(f.reply(buyerB, "40"))
+		f.conn.emit(dm(buyerB, "ok"))
 		settle()
-		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerAgreed || b.Agreed != "40.00" {
-			t.Fatalf("B = %+v", b)
+		if got := texts(sentTo(f.conn.messages(), buyerB)); len(got) != 1 {
+			t.Fatalf("B was messaged while A held the turn: %q", got)
 		}
 
 		if err := m.SetPrices(ctx, id, 50, 60); err != nil {
 			t.Fatal(err)
 		}
-		// A never pays. B's turn comes at the ₹40 they agreed, below the
-		// new floor, and their payment gets the meal.
+		// A never pays. B unpauses and takes the ₹45 already quoted before
+		// the floor rose, and their payment gets the meal.
 		time.Sleep(3 * time.Minute)
-		synctest.Wait()
-		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerOffered || b.Amount != "40.00" {
+		settle()
+		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerOffered || b.Amount != "45.00" {
 			t.Fatalf("B = %+v", b)
 		}
-		f.conn.emit(paymentOf(buyerB, "pay-b", "40.00", time.Now()))
+		f.conn.emit(paymentOf(buyerB, "pay-b", "45.00", time.Now()))
 		synctest.Wait()
 		if task := f.task(id); task.State != store.TaskSold {
 			t.Fatalf("task is %s (%s)", task.State, task.Detail)
 		}
-		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "sent" || d.Amount != "40.00" || d.Peer != buyerB.String() {
+		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "sent" || d.Amount != "45.00" || d.Peer != buyerB.String() {
 			t.Fatalf("delivery = %+v %q", d, state)
 		}
 	})

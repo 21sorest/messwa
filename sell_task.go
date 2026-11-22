@@ -108,6 +108,12 @@ type sellManager struct {
 	dead map[string]deadPost
 	// pricesMu serializes SetPrices.
 	pricesMu sync.Mutex
+	// pauseMu serializes syncPoolPause so concurrent turn changes cannot
+	// leave a pool's paused state stale.
+	pauseMu sync.Mutex
+	// resCh is closed and replaced under mu whenever any task's reservation
+	// state changes, waking waitUnreserved.
+	resCh chan struct{}
 	// timers start waiting sell schedules, by schedule id. Guarded by mu.
 	timers map[int64]*time.Timer
 }
@@ -119,6 +125,9 @@ type runningTask struct {
 	gate   *taskGate
 	// revoke is set by a cancel that deletes the task's posts once it ends.
 	revoke atomic.Bool
+	// holding is set for a fixed-price task while a buyer holds the payment
+	// turn (or handoff), so reposts and buy-post sweeps pause.
+	holding atomic.Bool
 	// Guarded by sellManager.mu. add queues a buyer you added, once the
 	// task listens for replies; manual is a sale you recorded by hand.
 	add    func(ctx context.Context, peer types.JID, name string) error
@@ -137,12 +146,21 @@ type runningTask struct {
 	kicks chan struct{}
 }
 
+// busy reports whether this task's meal is currently reserved for a buyer
+// (holding a payment turn or handoff, waiting to pay, or already sold).
+func (rt *runningTask) busy() bool {
+	if n := rt.neg.Load(); n != nil {
+		return n.busy()
+	}
+	return rt.holding.Load()
+}
+
 func newSellManager(ctx context.Context, cfg *config.Config, log *slog.Logger, st *store.Store, conn saleConn, send sendFunc,
 	connected func(time.Duration) bool, portalFor func(context.Context, int64) (mealPortal, error), own ownGroupLog) *sellManager {
 	m := &sellManager{
 		cfg: cfg, log: log.With("component", "sell"), st: st, conn: conn, send: send, connected: connected,
 		portalFor: portalFor, prices: st.Prices, limits: newSendLimits(), own: own, base: ctx, running: map[int64]*runningTask{},
-		dead: map[string]deadPost{}, timers: map[int64]*time.Timer{},
+		dead: map[string]deadPost{}, resCh: make(chan struct{}), timers: map[int64]*time.Timer{},
 	}
 	// Schedules resume from the store on the next start.
 	context.AfterFunc(ctx, func() {
@@ -537,6 +555,7 @@ func (m *sellManager) launch(t store.SellTask, s *sale, ready chan struct{}) {
 		if final := m.end(t, state, detail); final != "" {
 			m.endPool(t, final, rt.revoke.Load())
 		}
+		m.notifyReserved()
 	}()
 }
 
@@ -671,6 +690,16 @@ func (m *sellManager) runTask(ctx context.Context, t store.SellTask, s *sale, rt
 	if err != nil {
 		return err
 	}
+	if resume != nil {
+		rt.holding.Store(true)
+	}
+	if n == nil {
+		s.holding = func(on bool) {
+			if rt.holding.Swap(on) != on {
+				m.notifyReserved()
+			}
+		}
+	}
 	offers, err := m.st.SellTaskOffers(ctx, t.ID)
 	if err != nil {
 		return err
@@ -758,8 +787,10 @@ func (m *sellManager) runTask(ctx context.Context, t store.SellTask, s *sale, rt
 	}
 	var detail string
 	if t.Handoff == string(config.HandoffOnReply) || t.Handoff == string(config.HandoffOnAgreement) {
-		// A negotiating task that hands off on agreement keeps posting and
-		// haggling, so a higher offer can still take the handoff.
+		// A negotiating task that hands off on agreement stays active while
+		// the buyer holds the handoff, with other negotiations and outreach
+		// paused, so MarkSold can still close the sale cleanly and tell
+		// waiting buyers it sold.
 		s.holdHandoff = n != nil && t.Handoff == string(config.HandoffOnAgreement)
 		s.handoff = func(ctx context.Context, buyer types.JID, d store.Delivery, others []types.JID) error {
 			if !s.holdHandoff {
@@ -841,7 +872,8 @@ func (m *sellManager) postCopies(ctx, syncCtx context.Context, t store.SellTask,
 				return repostCopies(copies), err
 			},
 			send: send, record: record,
-			room: func() bool { return m.limits.left(t.ID) > repostReserve },
+			room:   func() bool { return m.limits.left(t.ID) > repostReserve },
+			paused: func() bool { return m.poolReserved(t) },
 		})
 	}
 	if !m.connected(30 * time.Second) {
@@ -878,6 +910,7 @@ func (m *sellManager) postCopies(ctx, syncCtx context.Context, t store.SellTask,
 	if !first {
 		delay = settings.PostGap
 	}
+	posting.waitUnreserved = func(ctx context.Context) error { return m.waitUnreserved(ctx, t) }
 	posting.post(ctx, m.log, fresh, delay, settings.PostGap, send, record)
 	keepInView()
 	if !first {

@@ -57,6 +57,9 @@ func (m *sellManager) messageBuyPosts(ctx context.Context, t store.SellTask, s *
 		if !m.buyPostsWanted(t) {
 			return
 		}
+		if err := m.waitUnreserved(ctx, t); err != nil {
+			return
+		}
 		sent += m.sweepBuyPosts(ctx, t, s, gate, queue, maxBuyPosts-sent)
 		if sent >= maxBuyPosts || queue.isClosed() {
 			return
@@ -72,6 +75,9 @@ func (m *sellManager) messageBuyPosts(ctx context.Context, t store.SellTask, s *
 // sweepBuyPosts messages up to room posters of open buy posts for t's meal
 // and queues them. It returns how many it messaged.
 func (m *sellManager) sweepBuyPosts(ctx context.Context, t store.SellTask, s *sale, gate *taskGate, queue *offerQueue, room int) int {
+	if m.poolReserved(t) {
+		return 0
+	}
 	now := time.Now()
 	sold := m.cfg.Live().Sold
 	rule := store.SoldRule{Emojis: sold.Emojis, ClosedEmojis: sold.ClosedEmojis, AdminsCount: sold.AdminsCount}
@@ -85,6 +91,9 @@ func (m *sellManager) sweepBuyPosts(ctx context.Context, t store.SellTask, s *sa
 	sent := 0
 	// Oldest first: whoever has waited longest hears first.
 	for i := len(ls) - 1; i >= 0 && sent < room; i-- {
+		if m.poolReserved(t) {
+			return sent
+		}
 		l := ls[i]
 		if !buyPostMatches(l, t.Date, s.mess, s.diet) {
 			continue

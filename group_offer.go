@@ -443,6 +443,9 @@ type groupOffer struct {
 	// adopt, when set, takes private replies to posts that aren't this
 	// offer's: a cancelled task's posts for the same meal.
 	adopt func(*events.Message) bool
+	// waitUnreserved, when set, waits while every meal for this offer is
+	// reserved for a paying buyer before posting another copy.
+	waitUnreserved func(context.Context) error
 
 	stopPosting   context.CancelFunc
 	donePosting   chan struct{}
@@ -601,7 +604,13 @@ func (o *groupOffer) post(ctx context.Context, log *slog.Logger, targets []offer
 			}
 		}
 		failed := 0
+		wait := o.waitUnreserved
 		post := func(ctx context.Context, g offerTarget) (postedOffer, error) {
+			if wait != nil {
+				if err := wait(ctx); err != nil {
+					return postedOffer{}, err
+				}
+			}
 			g = refreshGroup(ctx, o.conn, log, g)
 			p, err := send(ctx, o, g, 0)
 			if err != nil {
@@ -766,6 +775,9 @@ func postOfferCopies(ctx context.Context, groups []offerTarget, gap time.Duratio
 		}
 		p, err := post(ctx, g)
 		if err != nil {
+			if ctx.Err() != nil {
+				break
+			}
 			errs = append(errs, fmt.Errorf("%s: %w", g.Name, err))
 			continue
 		}

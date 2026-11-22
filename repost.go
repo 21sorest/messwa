@@ -42,6 +42,9 @@ type reposter struct {
 	// room reports whether a repost may use one of the task's sends. Nil
 	// means always.
 	room func() bool
+	// paused reports whether every meal for this offer is reserved for a
+	// paying buyer right now. While true, reposting waits without ending.
+	paused func() bool
 }
 
 // current is the rules for this round.
@@ -82,6 +85,9 @@ func (r *reposter) round(ctx context.Context, o *groupOffer) bool {
 	rules := r.current()
 	if !rules.On {
 		// Only live rules get here; wait for reposting to come back on.
+		return true
+	}
+	if r.paused != nil && r.paused() {
 		return true
 	}
 	groups, err := r.groups(ctx)

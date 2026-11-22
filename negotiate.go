@@ -27,11 +27,12 @@ import (
 // each reply with the fixed rules in negotiate_parse.go and answers from
 // templates. A buyer who agrees joins the pay queue, and buyers pay one at
 // a time through the same turns as before (sellToQueue), so two of them
-// never both think they can pay. The other sessions keep haggling while a
-// buyer holds the turn. A buyer who agrees more than the holder takes the
-// turn from them, unless their payment is already in; the holder hears not
-// to pay and waits in line behind. The pay queue serves the highest agreed
-// price first. Whatever a session decides, the store refuses to quote,
+// never both think they can pay. Once a buyer holds the turn (and no other
+// meal in the pool is free), the listing is reserved for them: other
+// sessions pause without quoting, nudging or timing out, and nobody can
+// outbid the active holder. If the holder pays, waiting buyers hear "sold
+// sorry"; if the turn lapses or the holder backs out, paused sessions
+// resume cleanly. Whatever a session decides, the store refuses to quote,
 // agree or arm below the task's floor.
 
 const (
@@ -387,6 +388,11 @@ type negotiation struct {
 
 	// rangeMu serializes refreshRange.
 	rangeMu sync.Mutex
+	// agreeMu serializes checking reservation state against claiming a
+	// negotiation reply or agreement, so concurrent sessions cannot quote
+	// or agree after another buyer just reserved the last free meal. Never
+	// held across WhatsApp sends.
+	agreeMu sync.Mutex
 
 	mu sync.Mutex
 	// h is guarded by mu once sessions run; read it with prices.
@@ -394,11 +400,16 @@ type negotiation struct {
 	resumed  []*session
 	holder   types.JID // the buyer whose payment turn is under way
 	// dropped are turn holders autopilot skipped, or who backed out of
-	// their deal, with why. Their turn ends through the outbid signal and
-	// lostTurn drops them for good.
+	// their deal, with why. Their turn ends through dropC and droppedTurn
+	// drops them for good.
 	dropped map[types.JID]droppedTurn
-	// outbidC fires when someone agrees more than holder; see outbidLocked.
-	outbidC chan struct{}
+	// dropC fires when holder is dropped early (backout or autopilot skip).
+	dropC chan struct{}
+	// paused is true while this task (and every active mate in its pool) is
+	// reserved for a buyer. pauseCh is closed and replaced on every pause
+	// transition or turn end.
+	paused  bool
+	pauseCh chan struct{}
 	sold    bool
 	// direct gets the outcome of a sale claimed outside a turn: a buyer
 	// paid a quoted price while nobody held the reservation.
@@ -430,7 +441,7 @@ func newNegotiation(ctx context.Context, m *sellManager, t store.SellTask, s *sa
 		h:     newHaggle(int(t.MinPaise/100), int(t.MaxPaise/100), median, have, m.cfg.Live().Sell.SmartHaggle, t.EndsAt, s.lines(types.EmptyJID)).forMeal(baseMeal(t.Meal)),
 		slots: make(chan struct{}, maxSessions), sessions: map[types.JID]*session{}, direct: make(chan error, 1),
 		silence: m.cfg.Live().Sell.NegotiationSilence.Duration, revived: make(chan *session, maxSessions),
-		ownMin: int(t.MinPaise / 100), moved: map[types.JID]bool{},
+		ownMin: int(t.MinPaise / 100), moved: map[types.JID]bool{}, pauseCh: make(chan struct{}),
 	}
 	if n.silence <= 0 {
 		n.silence = config.Default().Sell.NegotiationSilence.Duration
@@ -584,6 +595,7 @@ func (n *negotiation) start() {
 			n.pay.add(peer)
 		}
 	}
+	n.m.syncPoolPause(n.t)
 	for _, ss := range resumed {
 		slot := false
 		if ss.state == sessionNegotiating {
@@ -614,8 +626,10 @@ func (n *negotiation) stop() {
 func (n *negotiation) halt() {
 	n.mu.Lock()
 	n.sold = true
+	n.wakeLocked()
 	n.mu.Unlock()
 	n.hush()
+	n.m.syncPoolPause(n.t)
 }
 
 func (n *negotiation) loop() {
@@ -804,113 +818,110 @@ func (n *negotiation) others() []types.JID {
 	return out
 }
 
+// wakeLocked broadcasts a state or pause change to all running sessions.
+// n.mu must be held.
+func (n *negotiation) wakeLocked() {
+	close(n.pauseCh)
+	n.pauseCh = make(chan struct{})
+}
+
+// setPaused updates whether non-holder sessions should pause while every
+// active meal in the pool is reserved.
+func (n *negotiation) setPaused(p bool) {
+	n.mu.Lock()
+	if n.paused == p {
+		n.mu.Unlock()
+		return
+	}
+	n.paused = p
+	n.wakeLocked()
+	n.mu.Unlock()
+}
+
+// isPausedFor reports whether buyer's negotiating session must wait because
+// all meals in the pool are reserved for someone else.
+func (n *negotiation) isPausedFor(buyer types.JID) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.paused && n.holder != buyer
+}
+
+// loopState returns ss's current state, whether it is paused, and the
+// channel closed on the next pause or turn-end change.
+func (ss *session) loopState() (string, bool, <-chan struct{}) {
+	n := ss.n
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return ss.state, ss.state == sessionNegotiating && n.holder != ss.buyer && n.paused, n.pauseCh
+}
+
 // agreedPrice is what buyer agreed to pay, if they're still waiting to.
 // The pay queue calls it when their turn comes, so it also marks them as
 // the one holding the reservation.
 func (n *negotiation) agreedPrice(buyer types.JID) (string, bool) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	ss := n.sessions[buyer]
 	if ss == nil || ss.state != sessionAgreed {
+		n.mu.Unlock()
 		return "", false
 	}
 	n.setHolderLocked(buyer)
-	return ss.agreed, true
+	agreed := ss.agreed
+	n.mu.Unlock()
+	n.m.syncPoolPause(n.t)
+	return agreed, true
 }
 
-// setHolderLocked makes buyer the one holding the turn, with a fresh
-// outbid signal. n.mu must be held.
+// setHolderLocked makes buyer the one holding the turn, with a fresh drop
+// signal. n.mu must be held.
 func (n *negotiation) setHolderLocked(buyer types.JID) {
 	n.holder = buyer
-	n.outbidC = make(chan struct{}, 1)
+	n.dropC = make(chan struct{}, 1)
 }
 
-// watchOutbid is the signal for buyer's turn: it fires when someone agrees
-// more than them. It is nil unless buyer holds the turn.
-func (n *negotiation) watchOutbid(buyer types.JID) <-chan struct{} {
+// watchDrop is the signal for buyer's turn: it fires when buyer is dropped
+// early (for example after backing out or being skipped on autopilot). It
+// is nil unless buyer holds the turn.
+func (n *negotiation) watchDrop(buyer types.JID) <-chan struct{} {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.holder != buyer {
 		return nil
 	}
-	return n.outbidC
+	return n.dropC
 }
 
-// outbidLocked reports whether paise beats the price the turn holder
-// agreed, and if so tells their turn. n.mu must be held.
-func (n *negotiation) outbidLocked(buyer types.JID, paise int64) bool {
-	if n.holder.IsEmpty() || n.holder == buyer {
-		return false
-	}
-	h := n.sessions[n.holder]
-	if h == nil {
-		return false
-	}
-	held, err := store.ParsePaise(h.agreed)
-	if err != nil || paise <= held {
-		return false
-	}
-	select {
-	case n.outbidC <- struct{}{}:
-	default:
-	}
-	return true
-}
-
-// lostTurn puts buyer, whose turn a higher offer took, back in line at
-// their agreed price. If they had been asked to pay, or handed to you,
-// they hear not to pay.
-func (n *negotiation) lostTurn(ctx context.Context, buyer types.JID, handedOff bool) error {
+// droppedTurn ends the turn of a holder who was dropped early (backout or
+// autopilot skip) and unpauses waiting sessions if no meal remains busy.
+func (n *negotiation) droppedTurn(ctx context.Context, buyer types.JID, handedOff bool) error {
 	n.mu.Lock()
-	if n.holder == buyer {
-		n.holder, n.outbidC = types.EmptyJID, nil
-	}
-	ss := n.sessions[buyer]
-	if d, ok := n.dropped[buyer]; ok {
+	d, ok := n.dropped[buyer]
+	if ok {
 		delete(n.dropped, buyer)
-		if ss != nil {
-			ss.state = sessionEnded
-		}
-		n.mu.Unlock()
-		return n.dropTurn(ctx, buyer, d)
-	}
-	var agreed string
-	if ss != nil {
-		agreed = ss.agreed
 	}
 	n.mu.Unlock()
-	prompted, err := n.m.st.OutbidSellTaskBuyer(ctx, n.t.ID, buyer.String())
-	if err != nil {
-		return err
-	}
-	n.log.Info("buyer outbid; their turn ends", "buyer", buyer, "agreed", agreed)
-	n.event(buyer, store.EventOutbid, int(paise(agreed)/100), "")
-	if prompted {
-		// It goes out whatever the message limit: they must not pay now.
-		r := n.lines(buyer).outbid(handedOff)
-		if err := n.send(ctx, buyer, r); err != nil {
-			n.log.Warn("could not tell an outbid buyer not to pay", "buyer", buyer, "err", err)
-		} else {
-			n.event(buyer, store.EventBotSaid, 0, strings.Join(r, "\n"))
+	if ok {
+		if err := n.dropTurn(ctx, buyer, d); err != nil {
+			return err
 		}
 	}
-	if p, err := store.ParsePaise(agreed); err == nil {
-		n.pay.setPriority(buyer, p)
-	}
-	n.pay.requeue(buyer)
+	n.turnOver(buyer)
 	return nil
 }
 
-// turnOver ends buyer's payment turn.
+// turnOver ends buyer's payment turn and unpauses waiting sessions if a
+// meal is now free.
 func (n *negotiation) turnOver(buyer types.JID) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	if n.holder == buyer {
-		n.holder, n.outbidC = types.EmptyJID, nil
+		n.holder, n.dropC = types.EmptyJID, nil
 	}
 	if ss := n.sessions[buyer]; ss != nil {
 		ss.state = sessionEnded
 	}
+	n.wakeLocked()
+	n.mu.Unlock()
+	n.m.syncPoolPause(n.t)
 }
 
 // accepts are the prices buyer may pay besides agreed: anything higher the
@@ -995,6 +1006,7 @@ func (n *negotiation) payment(peer types.JID, e *events.Message) {
 			Text: fmt.Sprintf("paid INR %s while the meal was reserved for someone else; refund them", amount)})
 		n.mu.Lock()
 		ss.state = sessionEnded
+		n.wakeLocked()
 		n.mu.Unlock()
 		return
 	}
@@ -1065,6 +1077,7 @@ func (n *negotiation) park(ctx context.Context, ss *session, note string) {
 	holder := n.holder == ss.buyer
 	if !holder {
 		ss.state = sessionEnded
+		n.wakeLocked()
 	}
 	n.mu.Unlock()
 	n.log.Info("buyer needs you", "buyer", ss.buyer, "why", note)
@@ -1076,8 +1089,8 @@ func (n *negotiation) park(ctx context.Context, ss *session, note string) {
 
 // skip drops a buyer an autopilot task would otherwise park for you, even
 // one offering more than the rest: the bot stops talking to them and sells
-// to the others. A buyer holding the payment turn loses it now, through the
-// outbid signal, and lostTurn tells them not to pay. A WhatsApp Pay payment
+// to the others. A buyer holding the payment turn loses it now, through
+// dropC, and droppedTurn tells them not to pay. A WhatsApp Pay payment
 // that matches what they were quoted still gets the meal, as for anyone
 // who left the haggle.
 func (n *negotiation) skip(ctx context.Context, ss *session, note string) {
@@ -1132,15 +1145,15 @@ type droppedTurn struct {
 	park bool
 }
 
-// dropLocked ends the turn of holder buyer through the outbid signal;
-// lostTurn then drops them. n.mu must be held.
+// dropLocked ends the turn of holder buyer through dropC; droppedTurn then
+// drops them. n.mu must be held.
 func (n *negotiation) dropLocked(buyer types.JID, d droppedTurn) {
 	if n.dropped == nil {
 		n.dropped = map[types.JID]droppedTurn{}
 	}
 	n.dropped[buyer] = d
 	select {
-	case n.outbidC <- struct{}{}:
+	case n.dropC <- struct{}{}:
 	default:
 	}
 }
@@ -1158,7 +1171,7 @@ func (n *negotiation) dropTurn(ctx context.Context, buyer types.JID, d droppedTu
 		return err
 	}
 	if !prompted {
-		if _, err := n.m.st.MoveSellTaskBuyer(ctx, n.t.ID, buyer.String(), store.BuyerAgreed, to, "", time.Time{}); err != nil {
+		if _, err := n.m.st.MoveSellTaskBuyerFrom(ctx, n.t.ID, buyer.String(), []string{store.BuyerAgreed, store.BuyerHandedOff}, to); err != nil {
 			return err
 		}
 	}
@@ -1189,6 +1202,73 @@ func (n *negotiation) send(ctx context.Context, to types.JID, r reply) error {
 	return sendReply(ctx, n.gate.send, to, r)
 }
 
+// pausableTimer wraps a time.Timer whose remaining duration can be frozen
+// while a session is paused and resumed once the meal is unreserved.
+type pausableTimer struct {
+	t        *time.Timer
+	deadline time.Time
+	left     time.Duration
+	running  bool
+	paused   bool
+}
+
+func (p *pausableTimer) start(d time.Duration) {
+	p.stop()
+	if d < 0 {
+		d = 0
+	}
+	p.deadline = time.Now().Add(d)
+	p.left = d
+	p.t = time.NewTimer(d)
+	p.running = true
+	p.paused = false
+}
+
+func (p *pausableTimer) stop() {
+	if p.t != nil {
+		p.t.Stop()
+		p.t = nil
+	}
+	p.running = false
+	p.paused = false
+	p.left = 0
+}
+
+func (p *pausableTimer) pause() {
+	if !p.running || p.paused {
+		return
+	}
+	p.left = max(0, time.Until(p.deadline))
+	if p.t != nil {
+		p.t.Stop()
+		p.t = nil
+	}
+	p.paused = true
+}
+
+func (p *pausableTimer) resume() {
+	if !p.running || !p.paused {
+		return
+	}
+	p.paused = false
+	p.deadline = time.Now().Add(p.left)
+	p.t = time.NewTimer(p.left)
+}
+
+func (p *pausableTimer) ch() <-chan time.Time {
+	if !p.running || p.paused || p.t == nil {
+		return nil
+	}
+	return p.t.C
+}
+
+func (p *pausableTimer) fired() {
+	p.t = nil
+	p.running = false
+	p.paused = false
+	p.left = 0
+}
+
 // run is one buyer's negotiation. first is the reply that queued them;
 // slot says the session holds one of the maxSessions slots, freed once the
 // buyer agrees or leaves.
@@ -1213,25 +1293,26 @@ func (ss *session) run(first string, slot bool) {
 		started = ss.revived
 	}
 	state := ss.state
-	n.mu.Unlock()
-
-	limit := time.NewTimer(max(sessionLimit-time.Since(started), n.silence))
-	defer limit.Stop()
-	silence := time.NewTimer(n.silence)
-	defer silence.Stop()
-	var debounce <-chan time.Time
-	var paidWait <-chan time.Time
-	var batch []string
-	n.mu.Lock()
 	fresh := ss.hs.botMsgs == 0
 	if !ss.revived.IsZero() {
 		ss.heard = true
 	}
 	n.mu.Unlock()
+
+	var limitT, silenceT, nudgeT, debounceT pausableTimer
+	defer limitT.stop()
+	defer silenceT.stop()
+	defer nudgeT.stop()
+	defer debounceT.stop()
+	limitT.start(max(sessionLimit-time.Since(started), n.silence))
+	silenceT.start(n.silence)
+	var paidWait <-chan time.Time
+	var batch []string
+	var debounceAt time.Time
+	repricePending := false
 	// nudge fires while the buyer is quiet after the bot's first message.
-	var nudge <-chan time.Time
 	if ss.nudgeDue() {
-		nudge = time.After(nudgeAfter)
+		nudgeT.start(nudgeAfter)
 	}
 	if state == sessionNegotiating && (fresh || strings.TrimSpace(first) != "") {
 		// Restored sessions have no in-memory first message. Open with
@@ -1241,46 +1322,94 @@ func (ss *session) run(first string, slot bool) {
 			first = "price?"
 		}
 		batch = []string{first}
-		debounce = time.After(replyDebounce)
+		debounceAt = time.Now().Add(replyDebounce)
+		debounceT.start(replyDebounce)
 	}
 	if state == sessionAgreed {
 		release()
 	}
 	for {
-		var limitC, silenceC <-chan time.Time
-		if ss.current() == sessionNegotiating {
-			limitC, silenceC = limit.C, silence.C
+		state, paused, pauseCh := ss.loopState()
+		if state == sessionEnded {
+			return
 		}
-		if nudge != nil {
-			// The nudges decide when a quiet buyer times out.
-			silenceC = nil
+		if state != sessionNegotiating {
+			limitT.stop()
+			silenceT.stop()
+			nudgeT.stop()
+		} else if paused {
+			limitT.pause()
+			silenceT.pause()
+			nudgeT.pause()
+			debounceT.stop()
+		} else {
+			limitT.resume()
+			silenceT.resume()
+			nudgeT.resume()
+			if len(batch) > 0 && !debounceT.running {
+				debounceT.start(max(0, time.Until(debounceAt)))
+			}
+		}
+		if state == sessionNegotiating && !paused && repricePending && len(batch) == 0 {
+			repricePending = false
+			switch ss.reprice() {
+			case handledEnded:
+				return
+			case handledPaused:
+				repricePending = true
+				continue
+			case handledReplied:
+				silenceT.start(n.silence)
+				if !ss.nudgeDue() {
+					nudgeT.stop()
+				}
+			}
+			continue
+		}
+		var limitC, silenceC, nudgeC, debounceC <-chan time.Time
+		if state == sessionNegotiating && !paused {
+			limitC, silenceC, nudgeC = limitT.ch(), silenceT.ch(), nudgeT.ch()
+			if nudgeC != nil {
+				// The nudges decide when a quiet buyer times out.
+				silenceC = nil
+			}
+		}
+		if !paused {
+			debounceC = debounceT.ch()
 		}
 		select {
 		case <-n.talk.Done():
 			return
+		case <-pauseCh:
 		case m := <-ss.inbox:
 			if m.id != "" && m.id == ss.firstID {
 				continue
 			}
 			batch = append(batch, m.text)
-			debounce = time.After(replyDebounce)
+			debounceAt = time.Now().Add(replyDebounce)
+			if !paused {
+				debounceT.start(replyDebounce)
+			}
 			n.mu.Lock()
 			ss.heard = true
 			n.mu.Unlock()
-			nudge = nil
-		case <-debounce:
-			debounce = nil
+			nudgeT.stop()
+		case <-debounceC:
+			debounceT.fired()
 			texts := batch
 			batch = nil
 			switch ss.handle(texts) {
 			case handledEnded:
 				return
+			case handledPaused:
+				batch = append(texts, batch...)
+				debounceAt = time.Now()
 			case handledAgreed:
 				release()
 			case handledReplied:
-				silence.Reset(n.silence)
+				silenceT.start(n.silence)
 				if ss.nudgeDue() {
-					nudge = time.After(nudgeAfter)
+					nudgeT.start(nudgeAfter)
 				}
 			case handledPaidClaim:
 				if paidWait == nil {
@@ -1292,36 +1421,50 @@ func (ss *session) run(first string, slot bool) {
 				}
 			}
 		case <-ss.repriced:
-			if debounce != nil {
+			if len(batch) > 0 {
 				// The reply to the buyer's pending messages uses the new price.
+				continue
+			}
+			if paused {
+				repricePending = true
 				continue
 			}
 			switch ss.reprice() {
 			case handledEnded:
 				return
+			case handledPaused:
+				repricePending = true
 			case handledReplied:
-				silence.Reset(n.silence)
+				silenceT.start(n.silence)
 				if !ss.nudgeDue() {
-					nudge = nil
+					nudgeT.stop()
 				}
 			}
-		case <-nudge:
-			nudge = nil
+		case <-nudgeC:
+			nudgeT.fired()
 			switch ss.quietNudge() {
 			case handledEnded:
 				return
+			case handledPaused:
+				nudgeT.start(0)
 			case handledReplied:
-				silence.Reset(n.silence)
+				silenceT.start(n.silence)
 				if ss.nudgeDue() {
-					nudge = time.After(nudgeAfter)
+					nudgeT.start(nudgeAfter)
 				}
 			}
 		case <-silenceC:
-			ss.timeOut("went quiet after the bot's last message")
-			return
+			silenceT.fired()
+			if ss.timeOut("went quiet after the bot's last message") {
+				return
+			}
+			silenceT.start(0)
 		case <-limitC:
-			ss.timeOut("negotiation took too long")
-			return
+			limitT.fired()
+			if ss.timeOut("negotiation took too long") {
+				return
+			}
+			limitT.start(0)
 		case <-paidWait:
 			paidWait = nil
 			n.mu.Lock()
@@ -1357,8 +1500,14 @@ func (ss *session) nudgeDue() bool {
 // reply revives them at that price.
 func (ss *session) quietNudge() handled {
 	n := ss.n
+	n.agreeMu.Lock()
 	if !ss.nudgeDue() || n.gate.muted(n.talk, ss.buyer) {
+		n.agreeMu.Unlock()
 		return handledNothing
+	}
+	if n.isPausedFor(ss.buyer) {
+		n.agreeMu.Unlock()
+		return handledPaused
 	}
 	n.mu.Lock()
 	hs := ss.hs
@@ -1367,7 +1516,10 @@ func (ss *session) quietNudge() handled {
 	next.quoted = slices.Clone(hs.quoted)
 	next.nudges++
 	if hs.nudges == 0 {
-		if !ss.say(next, n.lines(ss.buyer).nudge(min(hs.ask, n.prices().max))) {
+		text := n.lines(ss.buyer).nudge(min(hs.ask, n.prices().max))
+		ok := ss.claimSayLocked(next)
+		n.agreeMu.Unlock()
+		if !ok || !ss.sendClaimed(next.ask, next.rounds, text) {
 			return handledEnded
 		}
 		n.event(ss.buyer, store.EventNudged, next.ask, "quiet after the first message; asked if they're buying")
@@ -1375,17 +1527,24 @@ func (ss *session) quietNudge() handled {
 	}
 	k, ok := n.prices().quietDrop(hs)
 	if ok {
+		was := min(hs.ask, n.prices().max)
 		next.ask = k
 		next.rounds++
 		if !slices.Contains(next.quoted, k) {
 			next.quoted = append(next.quoted, k)
 		}
-		if !ss.say(next, n.lines(ss.buyer).quietDrop(k, min(hs.ask, n.prices().max))) {
+		text := n.lines(ss.buyer).quietDrop(k, was)
+		claimed := ss.claimSayLocked(next)
+		n.agreeMu.Unlock()
+		if !claimed || !ss.sendClaimed(next.ask, next.rounds, text) {
 			return handledEnded
 		}
-		n.event(ss.buyer, store.EventNudged, k, fmt.Sprintf("still quiet; dropped from ₹%d to ₹%d", min(hs.ask, n.prices().max), k))
+		n.event(ss.buyer, store.EventNudged, k, fmt.Sprintf("still quiet; dropped from ₹%d to ₹%d", was, k))
+		ss.finishTimeOut("went quiet after the first message and a follow-up")
+		return handledEnded
 	}
-	ss.timeOut("went quiet after the first message and a follow-up")
+	ss.finishTimeOut("went quiet after the first message and a follow-up")
+	n.agreeMu.Unlock()
 	return handledEnded
 }
 
@@ -1395,14 +1554,21 @@ func (ss *session) quietNudge() handled {
 // replies left, or was already asked that much or less.
 func (ss *session) reprice() handled {
 	n := ss.n
+	n.agreeMu.Lock()
 	if n.gate.muted(n.talk, ss.buyer) {
+		n.agreeMu.Unlock()
 		return handledNothing
+	}
+	if n.isPausedFor(ss.buyer) {
+		n.agreeMu.Unlock()
+		return handledPaused
 	}
 	n.mu.Lock()
 	state, hs := ss.state, ss.hs
 	n.mu.Unlock()
 	k := n.prices().max
 	if state != sessionNegotiating || hs.botMsgs == 0 || hs.botMsgs >= maxBotMsgs || k >= hs.ask {
+		n.agreeMu.Unlock()
 		return handledNothing
 	}
 	next := hs
@@ -1411,7 +1577,10 @@ func (ss *session) reprice() handled {
 	if !slices.Contains(next.quoted, k) {
 		next.quoted = append(next.quoted, k)
 	}
-	if !ss.say(next, n.lines(ss.buyer).counter(k, hs.ask, 1)) {
+	text := n.lines(ss.buyer).counter(k, hs.ask, 1)
+	claimed := ss.claimSayLocked(next)
+	n.agreeMu.Unlock()
+	if !claimed || !ss.sendClaimed(next.ask, next.rounds, text) {
 		return handledEnded
 	}
 	n.log.Info("price lowered; offered the buyer the new price", "buyer", ss.buyer, "from", hs.ask, "ask", k)
@@ -1431,6 +1600,7 @@ const (
 	handledReplied
 	handledAgreed
 	handledPaidClaim
+	handledPaused
 	handledEnded
 )
 
@@ -1443,15 +1613,15 @@ func (ss *session) handle(texts []string) handled {
 	}
 	in := combineIntents(texts)
 	n.mu.Lock()
-	state, hs, agreed := ss.state, ss.hs, ss.agreed
+	state, agreed := ss.state, ss.agreed
 	n.mu.Unlock()
-	// A picture or sticker has no text to read; the payment turn records
-	// pictures on its own.
-	if (state == sessionNegotiating || state == sessionAgreed) && strings.TrimSpace(strings.Join(texts, "")) != "" {
-		n.event(ss.buyer, store.EventRead, in.offer, in.name())
-	}
 
 	if state == sessionAgreed {
+		// A picture or sticker has no text to read; the payment turn records
+		// pictures on its own.
+		if strings.TrimSpace(strings.Join(texts, "")) != "" {
+			n.event(ss.buyer, store.EventRead, in.offer, in.name())
+		}
 		// The price is settled. Only a payment claim, another way to pay or
 		// dropping out matters now.
 		switch {
@@ -1476,6 +1646,9 @@ func (ss *session) handle(texts []string) handled {
 			}
 			return handledNothing
 		case in.kind == intentPayOther:
+			if !ss.holding() {
+				return handledNothing
+			}
 			if !ss.sayPayOther() {
 				way := "WhatsApp Pay"
 				if n.s.payUPI() {
@@ -1511,14 +1684,40 @@ func (ss *session) handle(texts []string) handled {
 		return handledEnded
 	}
 
+	n.agreeMu.Lock()
+	n.mu.Lock()
+	state, hs := ss.state, ss.hs
+	paused := n.paused && n.holder != ss.buyer
+	n.mu.Unlock()
+	if state != sessionNegotiating {
+		n.agreeMu.Unlock()
+		return handledEnded
+	}
+	if paused {
+		n.agreeMu.Unlock()
+		return handledPaused
+	}
+	// A picture or sticker has no text to read; the payment turn records
+	// pictures on its own.
+	if strings.TrimSpace(strings.Join(texts, "")) != "" {
+		n.event(ss.buyer, store.EventRead, in.offer, in.name())
+	}
+
 	if in.kind == intentPayOther && in.upi && n.s.acceptImages {
 		// Screenshots count, so paying by UPI is a yes: the pay prompt
 		// follows, and "send to my number" if they still have no
 		// WhatsApp Pay.
 		in.kind = intentAccept
 	}
-	if in.kind == intentPayOther && ss.sayPayOther() {
-		return handledReplied
+	if in.kind == intentPayOther {
+		if ok, err := n.m.st.ClaimBuyerLine(ctx, n.t.ID, ss.buyer.String(), linePayOther); err == nil && ok {
+			r := ss.payOtherReply()
+			n.agreeMu.Unlock()
+			if err := n.send(ctx, ss.buyer, r); err != nil {
+				n.log.Warn("negotiation message failed or is uncertain", "buyer", ss.buyer, "err", err)
+			}
+			return handledReplied
+		}
 	}
 	h := n.prices()
 	h.l = n.lines(ss.buyer)
@@ -1529,30 +1728,40 @@ func (ss *session) handle(texts []string) handled {
 		n.mu.Lock()
 		ss.state = sessionEnded
 		n.mu.Unlock()
+		n.agreeMu.Unlock()
 		n.log.Info("buyer passed", "buyer", ss.buyer, "why", st.why)
 		n.event(ss.buyer, store.EventPassed, 0, st.why)
 		return handledEnded
 	case st.park != "":
 		ss.keepOffer(hs, st.next)
 		n.park(context.WithoutCancel(ctx), ss, st.park)
+		n.agreeMu.Unlock()
 		return handledEnded
 	case st.paidClaim:
+		n.agreeMu.Unlock()
 		return handledPaidClaim
 	case st.passFrom > 0:
-		if !ss.say(st.next, st.reply) {
+		claimed := ss.claimSayLocked(st.next)
+		n.agreeMu.Unlock()
+		if !claimed || !ss.sendClaimed(st.next.ask, st.next.rounds, st.reply) {
 			return handledEnded
 		}
 		n.log.Info("buyer passed; countered once", "buyer", ss.buyer, "from", st.passFrom, "ask", st.next.ask)
 		n.event(ss.buyer, store.EventPassCounter, st.next.ask, fmt.Sprintf("passed at ₹%d; one counter at ₹%d", st.passFrom, st.next.ask))
 		return handledReplied
 	case st.agree > 0:
-		return ss.agree(st)
+		res := ss.agreeLocked(st)
+		n.agreeMu.Unlock()
+		return res
 	case len(st.reply) > 0:
-		if !ss.say(st.next, st.reply) {
+		claimed := ss.claimSayLocked(st.next)
+		n.agreeMu.Unlock()
+		if !claimed || !ss.sendClaimed(st.next.ask, st.next.rounds, st.reply) {
 			return handledEnded
 		}
 		return handledReplied
 	}
+	n.agreeMu.Unlock()
 	return handledNothing
 }
 
@@ -1574,8 +1783,10 @@ func (ss *session) keepOffer(prev, next haggleState) {
 	n.mu.Unlock()
 }
 
-// say claims and sends one reply, recording next as the buyer's state.
-func (ss *session) say(next haggleState, text reply) bool {
+// claimSayLocked claims one negotiation reply in the store and records next
+// as the buyer's state. n.agreeMu must be held; the send runs after
+// unlocking so n.agreeMu is never held across WhatsApp I/O.
+func (ss *session) claimSayLocked(next haggleState) bool {
 	n := ss.n
 	ctx := n.talk
 	n.mu.Lock()
@@ -1598,19 +1809,26 @@ func (ss *session) say(next haggleState, text reply) bool {
 	n.mu.Lock()
 	ss.hs = next
 	n.mu.Unlock()
-	if err := n.send(ctx, ss.buyer, text); err != nil {
+	return true
+}
+
+// sendClaimed sends a reply claimed by claimSayLocked and logs it.
+func (ss *session) sendClaimed(ask, rounds int, text reply) bool {
+	n := ss.n
+	if err := n.send(n.talk, ss.buyer, text); err != nil {
 		// It may have reached WhatsApp; it is never sent again.
 		n.log.Warn("negotiation message failed or is uncertain", "buyer", ss.buyer, "err", err)
 		return false
 	}
-	n.log.Info("negotiation message sent", "buyer", ss.buyer, "ask", next.ask, "round", next.rounds)
-	n.event(ss.buyer, store.EventBotSaid, next.ask, strings.Join(text, "\n"))
+	n.log.Info("negotiation message sent", "buyer", ss.buyer, "ask", ask, "round", rounds)
+	n.event(ss.buyer, store.EventBotSaid, ask, strings.Join(text, "\n"))
 	return true
 }
 
-// agree records the agreed price and puts the buyer in the pay queue. If
-// someone else is paying right now, the buyer hears they're next.
-func (ss *session) agree(st step) handled {
+// agreeLocked records the agreed price and puts the buyer in the pay queue,
+// reserving the task/pool so other negotiations pause until this turn ends.
+// n.agreeMu must be held.
+func (ss *session) agreeLocked(st step) handled {
 	n := ss.n
 	ctx := n.talk
 	next := st.next
@@ -1659,59 +1877,30 @@ func (ss *session) agree(st step) handled {
 	paise := int64(st.agree) * 100
 	n.mu.Lock()
 	ss.state, ss.agreed, ss.hs, ss.started = sessionAgreed, amount, next, started
-	outbid := n.outbidLocked(ss.buyer, paise)
-	busy := !n.holder.IsEmpty() || n.pay.waiting() > 0
-	n.mu.Unlock()
-	n.log.Info("buyer agreed", "buyer", ss.buyer, "amount", amount, "outbids_holder", outbid)
-	n.event(ss.buyer, store.EventAgreed, st.agree, "")
-	switch {
-	case !busy || outbid:
-	case n.t.Handoff == string(config.HandoffOnAgreement):
-		ss.sayAgreed(n.lines(ss.buyer).queuedHandoff(st.agree))
-	default:
-		ss.sayAgreed(n.lines(ss.buyer).queued(st.agree))
-	}
-	// Highest price pays first. A revived buyer whose earlier payment turn
-	// lapsed queues again.
+	// Highest price pays first if multiple buyers are already in n.pay.
+	// Enqueue while holding n.mu so n.busy() is true before syncPoolPause.
 	n.pay.setPriority(ss.buyer, paise)
 	n.pay.requeue(ss.buyer)
+	n.mu.Unlock()
+	n.m.syncPoolPause(n.t)
+	n.log.Info("buyer agreed", "buyer", ss.buyer, "amount", amount)
+	n.event(ss.buyer, store.EventAgreed, st.agree, "")
 	return handledAgreed
 }
 
-// sayAgreed sends an agreed buyer one reply, within the message limit.
-func (ss *session) sayAgreed(text reply) {
-	n := ss.n
-	n.mu.Lock()
-	next := ss.hs
-	started := ss.started
-	n.mu.Unlock()
-	if next.botMsgs >= maxBotMsgs {
-		return
+func (ss *session) payOtherReply() reply {
+	l := ss.n.lines(ss.buyer)
+	if ss.n.s.payUPI() {
+		return l.payOtherUPI()
 	}
-	sent := next.botMsgs
-	next.botMsgs++
-	if ok, err := n.m.st.ClaimNegotiationMessage(n.talk, n.t.ID, ss.buyer.String(), sent, next.store(started)); err != nil || !ok {
-		return
-	}
-	n.mu.Lock()
-	ss.hs = next
-	n.mu.Unlock()
-	if err := n.send(n.talk, ss.buyer, text); err != nil {
-		n.log.Warn("negotiation message failed or is uncertain", "buyer", ss.buyer, "err", err)
-		return
-	}
-	n.event(ss.buyer, store.EventBotSaid, next.ask, strings.Join(text, "\n"))
+	return l.payOther()
 }
 
 // sayPayOther tells a buyer who wants to pay another way that it's
 // WhatsApp Pay only. It reports false if they already heard it, so asking
 // again hands them to you.
 func (ss *session) sayPayOther() bool {
-	l := ss.n.lines(ss.buyer)
-	if ss.n.s.payUPI() {
-		return ss.sayOnce(linePayOther, l.payOtherUPI())
-	}
-	return ss.sayOnce(linePayOther, l.payOther())
+	return ss.sayOnce(linePayOther, ss.payOtherReply())
 }
 
 // resendPayQR sends the paying buyer the UPI QR again, once per buyer.
@@ -1763,7 +1952,20 @@ func (ss *session) sayOnce(line string, r reply) bool {
 	return true
 }
 
-func (ss *session) timeOut(why string) {
+// timeOut ends ss unless the negotiation became paused right as the timer
+// fired, in which case it reports false so ss.run waits for unpause.
+func (ss *session) timeOut(why string) bool {
+	n := ss.n
+	n.agreeMu.Lock()
+	defer n.agreeMu.Unlock()
+	if n.isPausedFor(ss.buyer) {
+		return false
+	}
+	ss.finishTimeOut(why)
+	return true
+}
+
+func (ss *session) finishTimeOut(why string) {
 	n := ss.n
 	n.mu.Lock()
 	ss.state = sessionEnded
@@ -1814,17 +2016,17 @@ func (j negotiatedJournal) turnEnded(ctx context.Context, buyer types.JID, state
 		// recorded it.
 		return nil
 	}
-	j.n.turnOver(buyer)
 	_, err := j.st.MoveSellTaskBuyer(ctx, j.t.ID, buyer.String(), store.BuyerOffered, state, "", time.Time{})
+	j.n.turnOver(buyer)
 	return err
 }
 
-func (j negotiatedJournal) watchOutbid(buyer types.JID) <-chan struct{} {
-	return j.n.watchOutbid(buyer)
+func (j negotiatedJournal) watchDrop(buyer types.JID) <-chan struct{} {
+	return j.n.watchDrop(buyer)
 }
 
-func (j negotiatedJournal) outbid(ctx context.Context, buyer types.JID, handedOff bool) error {
-	return j.n.lostTurn(ctx, buyer, handedOff)
+func (j negotiatedJournal) dropped(ctx context.Context, buyer types.JID, handedOff bool) error {
+	return j.n.droppedTurn(ctx, buyer, handedOff)
 }
 
 func (j negotiatedJournal) accepts(buyer types.JID, agreed string) []string {
@@ -1921,6 +2123,7 @@ func (n *negotiation) drop(peer types.JID) {
 	n.mu.Lock()
 	if ss := n.sessions[peer]; ss != nil {
 		ss.state = sessionEnded
+		n.wakeLocked()
 	}
 	n.moved[peer] = true
 	n.mu.Unlock()
@@ -1948,10 +2151,13 @@ func (n *negotiation) adopt(b store.SellBuyer) {
 	ss := n.sessionLocked(peer)
 	ss.joined, ss.started = b.JoinedAt, b.StartedAt
 	ss.hs = haggleFromStore(b.Negotiation, n.h.max)
-	busy := !n.holder.IsEmpty() || n.pay.waiting() > 0
 	switch b.State {
 	case store.BuyerAgreed:
 		ss.state, ss.agreed = sessionAgreed, b.Agreed
+		if a, err := store.ParsePaise(b.Agreed); err == nil {
+			n.pay.setPriority(peer, a)
+		}
+		n.pay.requeue(peer)
 	case store.BuyerQueued, store.BuyerNegotiating:
 		ss.state = sessionNegotiating
 	default:
@@ -1962,12 +2168,7 @@ func (n *negotiation) adopt(b store.SellBuyer) {
 	n.log.Info("took a buyer from another task in the pool", "buyer", peer, "state", b.State)
 	switch state {
 	case sessionAgreed:
-		if busy {
-			if a, err := store.ParsePaise(b.Agreed); err == nil {
-				ss.sayAgreed(n.lines(ss.buyer).queued(int(a / 100)))
-			}
-		}
-		n.pay.requeue(peer)
+		n.m.syncPoolPause(n.t)
 	case sessionNegotiating:
 		go func() {
 			select {

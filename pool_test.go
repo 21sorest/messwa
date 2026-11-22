@@ -370,3 +370,58 @@ func TestPoolMarksPostsSoldWhenRemainingMealExpires(t *testing.T) {
 		}
 	})
 }
+
+func TestPoolStaysOpenWhileOneMealFreeThenPausesWhenFull(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 0)
+		first, err := m.Start(ctx, 0, f.date, "lunch", 50, 60, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		second, err := m.Start(ctx, 0, f.date, "lunch#2", 50, 60, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+
+		// A reserves the first meal; the second meal is still free, so B can
+		// immediately agree and reserve the second meal too.
+		f.conn.emit(f.reply(buyerA, "60"))
+		settle()
+		if a := buyerState(t, f, first, buyerA); a.State != store.BuyerOffered {
+			t.Fatalf("A in first = %+v", a)
+		}
+		f.conn.emit(f.reply(buyerB, "60"))
+		settle()
+		if b := buyerState(t, f, second, buyerB); b.State != store.BuyerOffered {
+			t.Fatalf("B in second = %+v", b)
+		}
+
+		// Both meals are now reserved: C stays paused silently.
+		f.conn.emit(f.reply(buyerC, "price?"))
+		settle()
+		if toC := texts(sentTo(f.conn.messages(), buyerC)); len(toC) != 0 {
+			t.Fatalf("C got %q while every meal in the pool was reserved", toC)
+		}
+
+		// A pays for the first meal; the second is still reserved by B, so C
+		// stays paused when moved over to the second task.
+		f.conn.emit(paymentOf(buyerA, "pay-a", "60.00", time.Now()))
+		synctest.Wait()
+		if toC := texts(sentTo(f.conn.messages(), buyerC)); len(toC) != 0 {
+			t.Fatalf("C got %q while B still held the remaining meal", toC)
+		}
+
+		// B lets their turn lapse; C wakes up on the second task and hears 60.
+		time.Sleep(payTurn + time.Second)
+		settle()
+		if toC := texts(sentTo(f.conn.messages(), buyerC)); len(toC) != 1 || toC[0] != "60" {
+			t.Fatalf("C got %q after B's turn lapsed", toC)
+		}
+	})
+}

@@ -125,11 +125,12 @@ func TestPlainNegotiationTakesAnythingAboveTheFloor(t *testing.T) {
 		}
 		synctest.Wait()
 		f.conn.emit(f.reply(buyerA, "20?"))
-		f.conn.emit(f.reply(buyerB, "35?"))
 		settle()
 		if got := texts(sentTo(f.conn.messages(), buyerA)); len(got) != 1 || got[0] != "how about 40" {
 			t.Fatalf("A got %q", got)
 		}
+		f.conn.emit(f.reply(buyerB, "35?"))
+		settle()
 		if got := texts(sentTo(f.conn.messages(), buyerB)); len(got) == 0 || got[0] != "ok 35" {
 			t.Fatalf("B got %q", got)
 		}
@@ -174,14 +175,13 @@ func TestNegotiationCountersAgreesAndSells(t *testing.T) {
 			t.Fatalf("A = %+v", b)
 		}
 
-		// B agrees no more than A and hears that someone else is paying.
-		// A higher price would take A's turn; see
-		// TestNegotiationHigherOfferTakesTheTurn.
+		// B replies while A holds the payment turn: B stays paused silently
+		// instead of being put in a backup queue.
 		f.conn.emit(dm(buyerB, "40"))
 		settle()
 		toB := texts(sentTo(f.conn.messages(), buyerB))
-		if len(toB) != 3 || toB[1] != "ok 40" || toB[2] != "someone else is paying rn, if they dont in 2 min its yours" {
-			t.Fatalf("B got %q", toB)
+		if len(toB) != 1 || toB[0] != "60" {
+			t.Fatalf("B got %q while A held the turn", toB)
 		}
 
 		// A pays the ₹45 they were quoted earlier. That's above the agreed
@@ -378,8 +378,9 @@ func TestNegotiationPaymentWhileAnotherHolds(t *testing.T) {
 			t.Fatal(err)
 		}
 		synctest.Wait()
-		f.conn.emit(f.reply(buyerA, "ok same number?"))
 		f.conn.emit(f.reply(buyerB, "price?"))
+		settle()
+		f.conn.emit(f.reply(buyerA, "ok same number?"))
 		settle()
 		if b := buyerState(t, f, id, buyerA); b.State != store.BuyerOffered {
 			t.Fatalf("A = %+v", b)
@@ -849,14 +850,16 @@ func TestNegotiationHandsOffOnAgreement(t *testing.T) {
 			t.Fatal(err)
 		}
 		synctest.Wait()
-		f.conn.emit(f.reply(buyerA, "50?"))
 		f.conn.emit(f.reply(buyerB, "price?"))
 		f.conn.emit(f.reply(buyerC, "price?"))
+		settle()
+		f.conn.emit(f.reply(buyerA, "50?"))
 		settle()
 		if got := sentTo(f.conn.messages(), buyerA); len(got) != 0 {
 			t.Fatalf("A got %+v; the agreement should hand over silently", got)
 		}
-		// The task keeps selling while A is handed to you.
+		// The task stays active while A is handed to you so MarkSold can
+		// still close it cleanly, but the listing is reserved for A.
 		if task := f.task(id); task.State != store.TaskActive {
 			t.Fatalf("task is %s (%s)", task.State, task.Detail)
 		}
@@ -867,46 +870,33 @@ func TestNegotiationHandsOffOnAgreement(t *testing.T) {
 			t.Fatalf("A = %+v", a)
 		}
 
-		// B agrees less: B waits, A stays handed off.
+		// B and C reply (including C offering more than A): both stay
+		// paused silently and A keeps the handoff untouched.
 		f.conn.emit(dm(buyerB, "40"))
-		settle()
-		if toB := texts(sentTo(f.conn.messages(), buyerB)); toB[len(toB)-1] != "someone else is buying rn, ill msg u if it falls through" {
-			t.Fatalf("B got %q", toB)
-		}
-		if d, _, _ := f.st.TaskDelivery(ctx, id); d.Peer != buyerA.String() {
-			t.Fatalf("delivery = %+v", d)
-		}
-
-		// C agrees more: A hears not to pay, and C is handed to you.
 		f.conn.emit(dm(buyerC, "55"))
 		settle()
-		toA := texts(sentTo(f.conn.messages(), buyerA))
-		if len(toA) != 2 || toA[0] != "wait dont pay yet" || toA[1] != "someone offered more, ill msg u if it falls through" {
-			t.Fatalf("A got %q", toA)
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); len(toB) != 1 || toB[0] != "60" {
+			t.Fatalf("B got %q while A held the handoff", toB)
 		}
-		if a := buyerState(t, f, id, buyerA); a.State != store.BuyerAgreed || a.Agreed != "50.00" {
-			t.Fatalf("A = %+v", a)
+		if toC := texts(sentTo(f.conn.messages(), buyerC)); len(toC) != 1 || toC[0] != "60" {
+			t.Fatalf("C got %q while A held the handoff", toC)
 		}
-		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "handed_off" || d.Amount != "55.00" || d.Peer != buyerC.String() {
+		if got := sentTo(f.conn.messages(), buyerA); len(got) != 0 {
+			t.Fatalf("A got %+v; handed-off buyer must not be outbid", got)
+		}
+		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "handed_off" || d.Amount != "50.00" || d.Peer != buyerA.String() {
 			t.Fatalf("delivery = %+v %q", d, state)
 		}
-		if c := buyerState(t, f, id, buyerC); c.State != store.BuyerHandedOff {
-			t.Fatalf("C = %+v", c)
-		}
-		toC := texts(sentTo(f.conn.messages(), buyerC))
-		if toC[len(toC)-1] == "someone else is buying rn, ill msg u if it falls through" {
-			t.Fatalf("C got %q", toC)
-		}
 
-		// C pays you; you mark it sold. Everyone else hears it sold.
-		if err := m.MarkSold(ctx, id, buyerC.String(), "", 55, "", false); err != nil {
+		// A pays you; you mark it sold. Everyone else hears it sold.
+		if err := m.MarkSold(ctx, id, buyerA.String(), "", 50, "", false); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
 		if task := f.task(id); task.State != store.TaskSold {
 			t.Fatalf("task is %s (%s)", task.State, task.Detail)
 		}
-		for _, b := range []types.JID{buyerA, buyerB} {
+		for _, b := range []types.JID{buyerB, buyerC} {
 			if got := texts(sentTo(f.conn.messages(), b)); got[len(got)-1] != "sold sorry" {
 				t.Fatalf("%s got %q", b, got)
 			}
@@ -925,8 +915,9 @@ func TestNegotiationHandoffHoldsAfterRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		synctest.Wait()
-		f.conn.emit(f.reply(buyerA, "45?"))
 		f.conn.emit(f.reply(buyerB, "price?"))
+		settle()
+		f.conn.emit(f.reply(buyerA, "45?"))
 		settle()
 		stop()
 		synctest.Wait()
@@ -941,14 +932,18 @@ func TestNegotiationHandoffHoldsAfterRestart(t *testing.T) {
 		if d, state, _ := f.st.TaskDelivery(ctx2, id); state != "handed_off" || d.Peer != buyerA.String() {
 			t.Fatalf("delivery = %+v %q", d, state)
 		}
-		// A still holds the handoff, so B's higher offer takes it.
+		// A still holds the handoff after restart, so B's higher offer stays
+		// paused and cannot outbid A.
 		f.conn.emit(dm(buyerB, "60"))
 		settle()
-		if d, state, _ := f.st.TaskDelivery(ctx2, id); state != "handed_off" || d.Peer != buyerB.String() || d.Amount != "60.00" {
+		if d, state, _ := f.st.TaskDelivery(ctx2, id); state != "handed_off" || d.Peer != buyerA.String() || d.Amount != "45.00" {
 			t.Fatalf("delivery = %+v %q", d, state)
 		}
-		if toA := texts(sentTo(f.conn.messages(), buyerA)); len(toA) != 2 || toA[0] != "wait dont pay yet" {
+		if toA := texts(sentTo(f.conn.messages(), buyerA)); len(toA) != 0 {
 			t.Fatalf("A got %q", toA)
+		}
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); len(toB) != 1 || toB[0] != "60" {
+			t.Fatalf("B got %q while A held the handoff", toB)
 		}
 	})
 }
@@ -1087,85 +1082,71 @@ func TestNegotiationCountersAPassOnce(t *testing.T) {
 	})
 }
 
-func TestNegotiationHigherOfferTakesTheTurn(t *testing.T) {
+// Replays the real incident where a buyer negotiated 30 -> 20 -> 25,
+// replied "Alryt", and then another buyer offered higher while they held
+// the payment turn: "Alryt" agrees immediately, the active payment turn is
+// honoured without outbidding, and the competing buyer stays paused until
+// the meal sells.
+func TestNegotiationDoesNotOutbidActiveHolder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.db")
 	synctest.Test(t, func(t *testing.T) {
 		f := newSellFixture(t, path)
+		f.cfg.Sell.SmartHaggle = false
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		m := f.negotiatingManager(ctx, 40)
-		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, "")
+		m := f.negotiatingManager(ctx, 0)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 25, 30, "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
-		f.conn.emit(f.reply(buyerA, "40?"))
-		f.conn.emit(f.reply(buyerB, "price?"))
-		f.conn.emit(f.reply(buyerC, "price?"))
-		settle()
-		if b := buyerState(t, f, id, buyerA); b.State != store.BuyerOffered || b.Amount != "40.00" {
-			t.Fatalf("A = %+v", b)
-		}
 
-		// C agrees no more than A: C waits in line, A keeps the turn.
-		f.conn.emit(dm(buyerC, "40"))
+		f.conn.emit(f.reply(buyerA, "Intrested"))
 		settle()
-		if toC := texts(sentTo(f.conn.messages(), buyerC)); toC[len(toC)-1] != "someone else is paying rn, if they dont in 2 min its yours" {
-			t.Fatalf("C got %q", toC)
-		}
-		if b := buyerState(t, f, id, buyerA); b.State != store.BuyerOffered {
-			t.Fatalf("A = %+v", b)
-		}
+		f.conn.emit(dm(buyerA, "20.. ill pay now"))
+		settle()
+		f.conn.emit(dm(buyerA, "Alryt"))
+		settle()
 
-		// B offers more while A holds the turn: A hears not to pay, and B
-		// is asked to pay right away.
-		f.conn.emit(dm(buyerB, "50"))
-		settle()
 		toA := texts(sentTo(f.conn.messages(), buyerA))
-		if got := toA[len(toA)-2:]; got[0] != "wait dont pay yet" || got[1] != "someone offered more, if they dont pay in 2 min ill msg u" {
-			t.Fatalf("A got %q", toA)
+		wantA := []string{"30", "25", "final offer", "ok 25", "pay using whatsapp pay pls, not gpay/upi", "ill send the qr right after"}
+		if !slices.Equal(toA, wantA) {
+			t.Fatalf("A got %q, want %q", toA, wantA)
 		}
-		if a := buyerState(t, f, id, buyerA); a.State != store.BuyerAgreed || a.Agreed != "40.00" {
+		if a := buyerState(t, f, id, buyerA); a.State != store.BuyerOffered || a.Amount != "25.00" {
 			t.Fatalf("A = %+v", a)
 		}
-		toB := texts(sentTo(f.conn.messages(), buyerB))
-		if !slices.Contains(toB, "ok 50") {
-			t.Fatalf("B got %q", toB)
+
+		// Another buyer offers 30 while A is paying: B stays paused and A
+		// keeps the turn without ever hearing "wait dont pay yet".
+		f.conn.emit(f.reply(buyerB, "30"))
+		settle()
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); len(toB) != 0 {
+			t.Fatalf("B got %q while A held the turn", toB)
 		}
-		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerOffered || b.Amount != "50.00" {
-			t.Fatalf("B = %+v", b)
+		if got := texts(sentTo(f.conn.messages(), buyerA)); len(got) != len(wantA) {
+			t.Fatalf("A got extra messages after B's higher offer: %q", got)
 		}
-		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "armed" || d.Peer != buyerB.String() || d.Amount != "50.00" {
+		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "armed" || d.Peer != buyerA.String() || d.Amount != "25.00" {
 			t.Fatalf("delivery = %+v %q", d, state)
 		}
 
-		// A pays their old price now: B holds the meal, so it is flagged
-		// for refund rather than honoured.
-		f.conn.emit(paymentOf(buyerA, "pay-a-late", "40.00", time.Now()))
+		// A pays 25 and gets the QR; B cleanly hears it sold.
+		f.conn.emit(paymentOf(buyerA, "pay-a", "25.00", time.Now()))
 		synctest.Wait()
-		if a := buyerState(t, f, id, buyerA); a.Refund != "40.00" {
-			t.Fatalf("A = %+v", a)
+		if got := texts(sentTo(f.conn.messages(), buyerA)); got[len(got)-1] != "[QR]" {
+			t.Fatalf("A got %q", got)
 		}
-
-		// B never pays. C, still in line at 40, gets the next turn; A was
-		// parked for the refund and is skipped.
-		time.Sleep(2*time.Minute + time.Second)
-		synctest.Wait()
-		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerTimedOut {
-			t.Fatalf("B = %+v", b)
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); !slices.Equal(toB, []string{"sold sorry"}) {
+			t.Fatalf("B got %q, want sold sorry", toB)
 		}
-		if c := buyerState(t, f, id, buyerC); c.State != store.BuyerOffered || c.Amount != "40.00" {
-			t.Fatalf("C = %+v", c)
-		}
-		f.conn.emit(paymentOf(buyerC, "pay-c", "40.00", time.Now()))
-		synctest.Wait()
 		if task := f.task(id); task.State != store.TaskSold {
 			t.Fatalf("task is %s (%s)", task.State, task.Detail)
 		}
 	})
 }
 
-func TestNegotiationOutbidBuyerGetsTheTurnBack(t *testing.T) {
+func TestNegotiationResumesPausedBuyersAfterHolderTimesOut(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.db")
 	synctest.Test(t, func(t *testing.T) {
 		f := newSellFixture(t, path)
@@ -1177,28 +1158,89 @@ func TestNegotiationOutbidBuyerGetsTheTurnBack(t *testing.T) {
 			t.Fatal(err)
 		}
 		synctest.Wait()
+
+		// A agrees 40 and reserves the listing.
 		f.conn.emit(f.reply(buyerA, "40?"))
-		f.conn.emit(f.reply(buyerB, "price?"))
 		settle()
-		f.conn.emit(dm(buyerB, "55"))
-		settle()
-		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerOffered || b.Amount != "55.00" {
-			t.Fatalf("B = %+v", b)
-		}
-		// B lets the turn lapse; A is asked to pay their 40 again.
-		time.Sleep(2*time.Minute + time.Second)
-		synctest.Wait()
 		if a := buyerState(t, f, id, buyerA); a.State != store.BuyerOffered || a.Amount != "40.00" {
 			t.Fatalf("A = %+v", a)
 		}
-		toA := texts(sentTo(f.conn.messages(), buyerA))
-		if n := len(slices.DeleteFunc(slices.Clone(toA), func(s string) bool { return s != "ok 40" })); n != 2 {
-			t.Fatalf("A got %q", toA)
+
+		// B replies while A is paying: B stays completely silent during A's turn.
+		f.conn.emit(f.reply(buyerB, "50"))
+		settle()
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); len(toB) != 0 {
+			t.Fatalf("B got %q while A held the turn", toB)
 		}
-		f.conn.emit(paymentOf(buyerA, "pay-a", "40.00", time.Now()))
+
+		// A lets the 2-minute turn expire; B immediately wakes up and is asked to pay 50.
+		time.Sleep(payTurn + time.Second)
+		settle()
+		if a := buyerState(t, f, id, buyerA); a.State != store.BuyerTimedOut {
+			t.Fatalf("A = %+v", a)
+		}
+		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerOffered || b.Amount != "50.00" {
+			t.Fatalf("B = %+v", b)
+		}
+		toB := texts(sentTo(f.conn.messages(), buyerB))
+		if len(toB) != 3 || toB[0] != "ok 50" {
+			t.Fatalf("B got %q", toB)
+		}
+		f.conn.emit(paymentOf(buyerB, "pay-b", "50.00", time.Now()))
 		synctest.Wait()
-		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "sent" || d.Peer != buyerA.String() || d.Amount != "40.00" {
+		if d, state, _ := f.st.TaskDelivery(ctx, id); state != "sent" || d.Peer != buyerB.String() || d.Amount != "50.00" {
 			t.Fatalf("delivery = %+v %q", d, state)
+		}
+	})
+}
+
+func TestNegotiationPausedTimersFrozenDuringTurn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		f.cfg.Sell.NegotiationSilence.Duration = time.Minute
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.negotiatingManager(ctx, 40)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+
+		// B gets the opening quote, then stays quiet for half the nudge window.
+		f.conn.emit(f.reply(buyerB, "price?"))
+		settle()
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); !slices.Equal(toB, []string{"60"}) {
+			t.Fatalf("B got %q", toB)
+		}
+		time.Sleep(nudgeAfter / 2)
+		synctest.Wait()
+
+		// A reserves the meal for the full 2-minute payment turn (longer than
+		// both nudgeAfter and NegotiationSilence).
+		f.conn.emit(f.reply(buyerA, "40?"))
+		settle()
+		time.Sleep(payTurn - 5*time.Second)
+		synctest.Wait()
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); len(toB) != 1 {
+			t.Fatalf("B was nudged while paused: %q", toB)
+		}
+		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerNegotiating {
+			t.Fatalf("B timed out while paused: %+v", b)
+		}
+
+		// A's turn expires; B still has ~30s left before their nudge fires.
+		time.Sleep(10 * time.Second)
+		synctest.Wait()
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); len(toB) != 1 {
+			t.Fatalf("B was nudged too early after unpause: %q", toB)
+		}
+		// Once the remaining half of nudgeAfter passes, the nudge fires.
+		time.Sleep(nudgeAfter / 2)
+		synctest.Wait()
+		if toB := texts(sentTo(f.conn.messages(), buyerB)); !slices.Equal(toB, []string{"60", "yes or no?"}) {
+			t.Fatalf("B got %q after unpause", toB)
 		}
 	})
 }

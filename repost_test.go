@@ -396,3 +396,41 @@ func TestRepostFollowsLiveRules(t *testing.T) {
 		}
 	})
 }
+
+func TestSellTaskRepostsPauseWhileBuyerHoldsTurn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		if _, err := f.manager(ctx).Start(ctx, 0, f.date, "lunch", 1, 1, ""); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		// Age past MinRepostGap so a buried copy would repost immediately.
+		time.Sleep(6 * time.Minute)
+		synctest.Wait()
+
+		// Buyer A replies and starts their 2-minute payment turn.
+		f.conn.emit(f.reply(buyerA, "interested"))
+		synctest.Wait()
+		p := groupPosts(f.conn, f.group)
+		if len(p) != 1 {
+			t.Fatalf("posts = %+v", p)
+		}
+		// Bury the post while A holds the turn: no repost goes out.
+		buryCopy(t, f.st, f.group, p[0].id, 10)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if p := groupPosts(f.conn, f.group); len(p) != 1 {
+			t.Fatalf("reposted while buyer held the turn: %+v", p)
+		}
+
+		// Once A's turn lapses, reposting resumes.
+		time.Sleep(payTurn + repostCheck)
+		synctest.Wait()
+		if p := groupPosts(f.conn, f.group); len(p) != 2 {
+			t.Fatalf("did not repost after buyer turn lapsed: %+v", p)
+		}
+	})
+}
