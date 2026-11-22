@@ -18,7 +18,6 @@ const recurringRelDefault = { low: -15, high: 25 };
 const recurringDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Monday first, as the ledger reads.
 const recurringDayOrder = [1, 2, 3, 4, 5, 6, 0];
-const recurringOffsets = [30, 20, 15, 10, 5, 0, -10, -15, -30, -45, -60, -90];
 
 function ruleForm() {
   return {
@@ -55,19 +54,25 @@ function ruleMedian(meal) {
   return m ? m.median : null;
 }
 
-// The meal rows' bar runs from 50% under the median to double it.
-const relBar = (v) => Math.min(100, Math.max(0, ((v + 50) / 150) * 100));
+// relBounds picks a meal's % slider scale: -50% to +100% by default,
+// expanding if the rule already sits outside that range.
+function relBounds(rel) {
+  return {
+    lo: Math.max(-90, Math.min(-50, Math.floor(rel.low / 5) * 5)),
+    hi: Math.min(300, Math.max(100, Math.ceil(rel.high / 50) * 50)),
+  };
+}
 
 // pctBox is a −/+ box for a percentage around the median, in steps of 5.
 function pctBox(label, aria, get, set) {
   const w = el('div', 'pr-box'), field = el('div', 'pr-in sm');
   const minus = el('button', '', '−'), plus = el('button', '', '+'), n = el('input', 'pr-num');
   Object.assign(n, { type: 'text', inputMode: 'numeric', autocomplete: 'off', enterKeyHint: 'done' });
-  n.setAttribute('aria-label', `${aria}, percent above or below the median`);
+  n.setAttribute?.('aria-label', `${aria}, percent above or below the median`);
   const show = () => { n.value = get() > 0 ? `+${get()}` : String(get()); };
   for (const [btn, d, word] of [[minus, -5, 'down'], [plus, 5, 'up']]) {
     btn.type = 'button';
-    btn.setAttribute('aria-label', `${aria} ${word} 5%`);
+    btn.setAttribute?.('aria-label', `${aria} ${word} 5%`);
     btn.addEventListener('click', () => { set(Math.round((get() + d) / 5) * 5); show(); });
   }
   n.addEventListener('input', () => { const v = parseInt(n.value.replace(/[^\d-]/g, ''), 10); if (!Number.isNaN(v)) set(v, true); });
@@ -95,12 +100,27 @@ function renderRuleRelative() {
   for (const input of $('ruleMeals').querySelectorAll('input:checked')) {
     const meal = input.value;
     const rel = recurringRelative[meal] || (recurringRelative[meal] = { ...recurringRelDefault });
+    const B = relBounds(rel);
+    const pct = (v) => Math.min(100, Math.max(0, ((v - B.lo) / (B.hi - B.lo)) * 100));
     const row = el('div', 'rr-row'), top = el('div', 'rr-top'), name = el('span', 'rr-meal'), est = el('span', 'rr-est');
     name.append(svgEl(icon(meal)), cap(meal));
     top.append(name, est);
-    const bar = el('div', 'rr-bar'), band = el('i', 'band'), tick = el('i', 'mid');
-    tick.style.left = `${relBar(0)}%`;
-    bar.append(band, tick);
+    const dual = el('div', 'dual'), track = el('div', 'track'), fill = el('i', 'fill'), tick = el('i', 'med');
+    const midPct = pct(0);
+    tick.style.left = `${midPct}%`;
+    track.append(fill, tick);
+    const range = (label) => {
+      const r = el('input');
+      Object.assign(r, { type: 'range', min: B.lo, max: B.hi, step: 5 });
+      r.setAttribute?.('aria-label', label);
+      return r;
+    };
+    const rLo = range(`${cap(meal)} lowest, percent of median`), rHi = range(`${cap(meal)} opening, percent of median`);
+    dual.append(track, rLo, rHi);
+    const axis = el('div', 'sell-axis rr-axis');
+    const medLabel = el('span', 'med-l', midPct >= 20 && midPct <= 80 ? 'median' : '0%');
+    medLabel.style.left = `calc(9px + (100% - 18px) * ${midPct / 100})`;
+    axis.append(el('span', '', `${B.lo}%`), medLabel, el('span', '', `+${B.hi}%`));
     const lo = pctBox('LOWEST', `${cap(meal)} lowest`, () => rel.low, (v, typing) => {
       rel.low = Math.max(-90, Math.min(200, v));
       if (rel.high < rel.low) { rel.high = rel.low; hi.show(); }
@@ -115,16 +135,33 @@ function renderRuleRelative() {
     });
     const vals = el('div', 'pr-vals');
     vals.append(lo.node, hi.node);
+    rLo.addEventListener('input', () => {
+      rel.low = Math.min(Math.max(-90, Math.min(200, +rLo.value)), rel.high);
+      rLo.style.zIndex = 3; rHi.style.zIndex = 2;
+      lo.show();
+      draw();
+    });
+    rHi.addEventListener('input', () => {
+      rel.high = Math.max(Math.max(-90, Math.min(300, +rHi.value)), rel.low);
+      rHi.style.zIndex = 3; rLo.style.zIndex = 2;
+      hi.show();
+      draw();
+    });
     const draw = () => {
-      band.style.left = `${relBar(rel.low)}%`;
-      band.style.right = `${100 - relBar(rel.high)}%`;
+      fill.style.left = `${pct(rel.low)}%`;
+      fill.style.right = `${100 - pct(rel.high)}%`;
+      rLo.value = String(rel.low);
+      rHi.value = String(rel.high);
+      rLo.setAttribute?.('aria-valuetext', signedPct(rel.low));
+      rHi.setAttribute?.('aria-valuetext', signedPct(rel.high));
+      if (rel.low === rel.high && rel.low >= B.hi) { rLo.style.zIndex = 3; rHi.style.zIndex = 2; }
       const m = ruleMedian(meal);
       est.replaceChildren();
       if (m == null) { est.append(el('small', '', 'no median yet')); return; }
       const a = r5(m * (100 + rel.low) / 100), b = Math.max(a, r5(m * (100 + rel.high) / 100));
       est.append(el('b', '', a === b ? `₹${a}` : `₹${a}–${b}`), el('small', '', `median ₹${Math.round(m)}`));
     };
-    row.append(top, vals, bar);
+    row.append(top, vals, dual, axis);
     draw();
     box.append(row);
   }
@@ -133,7 +170,7 @@ function renderRuleRelative() {
     const row = el('div', 'rr-row rr-fallback'), top = el('div', 'rr-top'), name = el('span', 'rr-meal');
     name.append(el('i', 'rr-q', '?'), 'No median yet');
     top.append(name, el('span', 'rr-est', ''));
-    row.append(top, recurringSlider.nodes[0]);
+    row.append(top, ...recurringSlider.nodes);
     box.append(row);
   }
 }
@@ -199,22 +236,36 @@ function ruleChip(parent, type, value, label, checked, art, cls = 'rseg-i') {
   parent.append(l);
 }
 
+// ruleBeforeWord formats rule.before (minutes before serving; negative means
+// after) like Settings' Offer goes up readout.
+function ruleBeforeWord(before) {
+  if (before === 0) return 'At the start';
+  const m = Math.abs(before);
+  const t = m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
+  return `${t} ${before > 0 ? 'before' : 'after'} start`;
+}
+
 function fillRuleTimes(before) {
-  const select = $('ruleBefore');
-  if (typeof Option === 'undefined') { select.value = String(before); return; }
-  const offsets = recurringOffsets.includes(before) ? recurringOffsets : [...recurringOffsets, before].sort((a, b) => b - a);
-  select.replaceChildren(...offsets.map((m) => new Option(ruleTimeText(m).replace(/^./, (c) => c.toUpperCase()), String(m))));
-  select.value = String(before);
+  const v = Math.max(-90, Math.min(30, Math.round(before || 0)));
+  $('ruleBefore').value = String(v);
+  const range = $('ruleBeforeRange');
+  range.value = String(-v || 0);
+  const word = ruleBeforeWord(v);
+  range.setAttribute?.('aria-valuetext', word);
+  $('ruleBeforeVal').textContent = word;
 }
 
 function drawRulePrice(min, max) {
   $('ruleMin').value = min; $('ruleMax').value = max;
   if (typeof priceRange !== 'function') return;
   const hi = Math.max(150, Math.ceil(max / 50) * 50);
-  recurringSlider = priceRange({ lo: min, hi: max, bounds: { lo: 1, hi }, axis: ['₹1', '', `₹${hi}`] });
-  // Runs before the form's listener, so the preview check sees new prices.
-  const sync = () => { const [lo, top] = recurringSlider.get(); $('ruleMin').value = lo; $('ruleMax').value = top; };
-  for (const n of recurringSlider.nodes) { n.addEventListener('input', sync); n.addEventListener('click', sync); }
+  recurringSlider = priceRange({
+    lo: min, hi: max, bounds: { lo: 1, hi }, axis: ['₹1', '', `₹${hi}`],
+    onChange: (lo, top) => {
+      $('ruleMin').value = lo; $('ruleMax').value = top;
+      if (recurringPreviewKey) invalidateRulePreview();
+    },
+  });
 }
 
 function showRuleSheet(open) {
@@ -362,6 +413,13 @@ function previewTiles(out, applying) {
 
 $('ruleIcon').append?.(svgEl(icon('clock')));
 $('ruleClock').append?.(svgEl(icon('clock')));
+$('ruleBeforeRange').addEventListener('input', () => {
+  const v = -Number($('ruleBeforeRange').value) || 0;
+  $('ruleBefore').value = String(v);
+  const word = ruleBeforeWord(v);
+  $('ruleBeforeRange').setAttribute?.('aria-valuetext', word);
+  $('ruleBeforeVal').textContent = word;
+});
 $('ruleForm').addEventListener('input', (e) => {
   invalidateRulePreview();
   if (e?.target === $('ruleFrom') || e?.target === $('ruleThrough')) $('ruleSpan').textContent = ruleSpanText();
