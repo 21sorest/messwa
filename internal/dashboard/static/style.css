@@ -659,11 +659,11 @@ a.copy.linked:hover .copy-go { color: var(--gold); }
 .dual input::-moz-range-track { background: none; }
 .dual input::-webkit-slider-thumb {
   -webkit-appearance: none; pointer-events: auto; cursor: grab; width: 18px; height: 18px; margin-top: 5px;
-  border-radius: 4px; background: var(--gold); border: 2px solid #141923; box-shadow: 0 0 0 1px var(--gold), 0 4px 10px rgba(0, 0, 0, .5);
+  border-radius: 50%; background: var(--gold); border: 2px solid #141923; box-shadow: 0 0 0 1px var(--gold), 0 4px 10px rgba(0, 0, 0, .5);
 }
 .dual input::-moz-range-thumb {
   pointer-events: auto; cursor: grab; width: 14px; height: 14px;
-  border-radius: 4px; background: var(--gold); border: 2px solid #141923; box-shadow: 0 0 0 1px var(--gold), 0 4px 10px rgba(0, 0, 0, .5);
+  border-radius: 50%; background: var(--gold); border: 2px solid #141923; box-shadow: 0 0 0 1px var(--gold), 0 4px 10px rgba(0, 0, 0, .5);
 }
 .dual input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(255, 197, 61, .5); }
 .dual input:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(255, 197, 61, .5); }
