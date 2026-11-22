@@ -141,9 +141,23 @@
       <div class="row"><div class="lbl">💬 Buyers who DM without replying<small>"price?", "kadamba lunch available?"</small></div><button class="tg" type="button" data-key="sell.accept_plain_dms" aria-label="Buyers who DM without replying"></button></div>
       <div class="row"><div class="lbl">📣 Message people with buy posts<small>Sell tasks DM whoever posted "need bakul lunch"</small></div><button class="tg" type="button" data-key="sell.message_buy_posts" aria-label="Message people with buy posts"></button></div>
       <div class="row"><div class="lbl">🖼️ Screenshot counts as paid <span class="tag warn">Unverified</span><small>QR goes out on any image. Check UPI after.</small></div><button class="tg danger" type="button" data-key="sell.accept_payment_images" aria-label="Screenshot counts as paid"></button></div>
-      <div class="row upi-row"><div class="lbl">💳 Your UPI<small>With screenshots counting, the pay message comes with a QR for the exact price. Type your UPI ID, or read it from your UPI QR.</small></div><div class="upi"><input class="upi-in" type="text" data-key="sell.upi" placeholder="name@okaxis" autocomplete="off" spellcheck="false" aria-label="Your UPI ID"><button class="btn small" type="button" id="upiPick">📷 From QR</button><input type="file" id="upiFile" accept="image/png,image/jpeg" hidden></div></div>
       <div class="row"><div class="lbl">🫥 Blank WhatsApp Pay counts as paid <span class="tag warn">Unverified</span><small>WhatsApp sometimes sends a payment confirmation without the amount paid. With this on, the bot trusts that the buyer paid the right amount and sends the QR without checking.</small></div><button class="tg danger" type="button" data-key="sell.accept_unreadable_payments" aria-label="Blank WhatsApp Pay counts as paid"></button></div>
       <div class="row"><div class="lbl">🧹 Forget unsaved DMs after</div><div class="step" data-key="dms.retention" data-unit="h"></div></div>
+      <div class="row upi-row">
+        <div class="lbl">💳 Your UPI<small>With screenshots counting, the pay message comes with a QR for the exact price. Type your UPI ID, or read it from your UPI QR.</small></div>
+        <div class="upi-ctl">
+          <div class="upi"><input class="upi-in" type="text" data-key="sell.upi" placeholder="name@okaxis" autocomplete="off" spellcheck="false" aria-label="Your UPI ID"><button class="btn small" type="button" id="upiPick">📷 From QR</button><input type="file" id="upiFile" accept="image/png,image/jpeg" hidden></div>
+          <small class="upi-err" id="upiCap" role="status"></small>
+          <div class="upi-test" id="upiTest" hidden>
+            <img class="upi-qr stale" id="upiQR" width="184" height="184" alt="">
+            <div class="upi-amt">
+              <label class="upi-amt-h" for="upiAmt">Test amount</label>
+              <span class="upi-amt-in"><span class="rs" aria-hidden="true">₹</span><input type="text" id="upiAmt" value="50" inputmode="decimal" autocomplete="off" aria-label="Test amount in rupees"></span>
+              <div class="upi-picks" id="upiPicks" role="group" aria-label="Test amounts"><button type="button" data-amt="30">₹30</button><button type="button" data-amt="50">₹50</button><button type="button" data-amt="100">₹100</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
