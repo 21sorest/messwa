@@ -23,14 +23,16 @@ type SaleMessage struct {
 
 // ConversationTask limits recording to a buyer's current sale, or a reply
 // explicitly quoting one of our offers. It never records unrelated DMs.
+// A sale that passed the buyer to another sale in its pool keeps a moved
+// row, which is skipped so their messages follow them.
 func (s *Store) ConversationTask(ctx context.Context, peer, alt, quote string, at int64) (int64, string, error) {
 	var id int64
 	var canonical string
 	err := s.db.QueryRowContext(ctx, `SELECT t.id,coalesce(b.peer,?) FROM sell_tasks t
- LEFT JOIN sell_task_buyers b ON b.task_id=t.id AND (b.peer IN (?,?) OR (b.alt!='' AND b.alt IN (?,?)))
+ LEFT JOIN sell_task_buyers b ON b.task_id=t.id AND b.state!=? AND (b.peer IN (?,?) OR (b.alt!='' AND b.alt IN (?,?)))
  WHERE t.created_at<=? AND t.ends_at>=? AND
  (b.peer IS NOT NULL OR (?!='' AND EXISTS(SELECT 1 FROM sell_task_offers o WHERE o.task_id=t.id AND o.offer_id=?)))
- ORDER BY t.created_at DESC,t.id DESC LIMIT 1`, peer, peer, alt, peer, alt, at, at, quote, quote).Scan(&id, &canonical)
+ ORDER BY t.created_at DESC,t.id DESC LIMIT 1`, peer, BuyerMoved, peer, alt, peer, alt, at, at, quote, quote).Scan(&id, &canonical)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, "", nil
 	}

@@ -61,3 +61,33 @@ func TestConversationScopeAndMedia(t *testing.T) {
 		t.Fatal("wrong buyer can read image")
 	}
 }
+
+func TestConversationFollowsMovedBuyer(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	now := time.Now().Truncate(time.Second)
+	task := func(meal string, created time.Time) int64 {
+		id, err := s.CreateSellTask(ctx, SellTask{Date: "2026-11-24", Meal: meal, MinPaise: 4000, MaxPaise: 4000, CreatedAt: created, EndsAt: now.Add(time.Hour)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.AddSellTaskBuyer(ctx, id, "buyer", "", now); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	// The newer sale passed the buyer to the older one. One sale runs per
+	// meal, so they differ in meal; ConversationTask ignores it.
+	older, newer := task("lunch", now.Add(-time.Minute)), task("dinner", now)
+	if _, err = s.db.ExecContext(ctx, `UPDATE sell_task_buyers SET state=? WHERE task_id=? AND peer='buyer'`, BuyerMoved, newer); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := s.ConversationTask(ctx, "buyer", "", "", now.Unix())
+	if err != nil || got != older {
+		t.Fatalf("recorded under %d, want the sale holding the buyer %d (%v)", got, older, err)
+	}
+}

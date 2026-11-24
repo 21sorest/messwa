@@ -273,7 +273,6 @@ svg.chart { display: block; width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .mysale.hot { animation: none; }
   .sb-bar i { transition: none; }
-  .sb-fold > summary .chev, .sb-convo > summary .chev { transition: none; }
 }
 
 /* sale details and retained conversations: folds, see saleInformation */
@@ -320,3 +319,6 @@ svg.chart { display: block; width: 100%; }
 .cv-msg img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 7px; background: var(--bg); }
 a.cv-file { align-self: flex-start; color: var(--blue); text-decoration: none; }
 a.cv-file:hover { border-color: var(--blue); }
+@media (prefers-reduced-motion: reduce) {
+  .sb-fold > summary .chev, .sb-convo > summary .chev { transition: none; }
+}
