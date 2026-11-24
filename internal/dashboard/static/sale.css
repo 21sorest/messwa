@@ -274,3 +274,13 @@ svg.chart { display: block; width: 100%; }
   .mysale.hot { animation: none; }
   .sb-bar i { transition: none; }
 }
+
+.sale-information { margin:16px 0; padding:12px; border:1px solid var(--border, #596070); border-radius:8px; font-size:13px; line-height:1.6; }
+.sale-information summary { cursor:pointer; font-weight:bold; }
+.sale-conversation { margin-top:12px; }
+.conversation-note { opacity:.7; font-size:12px; }
+.conversation-message { margin:10px 0; padding:10px; border:1px solid #596070; border-radius:8px; overflow-wrap:anywhere; }
+.conversation-message.from-me { border-left:3px solid #7abfa0; }
+.conversation-message pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; max-height:260px; overflow:auto; }
+.conversation-message img { display:block; max-width:100%; max-height:360px; object-fit:contain; margin-top:8px; }
+.checking-needed { display:block; color:#ffd078; margin-top:6px; }

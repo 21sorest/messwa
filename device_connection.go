@@ -60,3 +60,8 @@ func (a accountConn) SavedContact(ctx context.Context, jids ...types.JID) (out b
 	_ = a.Do(func(c *wa.Client) error { out = (waConn{c.WA}).SavedContact(ctx, jids...); return nil })
 	return
 }
+
+func (a accountConn) DownloadConversationMedia(ctx context.Context, msg *waE2E.Message) (data []byte, err error) {
+	err = a.Do(func(c *wa.Client) error { var e error; data, e = c.WA.DownloadAny(ctx, msg); return e })
+	return
+}
