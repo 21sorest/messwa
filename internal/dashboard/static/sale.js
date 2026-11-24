@@ -1302,7 +1302,9 @@ function conversationFold(v, b, title) {
   content.setAttribute('aria-live', 'polite');
   const url = `api/sale-conversation?id=${encodeURIComponent(v.id)}&buyer=${encodeURIComponent(b.key)}`;
   const ck = v.id + ':' + b.key;
+  let shown = null; // the messages this fold last drew, as JSON
   const draw = (messages) => {
+    shown = JSON.stringify(messages);
     content.replaceChildren();
     if (!messages.length) content.append(el('p', 'sb-note', 'Nothing recorded for this sale. Messages from before recording started are not kept.'));
     let day = v.date;
@@ -1324,9 +1326,8 @@ function conversationFold(v, b, title) {
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error();
       const messages = await r.json();
-      const same = content.dataset.loaded && JSON.stringify(messages) === JSON.stringify(convoCache.get(ck));
       convoCache.set(ck, messages);
-      if (d.isConnected && !same) draw(messages);
+      if (d.isConnected && JSON.stringify(messages) !== shown) draw(messages);
     } catch {
       // A failed refresh leaves a chat already on screen as it is.
       if (!content.dataset.loaded) {
