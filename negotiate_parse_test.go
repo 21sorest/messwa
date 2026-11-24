@@ -230,8 +230,8 @@ func TestParseBuyer(t *testing.T) {
 	}
 }
 
-// A buyer who bought elsewhere is out for good; one who just passes may
-// still take a lower price.
+// Both bought-elsewhere replies and plain declines are passes; the bought
+// flag keeps the reason in the event log.
 func TestParseBuyerBoughtElsewhere(t *testing.T) {
 	bought := []string{"Sorry bought", "Sorry bought just now", "Sorry I bought now", "Sorry, already got", "Sry, bought",
 		"sry got from other", "i got another", "Bought another one", "Bought already", "bought already", "Bought it",
@@ -239,7 +239,8 @@ func TestParseBuyerBoughtElsewhere(t *testing.T) {
 		"I have bought", "I have purchased from someone else thanks", "Thanks, already bought", "Thank you already got",
 		"Already purchased", "Nah I got it nvm", "Mujhe mil gaya bhai kisi aur se", "I got other", "Nope, got it",
 		"No just bought", "I bought for 20 from someone else", "sorry got it now",
-		"Got it for 50", "I bought it for 50 🙏", "got for 40 from someone", "Got one for 45"}
+		"Got it for 50", "I bought it for 50 🙏", "got for 40 from someone", "Got one for 45",
+		"sorry bought from another person", "sorry, bought from someone else"}
 	for _, text := range bought {
 		if in := parseBuyer(text); in.kind != intentPass || !in.bought {
 			t.Errorf("parseBuyer(%q) = %+v, want a bought pass", text, in)
