@@ -800,12 +800,17 @@ setInterval(() => { if (document.visibilityState === 'visible') tickSales(); }, 
 function sheetFor(v, keep, tone) {
   hideTip();
   const scroll = keep ? sheet.scrollTop : 0;
-  const opened = keep ? [...sheet.querySelectorAll('details[open][data-fold]')].map((d) => d.dataset.fold) : [];
+  // Folds inside a closed fold stay shut, so a hidden conversation isn't refetched.
+  const opened = keep ? [...sheet.querySelectorAll('details[open][data-fold]')].filter((d) => !d.parentElement.closest('details:not([open])')).map((d) => d.dataset.fold) : [];
   sheet.replaceChildren();
   sheet.className = 'sheet sale-sheet' + (tone ? ' tone-' + tone : '');
   modal.hidden = false;
   return () => {
-    for (const d of sheet.querySelectorAll('details[data-fold]')) if (opened.includes(d.dataset.fold)) d.open = true;
+    for (const d of sheet.querySelectorAll('details[data-fold]')) {
+      if (!opened.includes(d.dataset.fold)) continue;
+      d.open = true;
+      d.fill?.(); // draw a loaded conversation now, before the scroll is restored
+    }
     sheet.scrollTop = scroll;
   };
 }
@@ -1259,7 +1264,7 @@ function saleInformation(v, convos) {
     c.append(el('small', '', k), el('b', cls, String(n)));
     strip.append(c);
   }
-  body.append(strip, el('p', 'sb-note', 'Counts cover buyers the bot recorded, not everyone who saw a group post. Dropped means skipped, timed out or told sold.'));
+  body.append(strip, el('p', 'sb-note', 'Counts cover buyers the bot recorded, not everyone who saw a group post. Dropped means skipped, timed out or told sold. CHECK flags are for you to review and do not pause selling.'));
 
   if (convos && buyers.length) {
     body.append(el('div', 'sec', 'CONVERSATIONS'));
@@ -1276,41 +1281,68 @@ function fold(cls, key, title, sub) {
   const s = el('summary');
   s.append(el('b', 'ttl', title));
   if (sub) s.append(el('span', 'sub', sub));
-  s.append(el('i', 'chev', '›'));
+  const chev = el('i', 'chev', '›');
+  chev.setAttribute('aria-hidden', 'true');
+  s.append(chev);
   d.append(s, el('div', 'fold-body'));
   return d;
 }
 
-// conversationFold loads the retained messages with buyer b the first
-// time it opens. title defaults to the buyer's name.
+// convoCache holds each conversation once fetched, by sale and buyer, so
+// a live redraw of the sheet redraws it at once instead of fetching again.
+// Opening a fold by hand still fetches, to pick up new messages.
+const convoCache = new Map();
+
+// conversationFold loads the retained messages with buyer b when it
+// opens. title defaults to the buyer's name.
 function conversationFold(v, b, title) {
-  const d = fold('sb-convo ' + look(b, v).cls, 'convo:' + b.key, title || (b.name || b.phone || 'Buyer').toUpperCase(), STATE_WORD[b.state] || b.state);
+  const l = look(b, v);
+  const d = fold('sb-convo ' + l.cls, 'convo:' + b.key, title || (b.name || b.phone || 'Buyer').toUpperCase(), cap(stateWord(b, l)));
   const content = d.lastChild;
+  content.setAttribute('aria-live', 'polite');
   const url = `api/sale-conversation?id=${encodeURIComponent(v.id)}&buyer=${encodeURIComponent(b.key)}`;
+  const ck = v.id + ':' + b.key;
+  const draw = (messages) => {
+    content.replaceChildren();
+    if (!messages.length) content.append(el('p', 'sb-note', 'Nothing recorded for this sale. Messages from before recording started are not kept.'));
+    let day = v.date;
+    for (const m of messages) {
+      const md = ymd(m.at);
+      content.append(chatBubble(m, b, url, md === day ? '' : dayWord(md)));
+      day = md;
+    }
+    if (messages.length) content.append(el('p', 'sb-note', 'Only messages since recording started are kept. A missing picture may have expired or failed to download.'));
+    content.dataset.loaded = 'true';
+  };
+  d.fill = () => { if (convoCache.has(ck)) draw(convoCache.get(ck)); };
+  let loading = false;
   d.addEventListener('toggle', async () => {
-    if (!d.open || content.dataset.loaded) return;
+    if (!d.open || content.dataset.loaded || loading) return;
+    loading = true;
     content.replaceChildren(el('p', 'sb-note', 'Loading the conversation…'));
     try {
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error();
       const messages = await r.json();
-      content.replaceChildren();
-      if (!messages.length) content.append(el('p', 'sb-note', 'Nothing recorded for this sale. Messages from before recording started are not kept.'));
-      for (const m of messages) content.append(chatBubble(m, b, url));
-      if (messages.length) content.append(el('p', 'sb-note', 'Only messages since recording started are kept. A missing picture may have expired or failed to download.'));
-      content.dataset.loaded = 'true';
+      convoCache.set(ck, messages);
+      if (d.isConnected) draw(messages);
     } catch {
-      content.replaceChildren(el('p', 'sb-note red', 'Could not load the conversation. Close it and open it again to retry.'));
+      const err = el('p', 'sb-note red', 'Could not load the conversation. Close it and open it again to retry.');
+      err.setAttribute('role', 'alert');
+      content.replaceChildren(err);
+    } finally {
+      loading = false;
     }
   });
   return d;
 }
 
 // chatBubble draws one message: the buyer's on the left, yours and the
-// bot's on the right, and anything to check outlined in egg yellow.
-function chatBubble(m, b, url) {
-  const row = el('div', 'cv-msg' + (m.from_me ? ' me' : '') + (m.checking ? ' chk' : ''));
-  row.append(el('small', 'cv-who', `${m.from_me ? 'YOU / BOT' : (b.name || 'BUYER').toUpperCase()} · ${hm(m.at)}`));
+// bot's on the right, and anything to check outlined in egg yellow. day
+// names the date when it differs from the message before.
+function chatBubble(m, b, url, day) {
+  const row = el('article', 'cv-msg' + (m.from_me ? ' me' : '') + (m.checking ? ' chk' : ''));
+  row.append(el('small', 'cv-who', `${m.from_me ? 'YOU / BOT' : (b.name || b.phone || 'BUYER').toUpperCase()} · ${day ? day.toUpperCase() + ' ' : ''}${hm(m.at)}`));
   if (m.checking) {
     const w = el('div', 'cv-check');
     w.append(el('b', 'sb-chip egg', 'CHECK'), el('span', '', m.checking));
@@ -1322,6 +1354,7 @@ function chatBubble(m, b, url) {
     const a = el('a', 'sb-chip cv-file', `↓ ${m.kind.toUpperCase()}`);
     a.href = media;
     a.download = 'attachment';
+    a.setAttribute('aria-label', `Download ${m.kind}`);
     row.append(a);
   } else if (m.media) {
     const img = el('img');
