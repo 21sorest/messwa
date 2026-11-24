@@ -26,7 +26,7 @@ import (
 // sale engine deliver-qr uses. The rules below are enforced here, not left
 // to the agent that starts the task:
 //
-//   - nothing is sent unless the task is active;
+//   - ended tasks can only finish a paid QR delivery or send a sold notice;
 //   - besides the group post, messages go only to people who replied
 //     privately to that post, with [sell] accept_plain_dms DMed about it
 //     (see plain_dm.go), or with [sell] message_buy_posts posted that they
@@ -190,6 +190,7 @@ const lateWindow = 24 * time.Hour
 // not be gone, and you may be selling it by hand. Nothing is sent once the
 // meal is over, or while the writer is a buyer in any active task, whose
 // own session answers them.
+// New buyers replying after a sale get a sold notice too (sold_reply.go).
 func (m *sellManager) lateReply(evt any) {
 	e, ok := evt.(*events.Message)
 	if !ok || e.Info.IsFromMe || e.Info.IsGroup {
@@ -201,12 +202,13 @@ func (m *sellManager) lateReply(evt any) {
 	if strings.TrimSpace(messageText(e.Message)) == "" {
 		return
 	}
-	go m.answerLate(e.Info)
+	go m.answerLate(e)
 }
 
-func (m *sellManager) answerLate(info types.MessageInfo) {
+func (m *sellManager) answerLate(e *events.Message) {
 	ctx, stop := context.WithTimeout(m.base, 2*time.Minute)
 	defer stop()
+	info := e.Info
 	peer := buyerPeer(ctx, m.conn, info)
 	late, active, err := m.st.TimedOutTasks(ctx, time.Now().Add(-lateWindow), peer.String(), info.Chat.ToNonAD().String())
 	if err != nil {
@@ -214,6 +216,10 @@ func (m *sellManager) answerLate(info types.MessageInfo) {
 		return
 	}
 	if active {
+		return
+	}
+	if len(late) == 0 {
+		m.answerSoldReply(ctx, e, peer)
 		return
 	}
 	for _, lb := range late {
