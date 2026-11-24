@@ -1289,8 +1289,8 @@ function fold(cls, key, title, sub) {
 }
 
 // convoCache holds each conversation once fetched, by sale and buyer, so
-// a live redraw of the sheet redraws it at once instead of fetching again.
-// Opening a fold by hand still fetches, to pick up new messages.
+// a live redraw of the sheet draws it at once. Each open still fetches in
+// the background and redraws only when a message changed.
 const convoCache = new Map();
 
 // conversationFold loads the retained messages with buyer b when it
@@ -1317,25 +1317,31 @@ function conversationFold(v, b, title) {
   d.fill = () => { if (convoCache.has(ck)) draw(convoCache.get(ck)); };
   let loading = false;
   d.addEventListener('toggle', async () => {
-    if (!d.open || content.dataset.loaded || loading) return;
+    if (!d.open || loading) return;
     loading = true;
-    content.replaceChildren(el('p', 'sb-note', 'Loading the conversation…'));
+    if (!content.dataset.loaded) content.replaceChildren(el('p', 'sb-note', 'Loading the conversation…'));
     try {
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error();
       const messages = await r.json();
+      const same = content.dataset.loaded && JSON.stringify(messages) === JSON.stringify(convoCache.get(ck));
       convoCache.set(ck, messages);
-      if (d.isConnected) draw(messages);
+      if (d.isConnected && !same) draw(messages);
     } catch {
-      const err = el('p', 'sb-note red', 'Could not load the conversation. Close it and open it again to retry.');
-      err.setAttribute('role', 'alert');
-      content.replaceChildren(err);
+      // A failed refresh leaves a chat already on screen as it is.
+      if (!content.dataset.loaded) {
+        const err = el('p', 'sb-note red', 'Could not load the conversation. Close it and open it again to retry.');
+        err.setAttribute('role', 'alert');
+        content.replaceChildren(err);
+      }
     } finally {
       loading = false;
     }
   });
   return d;
 }
+
+const ATTACHMENT_WORD = { image: 'Picture', audio: 'Voice note or audio', video: 'Video', document: 'Document' };
 
 // chatBubble draws one message: the buyer's on the left, yours and the
 // bot's on the right, and anything to check outlined in egg yellow. day
@@ -1362,8 +1368,8 @@ function chatBubble(m, b, url, day) {
     img.alt = m.from_me ? 'Picture sent to the buyer' : 'Picture the buyer sent';
     img.loading = 'lazy';
     row.append(img);
-  } else if (m.kind === 'image') {
-    row.append(el('p', 'cv-text dim', 'Picture unavailable.'));
+  } else if (ATTACHMENT_WORD[m.kind]) {
+    row.append(el('p', 'cv-text dim', `${ATTACHMENT_WORD[m.kind]} unavailable. It may have been over 10 MiB or failed to download.`));
   }
   return row;
 }
