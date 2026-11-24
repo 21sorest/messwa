@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // The phrases below come from a study of real, anonymized mess trades in
 // DMs with unsaved numbers.
@@ -310,6 +313,59 @@ func TestCombineIntents(t *testing.T) {
 	for _, c := range cases {
 		if got := combineIntents(c.texts); got.kind != c.kind || got.offer != c.offer {
 			t.Errorf("combineIntents(%q) = %+v, want kind %d offer %d", c.texts, got, c.kind, c.offer)
+		}
+	}
+}
+
+// Anonymized buyer replies from the locally available bot chats, plus spelling variants.
+func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
+	h := newHaggle(30, 130, 100, true, true, time.Now().Add(time.Hour), testLines("nonveg", "")).forMeal("lunch")
+	declines := []string{
+		"today Baught already", "Sorry dude I got already", "Got it just now",
+		"I already had lunch", "Delete it, i am not going to use it",
+		"no thank u", "no ,i got it..", "No sry", "Nope ??",
+		"Nah its fine\nI dont need it actually", "Bought already",
+		"Bought it, brother.. started dinner already", "No got it",
+		"Got it from someone else", "Sorry bought from a different person",
+		"Nop", "nopes", "naw", "nahin", "nuh uh", "noooo", "nopeee",
+		"oh no thanku", "thanks but nope", "sorry buddy nah", "bro nop",
+		"not buying", "not taking it", "already eaten", "I have eaten",
+		"baught for 40", "no thx", "no ty", "no thankyou",
+	}
+	for _, text := range declines {
+		t.Run(text, func(t *testing.T) {
+			in := parseBuyer(text)
+			if in.kind != intentPass {
+				t.Fatalf("parseBuyer(%q) = %+v, want pass", text, in)
+			}
+			result := h.decide(haggleState{ask: 130, botMsgs: 1}, in, time.Now(), false)
+			if !result.pass || len(result.reply) > 0 {
+				t.Fatalf("%q = %+v, want silent close", text, result)
+			}
+		})
+	}
+	for _, c := range []struct {
+		text string
+		kind intentKind
+	}{
+		{"Sorry too much", intentLower},
+		{"Sorry, I want @10", intentOffer},
+		{"Can we do 80?", intentOffer},
+		{"Works", intentOK},
+		{"Same number?", intentAccept},
+		{"I don't have Whatsapp pay", intentPayOther},
+		{"Sorry buddy I don't have Whatsapp pay", intentPayOther},
+		{"no whatsapp pay bro", intentPayOther},
+		{"no, can you lower it?", intentLower},
+		{"no, 80?", intentOffer},
+		{"nope paid already", intentPaid},
+		{"now", intentUnknown},
+		{"Got it thanks", intentUnknown},
+		{"got it, paying", intentAccept},
+		{"got it thanks, paid", intentPaid},
+	} {
+		if in := parseBuyer(c.text); in.kind != c.kind {
+			t.Errorf("parseBuyer(%q) = %+v, want %v", c.text, in, c.kind)
 		}
 	}
 }

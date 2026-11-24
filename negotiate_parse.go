@@ -171,7 +171,7 @@ var (
 	// Numbers next to these words are not offers: "sold at 60", "people
 	// are selling at 70", "i bought for 20 from someone else", "i paid 30",
 	// "got it for 50".
-	notOfferContext = newVocab("got it for", "got for", "got one for", "sold", "bought", "buyed", "purchased", "paid", "sent", "sending", "transferred", "getting", "selling",
+	notOfferContext = newVocab("got it for", "got for", "got one for", "sold", "bought", "baught", "buyed", "purchased", "paid", "sent", "sending", "transferred", "getting", "selling",
 		"norm", "milra", "milrha", "mil", "people", "someone", "somebody", "others", "everyone", "group", "roll", "number", "no.", "phone")
 	paidWords = newVocab("paid", "payed", "sent", "transferred", "dn", "payment done", "money sent", "done paying", "sent money", "sending money",
 		"paid via", "paid using", "sent it")
@@ -182,12 +182,15 @@ var (
 		"sorry got it", "sry got it", "sorry i got it", "sry i got it", "not req", "not reqd", "no req", "nt req", "not reqired",
 		"dont need", "don't need", "do not need", "dnt need", "nahi chahiye", "nhi chahiye",
 		// Polite withdrawals can start with "okay"; read the refusal first.
-		"sorry then", "sry then")
+		"sorry then", "sry then", "baught", "got already", "got it just now", "got it now",
+		"already had", "already ate", "already eaten", "i have eaten", "i've eaten", "ate already",
+		"not buying", "not taking", "not going to use", "not gonna use", "i'm not going to buy", "im not going to buy")
 	// Within a pass, these mean the buyer has a meal already. "got it"
 	// counts only here: on its own it is "understood".
-	boughtWords = newVocab("bought", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
+	boughtWords = newVocab("bought", "baught", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
 		"got it", "already got", "mil gaya", "mil gya", "milgaya", "mil gayi")
-	refuseFirst = newVocab("no", "nope", "nop", "nah", "na", "nahi", "nhi")
+	refuseFirst  = newVocab("no", "nope", "nop", "nopes", "nah", "naw", "na", "nahi", "nhi", "nahin")
+	refuseFiller = newVocab("sorry", "sry", "thanks", "thank", "you", "u", "but", "buddy", "bruh", "mate", "ok", "okay")
 	// An apology with nothing else to say is a no: "okay sorry then" after
 	// "cant go below 115". One that excuses something isn't: "sorry for the
 	// late reply, ok".
@@ -351,7 +354,7 @@ func parseKind(text string) intent {
 		return intent{kind: intentPaid}
 	case passWords.in(m), notInterested(m.words):
 		return intent{kind: intentPass, bought: boughtWords.in(m)}
-	case len(m.words) > 0 && refuseFirst.words[m.words[0]] && !lowerWords.in(m) && !openerWords.in(m) && !payOtherWords.in(m):
+	case startsRefusal(m) && !lowerWords.in(m) && !openerWords.in(m) && !payOtherWords.in(m):
 		return intent{kind: intentPass, bought: boughtWords.in(m)}
 	case payOtherWords.in(m):
 		return intent{kind: intentPayOther}
@@ -372,6 +375,19 @@ func parseKind(text string) intent {
 		return intent{kind: intentOpener}
 	}
 	return intent{kind: intentUnknown}
+}
+
+// Polite fillers before a no don't turn it into an unknown reply.
+func startsRefusal(m msgWords) bool {
+	for i, w := range m.words {
+		if refuseFirst.words[w] || w == "nuh" && i+1 < len(m.words) && m.words[i+1] == "uh" {
+			return true
+		}
+		if !filler.words[w] && !refuseFiller.words[w] {
+			return false
+		}
+	}
+	return false
 }
 
 // digitNumbers finds prices written in digits. A number stands on its own:
