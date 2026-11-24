@@ -255,7 +255,7 @@ func TestParseBuyerBoughtElsewhere(t *testing.T) {
 			t.Errorf("parseBuyer(%q) = %+v, want a plain pass", text, in)
 		}
 	}
-	for _, text := range []string{"ok got it", "got it, paying", "sorry got late, still available?"} {
+	for _, text := range []string{"sorry got late, still available?"} {
 		if in := parseBuyer(text); in.kind == intentPass {
 			t.Errorf("parseBuyer(%q) = %+v, want no pass", text, in)
 		}
@@ -331,6 +331,9 @@ func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
 		"oh no thanku", "thanks but nope", "sorry buddy nah", "bro nop",
 		"not buying", "not taking it", "already eaten", "I have eaten",
 		"baught for 40", "no thx", "no ty", "no thankyou",
+		"Got it", "ok got it", "Got it thanks", "got it, paying",
+		"thanks, got it from a friend", "actually that is a nope", "that is a nuh uh",
+		"I got it for 80", "got it, can do 80",
 	}
 	for _, text := range declines {
 		t.Run(text, func(t *testing.T) {
@@ -353,6 +356,7 @@ func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
 		{"Can we do 80?", intentOffer},
 		{"Works", intentOK},
 		{"Same number?", intentAccept},
+		{"same no?", intentAccept},
 		{"I don't have Whatsapp pay", intentPayOther},
 		{"Sorry buddy I don't have Whatsapp pay", intentPayOther},
 		{"no whatsapp pay bro", intentPayOther},
@@ -360,8 +364,8 @@ func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
 		{"no, 80?", intentOffer},
 		{"nope paid already", intentPaid},
 		{"now", intentUnknown},
-		{"Got it thanks", intentUnknown},
-		{"got it, paying", intentAccept},
+		{"noted", intentOK},
+		{"normally 50", intentOffer},
 		{"got it thanks, paid", intentPaid},
 	} {
 		if in := parseBuyer(c.text); in.kind != c.kind {
