@@ -1,0 +1,119 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"messwa/internal/store"
+	"time"
+)
+
+// This observer never feeds messages or failures back into sale decisions.
+func (m *sellManager) observeConversation(evt any) {
+	e, ok := evt.(*events.Message)
+	if !ok || e.Info.IsGroup {
+		return
+	}
+	info := e.Info
+	if info.IsFromMe {
+		info.SenderAlt = info.RecipientAlt
+	}
+	peer := buyerPeer(m.base, m.conn, info)
+	alt := e.Info.SenderAlt.String()
+	if e.Info.IsFromMe {
+		alt = e.Info.RecipientAlt.String()
+	}
+	m.recordConversation(peer.String(), alt, e.Info.ID, e.Info.Timestamp, e.Info.IsFromMe, e.Message)
+}
+
+func (m *sellManager) recordConversation(peer, alt, id string, at time.Time, fromMe bool, msg *waE2E.Message) {
+	if msg == nil || id == "" {
+		return
+	}
+	// Clone before leaving the WhatsApp callback; callers may reuse messages.
+	copyMsg := proto.Clone(msg).(*waE2E.Message)
+	go func() {
+		ctx, cancel := context.WithTimeout(m.base, 30*time.Second)
+		defer cancel()
+		quote := copyMsg.GetExtendedTextMessage().GetContextInfo().GetStanzaID()
+		if quote == "" {
+			quote = copyMsg.GetImageMessage().GetContextInfo().GetStanzaID()
+		}
+		task, canonical, err := m.st.ConversationTask(ctx, peer, alt, quote, at.Unix())
+		if err != nil || task == 0 {
+			return
+		}
+		item := store.SaleMessage{ID: id, At: at.Unix(), FromMe: fromMe, Text: messageText(copyMsg), Kind: "text"}
+		mime := ""
+		var size uint64
+		if im := copyMsg.GetImageMessage(); im != nil {
+			item.Kind = "image"
+			item.Text = im.GetCaption()
+			mime = im.GetMimetype()
+			size = im.GetFileLength()
+			if !fromMe {
+				item.Checking = "Image or screenshot has not been verified."
+			}
+		}
+		if a := copyMsg.GetAudioMessage(); a != nil {
+			item.Kind = "audio"
+			mime = a.GetMimetype()
+			size = a.GetFileLength()
+		}
+		if a := copyMsg.GetVideoMessage(); a != nil {
+			item.Kind = "video"
+			item.Text = a.GetCaption()
+			mime = a.GetMimetype()
+			size = a.GetFileLength()
+		}
+		if a := copyMsg.GetDocumentMessage(); a != nil {
+			item.Kind = "document"
+			item.Text = a.GetFileName()
+			mime = a.GetMimetype()
+			size = a.GetFileLength()
+		}
+		if copyMsg.GetSendPaymentMessage() != nil {
+			item.Kind = "payment"
+			item.Checking = "WhatsApp payment payload does not confirm bank settlement."
+			item.Text = conversationPaymentText(copyMsg)
+		}
+		if item.Text == "" && item.Kind == "text" {
+			item.Kind = "attachment"
+			item.Text = "Message type not available in this view."
+		}
+		if err := m.st.AddSaleMessage(ctx, task, canonical, item); err != nil {
+			m.log.Warn("conversation recording failed", "err", err)
+			return
+		}
+		if mime != "" {
+			if d, ok := m.conn.(interface {
+				DownloadConversationMedia(context.Context, *waE2E.Message) ([]byte, error)
+			}); ok {
+				if size <= 10<<20 {
+					data, err := d.DownloadConversationMedia(ctx, copyMsg)
+					if err == nil && len(data) <= 10<<20 {
+						_ = m.st.SetSaleMessageMedia(ctx, task, canonical, id, mime, data)
+					}
+				}
+			}
+		}
+	}()
+}
+
+func conversationPaymentText(msg *waE2E.Message) string {
+	pay := msg.GetSendPaymentMessage()
+	b, _ := protojson.Marshal(pay)
+	var pretty any
+	if json.Unmarshal(b, &pretty) == nil {
+		b, _ = json.MarshalIndent(pretty, "", "  ")
+	}
+	label := "Amount unavailable."
+	if p, err := decodePaymentPayload(pay.GetTransactionData()); err == nil && p != nil && p.Amount != "" {
+		label = fmt.Sprintf("Reported amount: %s %s (unverified).", p.Currency, p.Amount)
+	}
+	return label + "\n\nRetained payment details:\n" + string(b)
+}

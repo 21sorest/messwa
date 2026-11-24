@@ -17,6 +17,32 @@ func attentionRoutes(mux *http.ServeMux, srv *mcpserver.Server) {
 			fn(w, r)
 		}))
 	}
+	mux.Handle("GET /api/sale-conversation", wrap(func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		key := r.URL.Query().Get("buyer")
+		w.Header().Set("Cache-Control", "no-store")
+		if msg := r.URL.Query().Get("media"); msg != "" {
+			data, mime, err := srv.ConversationMedia(r.Context(), id, key, msg)
+			if err != nil {
+				jsonError(w, "Image unavailable", 404)
+				return
+			}
+			if mime != "image/png" && mime != "image/jpeg" && mime != "image/webp" {
+				mime = "application/octet-stream"
+				w.Header().Set("Content-Disposition", "attachment; filename=attachment")
+			}
+			w.Header().Set("Content-Type", mime)
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Write(data)
+			return
+		}
+		items, err := srv.SaleConversation(r.Context(), id, key)
+		if err != nil {
+			jsonError(w, "Conversation not found", 404)
+			return
+		}
+		writeJSON(w, r, items)
+	}))
 	mux.Handle("GET /api/attention", wrap(func(w http.ResponseWriter, r *http.Request) {
 		items, err := srv.Attention(r.Context(), accounts.UserFrom(r.Context()).ID)
 		if err != nil {

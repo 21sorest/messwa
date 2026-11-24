@@ -162,6 +162,14 @@ func newSellManager(ctx context.Context, cfg *config.Config, log *slog.Logger, s
 		portalFor: portalFor, prices: st.Prices, limits: newSendLimits(), own: own, base: ctx, running: map[int64]*runningTask{},
 		dead: map[string]deadPost{}, resCh: make(chan struct{}), timers: map[int64]*time.Timer{},
 	}
+	// Record successful sends without changing their result.
+	m.send = func(ctx context.Context, to types.JID, msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (whatsmeow.SendResponse, error) {
+		resp, err := send(ctx, to, msg, extra...)
+		if err == nil && (to.Server == types.DefaultUserServer || to.Server == types.HiddenUserServer) {
+			m.recordConversation(to.ToNonAD().String(), "", resp.ID, time.Now(), true, msg)
+		}
+		return resp, err
+	}
 	// Schedules resume from the store on the next start.
 	context.AfterFunc(ctx, func() {
 		m.mu.Lock()
@@ -172,6 +180,8 @@ func newSellManager(ctx context.Context, cfg *config.Config, log *slog.Logger, s
 		}
 	})
 	if conn != nil {
+		observer := conn.AddEventHandler(m.observeConversation)
+		context.AfterFunc(ctx, func() { conn.RemoveEventHandler(observer) })
 		id := conn.AddEventHandler(m.lateReply)
 		context.AfterFunc(ctx, func() { conn.RemoveEventHandler(id) })
 	}

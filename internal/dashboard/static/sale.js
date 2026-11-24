@@ -800,10 +800,11 @@ setInterval(() => { if (document.visibilityState === 'visible') tickSales(); }, 
 function sheetFor(v, keep, tone) {
   hideTip();
   const scroll = keep ? sheet.scrollTop : 0;
+  const opened = keep ? [...sheet.querySelectorAll('details[open] > summary')].map(e => e.textContent) : [];
   sheet.replaceChildren();
   sheet.className = 'sheet sale-sheet' + (tone ? ' tone-' + tone : '');
   modal.hidden = false;
-  return () => { sheet.scrollTop = scroll; };
+  return () => { for (const d of sheet.querySelectorAll('details')) { if (opened.includes(d.querySelector('summary')?.textContent)) d.open = true; } sheet.scrollTop = scroll; };
 }
 
 function chatLink(b) {
@@ -844,7 +845,7 @@ function openBuyerSheet(v, key, keep) {
     who.append(ph);
   }
   head.append(f, who, closeButton());
-  sheet.append(head, buyerStatus(b, v, l));
+  sheet.append(head, buyerStatus(b, v, l), saleInformation(v, b));
 
   const strip = priceStrip(b, v);
   if (strip) sheet.append(strip);
@@ -1079,7 +1080,7 @@ function openMealSheet(v, _key, keep) {
     tip(t, () => [[{ t: `#${x.id} ${x.state.replace('_', ' ')}`, c: 'nm' }], [{ t: `${hm(x.started)}–${x.ended ? hm(x.ended) : ''} · ${x.buyers} buyers`, c: 'c8' }]]);
     tries.append(t);
   }
-  sheet.append(tries);
+  sheet.append(tries, saleInformation(v));
   if (v.detail && v.state !== 'active') sheet.append(el('div', 'sb-note', v.detail));
 
   const acts = el('div', 'sb-acts');
@@ -1224,4 +1225,50 @@ function saleActionForm(v, action, buyer) {
     } catch (err) { error.textContent = err.message; submit.disabled = false; }
   });
   sheet.append(form);
+}
+
+// Sale details stay read-only, including payment warnings.
+function saleInformation(v, buyer) {
+  const box = el('details', 'sale-information');
+  box.append(el('summary', '', 'Know more about the sale'));
+  const buyers = v.buyers || [];
+  const winner = buyers.find(b => b.state === 'bought');
+  const contacted = buyers.filter(b => b.events.some(e => ['prompt','buy_post','nudged'].includes(e.kind)) || b.bot_msgs > 0).length;
+  const rejected = buyers.filter(b => b.state === 'passed').length;
+  const skipped = buyers.filter(b => ['skipped','timed_out','told_sold'].includes(b.state)).length;
+  box.append(el('p', '', winner ? `Sold to ${winner.name || winner.phone || 'buyer'}. Agreed sale price: ${rup(v.pay?.amount || winner.agreed || winner.asked || 0)}.` : `Sale ${v.state.replaceAll('_',' ')}.`));
+  box.append(el('p', '', `${buyers.length} buyers recorded · ${contacted} contacted · ${rejected} declined · ${skipped} skipped, timed out or told sold.`));
+  box.append(el('p', 'conversation-note', 'Counts cover recorded buyers, not everyone who saw a group post. Payment warnings are for review and do not pause selling.'));
+  for (const b of buyer ? [buyer] : buyers) {
+    const thread = el('details', 'sale-conversation');
+    thread.append(el('summary', '', `Conversation with ${b.name || b.phone || 'buyer'}`));
+    const content = el('div', 'conversation-messages');
+    thread.append(content);
+    thread.addEventListener('toggle', async () => {
+      if (!thread.open || content.dataset.loaded) return;
+      content.textContent = 'Loading conversation…';
+      const url = `api/sale-conversation?id=${encodeURIComponent(v.id)}&buyer=${encodeURIComponent(b.key)}`;
+      try {
+        const r = await fetch(url, {cache:'no-store'});
+        if (!r.ok) throw new Error();
+        const messages = await r.json();
+        content.replaceChildren();
+        content.append(el('p', 'conversation-note', 'Only messages retained since recording was enabled are available. Missing images may have expired or failed to download.'));
+        if (!messages.length) content.append(el('p', '', 'No conversation recorded for this sale. Earlier messages are unavailable.'));
+        for (const m of messages) {
+          const row = el('article', 'conversation-message' + (m.from_me ? ' from-me' : ''));
+          row.append(el('small', '', `${m.from_me ? 'You / bot' : 'Buyer'} · ${new Date(m.at*1000).toLocaleString()}`));
+          if (m.checking) { row.append(el('strong', 'checking-needed', 'Checking needed'), el('p', '', m.checking)); }
+          if (m.text) row.append(el('pre', '', m.text));
+          if (m.media && ['audio','video','document'].includes(m.kind)) { const a=el('a', '', 'Download '+m.kind);a.href=url+'&media='+encodeURIComponent(m.id);a.download='attachment';row.append(a); }
+          else if (m.media) { const img=el('img');img.src=url+`&media=${encodeURIComponent(m.id)}`;img.alt=m.from_me?'Image sent to buyer':'Image sent by buyer';img.loading='lazy';row.append(img); }
+          else if (m.kind === 'image') row.append(el('p', '', 'Image unavailable.'));
+          content.append(row);
+        }
+        content.dataset.loaded='true';
+      } catch { content.textContent='Could not load the conversation. Close and reopen to retry.'; }
+    });
+    box.append(thread);
+  }
+  return box;
 }

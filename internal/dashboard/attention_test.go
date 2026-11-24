@@ -20,7 +20,7 @@ func TestAttentionPermissions(t *testing.T) {
 	srv := mcpserver.New(config.Default(), st, nil)
 	mux := http.NewServeMux()
 	attentionRoutes(mux, srv)
-	for _, path := range []string{"/api/attention", "/api/attention-sale?id=1"} {
+	for _, path := range []string{"/api/attention", "/api/attention-sale?id=1", "/api/sale-conversation?id=1&buyer=x", "/api/sale-conversation?id=1&buyer=x&media=y"} {
 		r := httptest.NewRequest("GET", path, nil)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)

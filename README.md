@@ -1089,3 +1089,21 @@ When something needs you, Auction House and My Sales show a "needs you" banner u
 Done hides an issue for you until it changes. It doesn't send a refund or retry a delivery. Resolutions are saved per user in the account database. Disconnects and failed posts have no Done button; they clear once WhatsApp reconnects or the post goes through.
 
 Alert me turns on browser alerts after the browser asks for permission. Each issue alerts once per browser, and nothing fires for issues already listed when you turned alerts on. Alerts only work while a dashboard tab is open, and the list refreshes every 15 seconds. They aren't push notifications while the app is closed.
+
+### Sale conversation review
+
+Open a sale or buyer and expand **Know more about the sale** for the buyer,
+price, recorded buyer counts and retained conversation. Contacted counts describe
+recorded bot interactions; they do not estimate group readership. Declined counts
+cover buyers marked as passed; skipped and timed-out buyers are listed separately.
+
+New sale messages are recorded passively while the meal's sale window is open.
+This does not change payment acceptance, replies, or sale decisions. Incoming
+images and WhatsApp payment payloads carry **Checking needed** because neither
+establishes bank settlement. Unreadable payment amounts show "Amount unavailable";
+the agreed sale price is labelled separately. Images appear inline; other retained attachments can
+be downloaded. Media retention is limited to 10 MiB per attachment and depends on
+WhatsApp download availability. Missing media is shown as unavailable. Earlier
+conversations cannot be recovered from the event log. Conversation data and
+attachments use the existing seller-account access boundary and are kept in the
+account database. Backups of that database therefore contain private sale chats.

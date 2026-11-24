@@ -3,8 +3,7 @@
 // sort and filter buttons along the bottom.
 //
 // It shows sellers' names and phone numbers from the groups. From DMs it
-// shows admins only their own sell tasks' buyers: names, numbers, and what
-// the bot read from their messages, never the messages themselves. People
+// shows sellers their own sale buyers and retained sale conversations. People
 // sign in with a messwa account; the only write endpoints are for their own
 // account (password, mess API key, MCP tokens) and, for admins, settings
 // and sell task operator actions.
