@@ -162,7 +162,13 @@ func newSellManager(ctx context.Context, cfg *config.Config, log *slog.Logger, s
 		portalFor: portalFor, prices: st.Prices, limits: newSendLimits(), own: own, base: ctx, running: map[int64]*runningTask{},
 		dead: map[string]deadPost{}, resCh: make(chan struct{}), timers: map[int64]*time.Timer{},
 	}
-	// Schedules resume from the store on the next start.
+	// Record successful sends without changing their result.
+ m.send = func(ctx context.Context, to types.JID, msg *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (whatsmeow.SendResponse, error) {
+  resp, err := send(ctx, to, msg, extra...)
+  if err == nil && (to.Server == types.DefaultUserServer || to.Server == types.HiddenUserServer) { m.recordConversation(to.ToNonAD().String(), "", resp.ID, time.Now(), true, msg) }
+  return resp, err
+ }
+ // Schedules resume from the store on the next start.
 	context.AfterFunc(ctx, func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -172,7 +178,9 @@ func newSellManager(ctx context.Context, cfg *config.Config, log *slog.Logger, s
 		}
 	})
 	if conn != nil {
-		id := conn.AddEventHandler(m.lateReply)
+		observer := conn.AddEventHandler(m.observeConversation)
+context.AfterFunc(ctx, func() { conn.RemoveEventHandler(observer) })
+id := conn.AddEventHandler(m.lateReply)
 		context.AfterFunc(ctx, func() { conn.RemoveEventHandler(id) })
 	}
 	return m
@@ -184,12 +192,12 @@ const lateWindow = 24 * time.Hour
 
 // lateReply answers a buyer who timed out of a negotiating task and
 // writes after the task stopped. A running task revives them itself (see
-// negotiation.revive). Once the task sold the meal, they hear "sold sorry"
-// once, the line everyone still talking to the bot got at the sale. After
+// negotiation.revive). Once the task sold the meal, they hear "sorry, sold"
+// once during the next 15 minutes. After
 // a cancelled, expired or failed task the bot stays quiet: the meal may
 // not be gone, and you may be selling it by hand. Nothing is sent once the
-// meal is over, or while the writer is a buyer in any active task, whose
-// own session answers them.
+// 15-minute reply window ends, or while the writer is a buyer in any
+// active task, whose own session answers them.
 // New buyers replying after a sale get a sold notice too (sold_reply.go).
 func (m *sellManager) lateReply(evt any) {
 	e, ok := evt.(*events.Message)
@@ -224,7 +232,7 @@ func (m *sellManager) answerLate(e *events.Message) {
 	}
 	for _, lb := range late {
 		t := lb.Task
-		if !negotiates(t) || !time.Now().Before(t.EndsAt) {
+		if !negotiates(t) || t.State != store.TaskSold || t.EndedAt.IsZero() || !time.Now().Before(t.EndedAt.Add(store.SoldReplyWindow)) {
 			// A fixed-price task never revives anyone, so its buyers
 			// expect nothing after their turn lapsed.
 			continue
@@ -241,8 +249,7 @@ func (m *sellManager) answerLate(e *events.Message) {
 		if err != nil {
 			return
 		}
-		gate := &taskGate{m: m, id: t.ID}
-		if err := sendReply(ctx, gate.sendSold, to, saleLines(m.cfg, t.Mess, t.Diet, t.Meal, t.Date, t.EndsAt, nil).sold()); err != nil {
+		if err := m.sendLateSold(ctx, t, to); err != nil {
 			m.log.Warn("could not tell a late buyer the meal sold", "task", t.ID, "err", err)
 			return
 		}
@@ -1361,3 +1368,4 @@ func room(sent []time.Time, limit int, now time.Time) time.Duration {
 	}
 	return sent[len(sent)-limit].Add(time.Minute).Sub(now)
 }
+

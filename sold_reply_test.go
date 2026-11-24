@@ -58,7 +58,7 @@ func TestNewBuyerAfterMealSold(t *testing.T) {
 					}
 				}
 				settle()
-				if got := texts(sentTo(f.conn.messages(), buyerB)); strings.Join(got, "|") != "sold sorry" {
+				if got := texts(sentTo(f.conn.messages(), buyerB)); strings.Join(got, "|") != "sorry, sold" {
 					t.Fatalf("new buyer got %q", got)
 				}
 				if b := buyerState(t, f, id, buyerB); b.State != store.BuyerToldSold {
@@ -79,10 +79,10 @@ func TestNewBuyerAfterMealSold(t *testing.T) {
 				f.conn.emit(replyTo(buyerB, f.group, offer, "still available?"))
 				f.conn.emit(replyTo(stranger, f.group, offer, "buy"))
 				settle()
-				if got := texts(sentTo(f.conn.messages(), buyerB)); strings.Join(got, "|") != "sold sorry" {
+				if got := texts(sentTo(f.conn.messages(), buyerB)); strings.Join(got, "|") != "sorry, sold" {
 					t.Fatalf("repeat buyer got %q", got)
 				}
-				if got := texts(sentTo(f.conn.messages(), stranger)); strings.Join(got, "|") != "sold sorry" {
+				if got := texts(sentTo(f.conn.messages(), stranger)); strings.Join(got, "|") != "sorry, sold" {
 					t.Fatalf("new buyer after restart got %q", got)
 				}
 			})
@@ -155,6 +155,46 @@ func TestSoldReplyLetsActivePoolAnswer(t *testing.T) {
 			if len(msgs) == 0 || strings.Contains(strings.Join(msgs, "|"), "sold") {
 				t.Fatalf("active pool buyer got %q", msgs)
 			}
+		}
+	})
+}
+
+func TestSoldReplyStopsFifteenMinutesAfterSale(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		m := f.manager(ctx)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 30, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		offer := f.offerID()
+		// Selling near the meal's end still gets the full 15 minutes after sale.
+		time.Sleep(time.Until(f.task(id).EndsAt.Add(-time.Minute)))
+		if err := m.MarkSold(ctx, id, buyerA.String(), "", 30, "", false); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		soldAt := f.task(id).EndedAt
+		time.Sleep(time.Until(soldAt.Add(14*time.Minute + 55*time.Second)))
+		f.conn.emit(replyTo(buyerB, f.group, offer, "buy"))
+		settle()
+		if got := texts(sentTo(f.conn.messages(), buyerB)); strings.Join(got, "|") != "sorry, sold" {
+			t.Fatalf("inside window got %q", got)
+		}
+		cancel()
+		synctest.Wait()
+		ctx2, cancel2 := context.WithCancel(t.Context())
+		defer cancel2()
+		f.manager(ctx2)
+		time.Sleep(time.Until(soldAt.Add(store.SoldReplyWindow)))
+		f.conn.emit(replyTo(stranger, f.group, offer, "buy"))
+		settle()
+		if got := sentTo(f.conn.messages(), stranger); len(got) != 0 {
+			t.Fatalf("after cutoff got %+v", got)
 		}
 	})
 }

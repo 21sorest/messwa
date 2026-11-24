@@ -33,7 +33,10 @@ func (m *sellManager) answerSoldReply(ctx context.Context, e *events.Message, pe
 		}
 	}
 	for _, t := range tasks {
-		if !time.Now().Before(t.EndsAt) || t.State != store.TaskSold && t.State != store.TaskActive {
+		if t.State != store.TaskSold && t.State != store.TaskActive {
+			continue
+		}
+		if t.State == store.TaskSold && (t.EndedAt.IsZero() || !time.Now().Before(t.EndedAt.Add(store.SoldReplyWindow))) {
 			continue
 		}
 		offers, err := m.st.SellTaskOffers(ctx, t.ID)
@@ -74,11 +77,18 @@ func (m *sellManager) answerSoldReply(ctx context.Context, e *events.Message, pe
 		if !claimed {
 			return
 		}
-		if err := sendReply(ctx, gate.sendSoldNotice, peer, saleLines(m.cfg, t.Mess, t.Diet, t.Meal, t.Date, t.EndsAt, nil).sold()); err != nil {
+		if err := m.sendLateSold(ctx, t, peer); err != nil {
 			m.log.Warn("could not tell a new buyer the meal sold", "task", t.ID, "err", err)
 			return
 		}
 		m.event(ctx, store.SellEvent{TaskID: t.ID, Peer: peer.String(), Kind: store.EventToldSold, Text: "first replied after the meal sold"})
 		return
 	}
+}
+
+func (m *sellManager) sendLateSold(ctx context.Context, t store.SellTask, peer types.JID) error {
+	ctx, cancel := context.WithDeadline(ctx, t.EndedAt.Add(store.SoldReplyWindow))
+	defer cancel()
+	gate := &taskGate{m: m, id: t.ID}
+	return sendReply(ctx, gate.sendSoldNotice, peer, reply{"sorry, sold"})
 }
