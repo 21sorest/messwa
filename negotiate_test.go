@@ -149,7 +149,7 @@ func TestHaggleDecide(t *testing.T) {
 			[]string{"60", "PASS"}},
 		{"bought elsewhere after a counter ends", 30, 100, 80, []string{"price?", "75", "sorry bought"},
 			[]string{"100", "how about 90", "PASS"}},
-		{"second pass ends", 30, 60, 50, []string{"price?", "nvm", "nvm"},
+		{"first pass ends", 30, 60, 50, []string{"price?", "nvm"},
 			[]string{"60", "PASS"}},
 		{"pass after hearing the lowest ends", 30, 60, 45, []string{"price?", "35 final", "nvm"},
 			[]string{"60", "45 / final offer", "PASS"}},
@@ -157,7 +157,7 @@ func TestHaggleDecide(t *testing.T) {
 			[]string{"120", "115 / final offer", "PASS"}},
 		{"a pass with a price is an offer", 30, 60, 50, []string{"price?", "too much, 55?"},
 			[]string{"60", "AGREE 55"}},
-		{"pass after an offer ends", 30, 60, 40, []string{"price?", "too much, 35?", "nvm", "nvm"},
+		{"pass after an offer ends", 30, 60, 40, []string{"price?", "too much, 35?", "nvm"},
 			[]string{"60", "how about 50", "PASS"}},
 		{"pay another way parks", 30, 60, 50, []string{"price?", "upi id?"},
 			[]string{"60", "PARK"}},
@@ -245,10 +245,10 @@ func TestHaggleOtherMeal(t *testing.T) {
 		{"offers for another meal", []string{"price?", "bf 60?", "bf 60?"}, []string{"140", "its lunch", "PASS"}},
 		{"asks for another meal first", []string{"breakfast?", "120?"}, []string{"its lunch, 140", "140 / final offer"}},
 		{"turns down the meal", []string{"price?", "dont need lunch"}, []string{"140", "PASS"}},
-		{"dont need is a pass", []string{"price?", "dont need", "dont need"}, []string{"140", "PASS"}},
+		{"dont need is a pass", []string{"price?", "dont need"}, []string{"140", "PASS"}},
 		{"names the meal on sale", []string{"price?", "lunch for 120?"}, []string{"140", "140 / final offer"}},
 		{"names both", []string{"price?", "breakfast or lunch, 120?"}, []string{"140", "140 / final offer"}},
-		{"not req is a pass", []string{"price?", "not req", "not req"}, []string{"140", "PASS"}},
+		{"not req is a pass", []string{"price?", "not req"}, []string{"140", "PASS"}},
 	}
 	for _, c := range cases {
 		if got := replay(h, end.Add(-4*time.Hour), c.msgs...); strings.Join(got, "|") != strings.Join(c.want, "|") {

@@ -244,7 +244,7 @@ func TestParseBuyerBoughtElsewhere(t *testing.T) {
 		"Already purchased", "Nah I got it nvm", "Mujhe mil gaya bhai kisi aur se", "I got other", "Nope, got it",
 		"No just bought", "I bought for 20 from someone else", "sorry got it now",
 		"Got it for 50", "I bought it for 50 🙏", "got for 40 from someone", "Got one for 45",
-		"sorry bought from another person", "sorry, bought from someone else"}
+		"sorry bought from another person", "sorry, bought from someone else", "Sorry dude I got already", "got already for 50"}
 	for _, text := range bought {
 		if in := parseBuyer(text); in.kind != intentPass || !in.bought {
 			t.Errorf("parseBuyer(%q) = %+v, want a bought pass", text, in)
@@ -255,7 +255,7 @@ func TestParseBuyerBoughtElsewhere(t *testing.T) {
 			t.Errorf("parseBuyer(%q) = %+v, want a plain pass", text, in)
 		}
 	}
-	for _, text := range []string{"sorry got late, still available?"} {
+	for _, text := range []string{"ok got it", "got it, paying", "sorry got late, still available?"} {
 		if in := parseBuyer(text); in.kind == intentPass {
 			t.Errorf("parseBuyer(%q) = %+v, want no pass", text, in)
 		}
@@ -323,7 +323,7 @@ func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
 	declines := []string{
 		"today Baught already", "Sorry dude I got already", "Got it just now",
 		"I already had lunch", "Delete it, i am not going to use it",
-		"no thank u", "no ,i got it..", "No sry", "Nope ??",
+		"no thank u", "no ,i got it..", "No sry", "Nope \U0001fae0",
 		"Nah its fine\nI dont need it actually", "Bought already",
 		"Bought it, brother.. started dinner already", "No got it",
 		"Got it from someone else", "Sorry bought from a different person",
@@ -331,9 +331,8 @@ func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
 		"oh no thanku", "thanks but nope", "sorry buddy nah", "bro nop",
 		"not buying", "not taking it", "already eaten", "I have eaten",
 		"baught for 40", "no thx", "no ty", "no thankyou",
-		"Got it", "ok got it", "Got it thanks", "got it, paying",
 		"thanks, got it from a friend", "actually that is a nope", "that is a nuh uh",
-		"I got it for 80", "got it, can do 80",
+		"I got it for 80", "I am not going to buy", "not gonna buy",
 	}
 	for _, text := range declines {
 		t.Run(text, func(t *testing.T) {
@@ -371,5 +370,48 @@ func TestBuyerDeclinesFromConversationHistory(t *testing.T) {
 		if in := parseBuyer(c.text); in.kind != c.kind {
 			t.Errorf("parseBuyer(%q) = %+v, want %v", c.text, in, c.kind)
 		}
+	}
+}
+
+// Review regressions: ambiguous acknowledgements must not cancel a buyer.
+func TestBuyerAcknowledgementsAndQuestionsDoNotDecline(t *testing.T) {
+	for _, c := range []struct {
+		text  string
+		kind  intentKind
+		offer int
+		done  bool
+	}{
+		{"got it", intentUnknown, 0, false},
+		{"got it thanks", intentUnknown, 0, false},
+		{"ok got it", intentOK, 0, false},
+		{"got it, paying", intentAccept, 0, false},
+		{"got it, paying 60", intentAccept, 0, false},
+		{"got it, same number?", intentAccept, 0, false},
+		{"got it, can do 80", intentOffer, 80, false},
+		{"ok got it, 70?", intentOffer, 70, false},
+		{"got it, too much", intentLower, 0, false},
+		{"got it, send qr", intentPayOther, 0, false},
+		{"ok na", intentOK, 0, false},
+		{"works na", intentOK, 0, false},
+		{"chalega na", intentOK, 0, false},
+		{"wait na", intentOK, 0, false},
+		{"bolo na", intentOK, 0, false},
+		{"done na", intentOK, 0, true},
+		{"kadamba veg na?", intentQuestion, 0, false},
+		{"nv na?", intentQuestion, 0, false},
+		{"ok no problem", intentOK, 0, false},
+		{"yes no worries", intentOK, 0, false},
+		{"sure no issue", intentOK, 0, false},
+		{"kadamba no?", intentQuestion, 0, false},
+		{"veg no?", intentQuestion, 0, false},
+		{"whats your no?", intentAccept, 0, false},
+		{"phone no?", intentAccept, 0, false},
+	} {
+		t.Run(c.text, func(t *testing.T) {
+			in := parseBuyer(c.text)
+			if in.kind != c.kind || in.offer != c.offer || in.done != c.done {
+				t.Fatalf("parseBuyer(%q) = %+v, want kind %v offer %d done %v", c.text, in, c.kind, c.offer, c.done)
+			}
+		})
 	}
 }

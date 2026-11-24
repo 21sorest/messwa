@@ -1218,3 +1218,52 @@ func TestNegotiationPausedTimersFrozenDuringTurn(t *testing.T) {
 		}
 	})
 }
+
+func TestAcknowledgementsKeepAgreedBuyersInQueue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	synctest.Test(t, func(t *testing.T) {
+		f := newSellFixture(t, path)
+		ctx, stop := context.WithCancel(t.Context())
+		m := f.negotiatingManager(ctx, 40)
+		id, err := m.Start(ctx, 0, f.date, "lunch", 30, 60, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		// Restore a persisted queue with two agreed buyers. A holds the turn,
+		// while B must retain their agreement through acknowledgement messages.
+		stop()
+		synctest.Wait()
+		for _, peer := range []types.JID{buyerA, buyerB} {
+			if ok, err := f.st.AddSellTaskBuyer(t.Context(), id, peer.String(), "", time.Now()); err != nil || !ok {
+				t.Fatalf("add buyer: %v, %v", ok, err)
+			}
+			n := store.Negotiation{Ask: 6000, BotMsgs: 1, Quoted: []int64{6000}, StartedAt: time.Now()}
+			if ok, err := f.st.AgreeSellTaskBuyer(t.Context(), id, peer.String(), "60.00", n, time.Now()); err != nil || !ok {
+				t.Fatalf("agree buyer: %v, %v", ok, err)
+			}
+		}
+		ctx2, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		if err := f.negotiatingManager(ctx2, 40).Resume(ctx2, true); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if b := buyerState(t, f, id, buyerB); b.State != store.BuyerAgreed {
+			t.Fatalf("B = %+v", b)
+		}
+		for _, text := range []string{"ok got it", "got it thanks", "ok na", "works na", "done na", "ok no problem", "phone no?", "got it, paying 60"} {
+			f.conn.emit(dm(buyerB, text))
+			settle()
+			if b := buyerState(t, f, id, buyerB); b.State != store.BuyerAgreed {
+				t.Fatalf("B after %q = %+v", text, b)
+			}
+		}
+		if evs := eventsFor(t, f, id, buyerB); slices.Contains(evs, store.EventPassed) {
+			t.Fatalf("B's events = %q", evs)
+		}
+		if b := buyerState(t, f, id, buyerA); b.State != store.BuyerOffered {
+			t.Fatalf("A lost payment turn: %+v", b)
+		}
+	})
+}
