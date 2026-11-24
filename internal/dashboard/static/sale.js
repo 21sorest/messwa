@@ -800,11 +800,14 @@ setInterval(() => { if (document.visibilityState === 'visible') tickSales(); }, 
 function sheetFor(v, keep, tone) {
   hideTip();
   const scroll = keep ? sheet.scrollTop : 0;
-  const opened = keep ? [...sheet.querySelectorAll('details[open] > summary')].map(e => e.textContent) : [];
+  const opened = keep ? [...sheet.querySelectorAll('details[open][data-fold]')].map((d) => d.dataset.fold) : [];
   sheet.replaceChildren();
   sheet.className = 'sheet sale-sheet' + (tone ? ' tone-' + tone : '');
   modal.hidden = false;
-  return () => { for (const d of sheet.querySelectorAll('details')) { if (opened.includes(d.querySelector('summary')?.textContent)) d.open = true; } sheet.scrollTop = scroll; };
+  return () => {
+    for (const d of sheet.querySelectorAll('details[data-fold]')) if (opened.includes(d.dataset.fold)) d.open = true;
+    sheet.scrollTop = scroll;
+  };
 }
 
 function chatLink(b) {
@@ -845,7 +848,7 @@ function openBuyerSheet(v, key, keep) {
     who.append(ph);
   }
   head.append(f, who, closeButton());
-  sheet.append(head, buyerStatus(b, v, l), saleInformation(v, b));
+  sheet.append(head, buyerStatus(b, v, l));
 
   const strip = priceStrip(b, v);
   if (strip) sheet.append(strip);
@@ -854,6 +857,7 @@ function openBuyerSheet(v, key, keep) {
   }
   const rounds = haggleRounds(b, v);
   if (rounds) sheet.append(el('div', 'sec', 'HAGGLE'), rounds);
+  sheet.append(saleInformation(v, false), conversationFold(v, b, 'CONVERSATION'));
 
   const acts = el('div', 'sb-acts');
   const link = chatLink(b);
@@ -1080,7 +1084,7 @@ function openMealSheet(v, _key, keep) {
     tip(t, () => [[{ t: `#${x.id} ${x.state.replace('_', ' ')}`, c: 'nm' }], [{ t: `${hm(x.started)}–${x.ended ? hm(x.ended) : ''} · ${x.buyers} buyers`, c: 'c8' }]]);
     tries.append(t);
   }
-  sheet.append(tries, saleInformation(v));
+  sheet.append(tries, saleInformation(v, true));
   if (v.detail && v.state !== 'active') sheet.append(el('div', 'sb-note', v.detail));
 
   const acts = el('div', 'sb-acts');
@@ -1227,48 +1231,106 @@ function saleActionForm(v, action, buyer) {
   sheet.append(form);
 }
 
-// Sale details stay read-only, including payment warnings.
-function saleInformation(v, buyer) {
-  const box = el('details', 'sale-information');
-  box.append(el('summary', '', 'Know more about the sale'));
+// saleInformation is a fold with who bought, at what price, and how many
+// buyers the bot reached and, with convos, a fold per buyer with the
+// retained conversation. It is read-only: payment warnings here never
+// pause selling.
+function saleInformation(v, convos) {
   const buyers = v.buyers || [];
-  const winner = buyers.find(b => b.state === 'bought');
-  const contacted = buyers.filter(b => b.events.some(e => ['prompt','buy_post','nudged'].includes(e.kind)) || b.bot_msgs > 0).length;
-  const rejected = buyers.filter(b => b.state === 'passed').length;
-  const skipped = buyers.filter(b => ['skipped','timed_out','told_sold'].includes(b.state)).length;
-  box.append(el('p', '', winner ? `Sold to ${winner.name || winner.phone || 'buyer'}. Agreed sale price: ${rup(v.pay?.amount || winner.agreed || winner.asked || 0)}.` : `Sale ${v.state.replaceAll('_',' ')}.`));
-  box.append(el('p', '', `${buyers.length} buyers recorded · ${contacted} contacted · ${rejected} declined · ${skipped} skipped, timed out or told sold.`));
-  box.append(el('p', 'conversation-note', 'Counts cover recorded buyers, not everyone who saw a group post. Payment warnings are for review and do not pause selling.'));
-  for (const b of buyer ? [buyer] : buyers) {
-    const thread = el('details', 'sale-conversation');
-    thread.append(el('summary', '', `Conversation with ${b.name || b.phone || 'buyer'}`));
-    const content = el('div', 'conversation-messages');
-    thread.append(content);
-    thread.addEventListener('toggle', async () => {
-      if (!thread.open || content.dataset.loaded) return;
-      content.textContent = 'Loading conversation…';
-      const url = `api/sale-conversation?id=${encodeURIComponent(v.id)}&buyer=${encodeURIComponent(b.key)}`;
-      try {
-        const r = await fetch(url, {cache:'no-store'});
-        if (!r.ok) throw new Error();
-        const messages = await r.json();
-        content.replaceChildren();
-        content.append(el('p', 'conversation-note', 'Only messages retained since recording was enabled are available. Missing images may have expired or failed to download.'));
-        if (!messages.length) content.append(el('p', '', 'No conversation recorded for this sale. Earlier messages are unavailable.'));
-        for (const m of messages) {
-          const row = el('article', 'conversation-message' + (m.from_me ? ' from-me' : ''));
-          row.append(el('small', '', `${m.from_me ? 'You / bot' : 'Buyer'} · ${new Date(m.at*1000).toLocaleString()}`));
-          if (m.checking) { row.append(el('strong', 'checking-needed', 'Checking needed'), el('p', '', m.checking)); }
-          if (m.text) row.append(el('pre', '', m.text));
-          if (m.media && ['audio','video','document'].includes(m.kind)) { const a=el('a', '', 'Download '+m.kind);a.href=url+'&media='+encodeURIComponent(m.id);a.download='attachment';row.append(a); }
-          else if (m.media) { const img=el('img');img.src=url+`&media=${encodeURIComponent(m.id)}`;img.alt=m.from_me?'Image sent to buyer':'Image sent by buyer';img.loading='lazy';row.append(img); }
-          else if (m.kind === 'image') row.append(el('p', '', 'Image unavailable.'));
-          content.append(row);
-        }
-        content.dataset.loaded='true';
-      } catch { content.textContent='Could not load the conversation. Close and reopen to retry.'; }
-    });
-    box.append(thread);
+  const winner = buyers.find((b) => b.state === 'bought');
+  const contacted = buyers.filter((b) => b.events.some((e) => ['prompt', 'buy_post', 'nudged'].includes(e.kind)) || b.bot_msgs > 0).length;
+  const declined = buyers.filter((b) => b.state === 'passed').length;
+  const dropped = buyers.filter((b) => ['skipped', 'timed_out', 'told_sold'].includes(b.state)).length;
+
+  const box = fold('sb-fold', 'sale', 'ABOUT THIS SALE',
+    winner ? `Sold to ${winner.name || winner.phone || 'buyer'}` : cap(v.state.replaceAll('_', ' ')));
+  const body = box.lastChild;
+  if (winner) {
+    const st = el('div', 'sb-status grn');
+    st.append(el('b', 'big', rup(v.pay?.amount || winner.agreed || winner.asked || 0)), el('b', 'ttl', 'AGREED PRICE'),
+      el('p', '', `${winner.name || winner.phone || 'The buyer'} bought it.`));
+    body.append(st);
+  }
+  const strip = el('div', 'sb-strip');
+  for (const [k, n, cls, why] of [['Recorded', buyers.length, '', ''], ['Contacted', contacted, 'grn', ''],
+    ['Declined', declined, declined ? 'red' : 'dim', ''], ['Dropped', dropped, 'dim', 'Skipped, timed out or told sold']]) {
+    const c = el('div');
+    if (why) c.title = why;
+    c.append(el('small', '', k), el('b', cls, String(n)));
+    strip.append(c);
+  }
+  body.append(strip, el('p', 'sb-note', 'Counts cover buyers the bot recorded, not everyone who saw a group post. Dropped means skipped, timed out or told sold.'));
+
+  if (convos && buyers.length) {
+    body.append(el('div', 'sec', 'CONVERSATIONS'));
+    for (const b of buyers) body.append(conversationFold(v, b));
   }
   return box;
+}
+
+// fold is a themed <details>: a Pixel title, a line of context and a
+// chevron. key lets sheetFor reopen it after a live redraw.
+function fold(cls, key, title, sub) {
+  const d = el('details', cls);
+  d.dataset.fold = key;
+  const s = el('summary');
+  s.append(el('b', 'ttl', title));
+  if (sub) s.append(el('span', 'sub', sub));
+  s.append(el('i', 'chev', '›'));
+  d.append(s, el('div', 'fold-body'));
+  return d;
+}
+
+// conversationFold loads the retained messages with buyer b the first
+// time it opens. title defaults to the buyer's name.
+function conversationFold(v, b, title) {
+  const d = fold('sb-convo ' + look(b, v).cls, 'convo:' + b.key, title || (b.name || b.phone || 'Buyer').toUpperCase(), STATE_WORD[b.state] || b.state);
+  const content = d.lastChild;
+  const url = `api/sale-conversation?id=${encodeURIComponent(v.id)}&buyer=${encodeURIComponent(b.key)}`;
+  d.addEventListener('toggle', async () => {
+    if (!d.open || content.dataset.loaded) return;
+    content.replaceChildren(el('p', 'sb-note', 'Loading the conversation…'));
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) throw new Error();
+      const messages = await r.json();
+      content.replaceChildren();
+      if (!messages.length) content.append(el('p', 'sb-note', 'Nothing recorded for this sale. Messages from before recording started are not kept.'));
+      for (const m of messages) content.append(chatBubble(m, b, url));
+      if (messages.length) content.append(el('p', 'sb-note', 'Only messages since recording started are kept. A missing picture may have expired or failed to download.'));
+      content.dataset.loaded = 'true';
+    } catch {
+      content.replaceChildren(el('p', 'sb-note red', 'Could not load the conversation. Close it and open it again to retry.'));
+    }
+  });
+  return d;
+}
+
+// chatBubble draws one message: the buyer's on the left, yours and the
+// bot's on the right, and anything to check outlined in egg yellow.
+function chatBubble(m, b, url) {
+  const row = el('div', 'cv-msg' + (m.from_me ? ' me' : '') + (m.checking ? ' chk' : ''));
+  row.append(el('small', 'cv-who', `${m.from_me ? 'YOU / BOT' : (b.name || 'BUYER').toUpperCase()} · ${hm(m.at)}`));
+  if (m.checking) {
+    const w = el('div', 'cv-check');
+    w.append(el('b', 'sb-chip egg', 'CHECK'), el('span', '', m.checking));
+    row.append(w);
+  }
+  if (m.text) row.append(el('p', 'cv-text', m.text));
+  const media = url + '&media=' + encodeURIComponent(m.id);
+  if (m.media && ['audio', 'video', 'document'].includes(m.kind)) {
+    const a = el('a', 'sb-chip cv-file', `↓ ${m.kind.toUpperCase()}`);
+    a.href = media;
+    a.download = 'attachment';
+    row.append(a);
+  } else if (m.media) {
+    const img = el('img');
+    img.src = media;
+    img.alt = m.from_me ? 'Picture sent to the buyer' : 'Picture the buyer sent';
+    img.loading = 'lazy';
+    row.append(img);
+  } else if (m.kind === 'image') {
+    row.append(el('p', 'cv-text dim', 'Picture unavailable.'));
+  }
+  return row;
 }
