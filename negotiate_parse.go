@@ -187,7 +187,7 @@ var (
 	// counts only here: on its own it is "understood".
 	boughtWords = newVocab("bought", "buyed", "purchased", "got for", "got from", "got another", "got one", "got other", "got elsewhere",
 		"got it", "already got", "mil gaya", "mil gya", "milgaya", "mil gayi")
-	refuseFirst = newVocab("no", "nope", "nah", "na", "nahi", "nhi")
+	refuseFirst = newVocab("no", "nope", "nop", "nah", "na", "nahi", "nhi")
 	// An apology with nothing else to say is a no: "okay sorry then" after
 	// "cant go below 115". One that excuses something isn't: "sorry for the
 	// late reply, ok".

@@ -173,6 +173,7 @@ func TestParseBuyer(t *testing.T) {
 		{"don't need it bro", intentPass, 0, false},
 		{"need it", intentOpener, 0, false},
 		{"nah", intentPass, 0, false},
+		{"Nop", intentPass, 0, false},
 		{"Not needed bro", intentPass, 0, false},
 		{"I'll pass", intentPass, 0, false},
 		{"Oh.. no sorry", intentPass, 0, false},

@@ -215,7 +215,7 @@ func TestHaggleNamesTheDay(t *testing.T) {
 func TestHagglePassEndsImmediately(t *testing.T) {
 	end := time.Date(2026, 11, 12, 21, 30, 0, 0, time.UTC)
 	h := newHaggle(30, 70, 50, true, true, end, testLines("nonveg", "")).forMeal("dinner")
-	for _, text := range []string{"No, thank you", "no thanks", "no", "nah", "nvm", "not interested", "I'll pass", "don't need lunch", "sorry bought from another person", "sorry, bought from someone else"} {
+	for _, text := range []string{"No, thank you", "no thanks", "no", "Nop", "nah", "nvm", "not interested", "I'll pass", "don't need lunch", "sorry bought from another person", "sorry, bought from someone else"} {
 		for _, st := range []haggleState{
 			{ask: 70},
 			{ask: 70, botMsgs: 1},
